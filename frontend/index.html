@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>libra - ベッドサイドコミュニケーション</title>
+    <meta name="description" content="病棟ベッドサイド向けの超軽量コミュニケーション補助アプリ。緊急の用件やゆっくりした意思表示を、押しやすい格子状UIで伝えます。">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#064e3b">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=BIZ+UDGothic:wght@400;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="/src/index.tsx" type="module"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(e) {
+          console.error('Service Worker registration failed:', e)
+        })
+      }
+    </script>
+  </body>
+</html>

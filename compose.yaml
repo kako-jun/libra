@@ -1,0 +1,26 @@
+services:
+  backend:
+    image: node:20-slim
+    ports:
+      - "8787:8787"
+    working_dir: /app
+    command: sh -c "npm install && npx wrangler dev --local --port 8787 --ip 0.0.0.0"
+    volumes:
+      - ./backend:/app
+    environment:
+      - CORS_ORIGINS=http://localhost:5173
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-slim
+    ports:
+      - "5173:5173"
+    working_dir: /app
+    command: sh -c "npm install && npx vite --host 0.0.0.0 --port 5173"
+    volumes:
+      - ./frontend:/app
+    environment:
+      - VITE_API_URL=http://backend:8787
+    depends_on:
+      - backend
+    restart: unless-stopped
