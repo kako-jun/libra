@@ -44,12 +44,14 @@ Use system UI fonts. Text must fit inside tiles on mobile and tablet.
 
 ## 5. Interaction
 
-- Tap executes a tile.
-- Number keys 1-9 activate the first visible tiles for quick testing.
-- Arrow keys move the scan target.
-- Space / Enter activates the scan target.
-- Escape goes back.
-- Speech can be OFF, tone-only, short, or full.
+Source of truth: `docs/requirements.md`.
+
+- The patient has exactly one input: a single "on" (tap anywhere / any key / Bluetooth shutter) timed to an automatic scan cursor.
+- Scanning runs from startup and never requires the patient to start or stop it.
+- The first scan item of every screen is Emergency.
+- Caregiver menu opens with a 2-second long press on a corner button; it is not in the scan cycle.
+- Number keys 1-9 are a developer/caregiver aid only and hidden by default.
+- Speech can be OFF, tone-only, short, or full. The emergency alarm sounds even when OFF.
 
 ## 6. Do's and Don'ts
 
