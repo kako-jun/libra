@@ -27,7 +27,7 @@ describe('buildMenu の共通規則', () => {
     },
   )
 
-  // letters は46字の簡易版導入前(Issue #4)の暫定実装のため対象外。
+  // letters は46字の本実装(#4)前の簡易版のため対象外。
   it.each(ALL_SCREENS.filter((s) => s !== 'letters'))('%s: 項目数は8以内である', (screen) => {
     const items = buildMenu(screen, { showUndo: true, emergencyActive: false })
     expect(items.length).toBeLessThanOrEqual(8)

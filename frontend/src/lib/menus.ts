@@ -85,7 +85,7 @@ function navigate(id: string, label: string, screen: ScreenId): MenuItem {
 export interface HomeMenuOptions {
   /** 伝達直後の1周だけ true。渡された値に関わらず emergencyActive 中は無視する */
   showUndo: boolean
-  /** 緊急中は取り消しを出さない（requirements.md §6: 緊急中は取り消し対象にしない）。
+  /** 緊急中は取り消しを出さない（requirements.md §4.3: 本人のスイッチ入力で上書き・取り消しされない）。
    *  この判定を App 側に置かず、ここで一元的に保証する。 */
   emergencyActive: boolean
 }
