@@ -15,6 +15,7 @@ import {
   recheckOfflineReady,
   type OfflineReadyStatus,
 } from './lib/offlineReady'
+import { computeGridLayout } from './lib/gridLayout'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const ALARM_REPEAT_MS = 3000
@@ -29,47 +30,6 @@ const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
 }
 
 const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
-
-// Issue #3 再レビュー: 孤立タイル・下部の空白を出さないため、項目数と grid 領域の
-// 縦横比から列数(cols)を決め、タイルが grid 領域全体を埋めるようにする。
-// 目安8項目以内(requirements.md §4.1)の画面はこの「fill」モードで敷き詰め、
-// それを超える画面(文字盤等)は現行どおり最小タイル高を保ってスクロールする。
-const GRID_FILL_MAX_ITEMS = 8
-
-interface GridLayout {
-  fill: boolean
-  cols: number
-  rows: number
-  /** 最後の行に空き枠が出る場合、最後のタイルへ与える grid-column の span 数 */
-  lastSpan: number
-}
-
-function computeGridLayout(itemCount: number, width: number, height: number): GridLayout {
-  if (itemCount <= 0 || width <= 0 || height <= 0) {
-    return { fill: false, cols: 1, rows: 1, lastSpan: 1 }
-  }
-  if (itemCount > GRID_FILL_MAX_ITEMS) {
-    return { fill: false, cols: 1, rows: 1, lastSpan: 1 }
-  }
-  const aspect = width / height
-  let bestCols = 1
-  let bestScore = Infinity
-  for (let cols = 1; cols <= itemCount; cols += 1) {
-    const rows = Math.ceil(itemCount / cols)
-    // 縦横比の近さを優先しつつ、割り切れる(空き枠が出ない)列数を僅かに優遇する
-    // タイブレークを入れる。僅差なら見た目が整う偶数分割を選ぶ
-    const unevenPenalty = itemCount % cols === 0 ? 0 : 0.05
-    const score = Math.abs(cols / rows - aspect) + unevenPenalty
-    if (score < bestScore) {
-      bestScore = score
-      bestCols = cols
-    }
-  }
-  const rows = Math.ceil(itemCount / bestCols)
-  const remainder = itemCount % bestCols
-  const lastSpan = remainder === 0 ? 1 : bestCols - remainder + 1
-  return { fill: true, cols: bestCols, rows, lastSpan }
-}
 
 // Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者メニューに表示する文言。
 // 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
@@ -101,9 +61,6 @@ function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
   window.speechSynthesis?.speak(utterance)
 }
 
-const DESIGN_VARIANTS = ['a', 'b'] as const
-type DesignVariant = (typeof DESIGN_VARIANTS)[number]
-
 const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
   standard: '標準',
   large: '大',
@@ -112,20 +69,41 @@ const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
 
 const FONT_SIZES: Settings['fontSize'][] = ['standard', 'large', 'xlarge']
 
+const THEME_LABELS: Record<Settings['theme'], string> = {
+  light: '明るい',
+  dark: '夜間',
+  auto: '自動',
+}
+
+const THEMES: Settings['theme'][] = ['light', 'dark', 'auto']
+
 export default function App() {
   // 開発補助: URL に ?dev を付けると番号バッジを表示する（既定は非表示）
   const showDevNumbers = new URLSearchParams(window.location.search).has('dev')
 
-  // Issue #3: ?design=a|b で見た目の案を切り替える（既定 a）。値だけが違う2案を
-  // 見比べられるようにするための開発・意思決定用の入口で、本人の操作対象ではない。
-  const designParam = new URLSearchParams(window.location.search).get('design')
-  const design: DesignVariant = DESIGN_VARIANTS.includes(designParam as DesignVariant)
-    ? (designParam as DesignVariant)
-    : 'a'
-  document.documentElement.dataset.design = design
-
   const [settings, setSettings] = createSignal<Settings>(loadSettings())
+
+  // Issue #3 追加指示: 表示テーマ(明るい/夜間/自動)。auto は端末の prefers-color-scheme に
+  // 追従し、OS側の設定変更にも即座に反応する(matchMedia の change を購読)。
+  const prefersDarkQuery =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null
+  const [systemPrefersDark, setSystemPrefersDark] = createSignal(prefersDarkQuery?.matches ?? false)
+  onMount(() => {
+    if (!prefersDarkQuery) return
+    const onChange = () => setSystemPrefersDark(prefersDarkQuery.matches)
+    prefersDarkQuery.addEventListener('change', onChange)
+    onCleanup(() => prefersDarkQuery.removeEventListener('change', onChange))
+  })
+  const resolvedTheme = createMemo<'light' | 'dark'>(() => {
+    const theme = settings().theme
+    if (theme === 'auto') return systemPrefersDark() ? 'dark' : 'light'
+    return theme
+  })
+
   createEffect(() => {
+    document.documentElement.dataset.theme = resolvedTheme()
     document.documentElement.dataset.fontSize = settings().fontSize
     document.documentElement.dataset.highContrast = String(settings().highContrast)
   })
@@ -610,6 +588,30 @@ export default function App() {
         <Show when={emergencyActive() && emergencySubMessage()}>
           <p class="emergency-sub">最新: {emergencySubMessage()}</p>
         </Show>
+
+        {/* kako-jun 追加指示: 下部の帯(介助ボタン・警告音停止中)を廃止し、タイル領域を
+            画面下端まで使う。両方ともメッセージ欄右上、文字と重ならない位置へ移す */}
+        <div class="message-panel-controls">
+          <Show when={!alarmAudioRunning()}>
+            {/* S-new-4: data-caregiver-control を外し pointer-events:none にする。
+                本人のタップは下のタイルへ届き、通常のスイッチ入力として扱われる(resumeも走る) */}
+            <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
+          </Show>
+
+          <button
+            type="button"
+            class="caregiver-button"
+            data-caregiver-control
+            onPointerDown={onCaregiverButtonDown}
+            onPointerUp={onCaregiverButtonUp}
+            onPointerLeave={onCaregiverButtonUp}
+            onPointerCancel={onCaregiverButtonUp}
+            onContextMenu={(event) => event.preventDefault()}
+            aria-label="介助者メニュー（2秒長押し）"
+          >
+            介助
+          </button>
+        </div>
       </section>
 
       <Show when={screen() === 'letters'}>
@@ -674,26 +676,6 @@ export default function App() {
           )}
         </For>
       </section>
-
-      <Show when={!alarmAudioRunning()}>
-        {/* S-new-4: data-caregiver-control を外し pointer-events:none にする。
-            本人のタップは下のタイルへ届き、通常のスイッチ入力として扱われる(resumeも走る) */}
-        <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
-      </Show>
-
-      <button
-        type="button"
-        class="caregiver-button"
-        data-caregiver-control
-        onPointerDown={onCaregiverButtonDown}
-        onPointerUp={onCaregiverButtonUp}
-        onPointerLeave={onCaregiverButtonUp}
-        onPointerCancel={onCaregiverButtonUp}
-        onContextMenu={(event) => event.preventDefault()}
-        aria-label="介助者メニュー（2秒長押し）"
-      >
-        介助
-      </button>
 
       <Show when={caregiverMenuOpen()}>
         <div class="caregiver-overlay" data-caregiver-control>
@@ -802,6 +784,23 @@ export default function App() {
                       onClick={() => updateSettings({ fontSize: size })}
                     >
                       {FONT_SIZE_LABELS[size]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <div class="caregiver-field">
+              <span>表示</span>
+              <div class="caregiver-choice-options">
+                <For each={THEMES}>
+                  {(theme) => (
+                    <button
+                      type="button"
+                      classList={{ active: settings().theme === theme }}
+                      onClick={() => updateSettings({ theme })}
+                    >
+                      {THEME_LABELS[theme]}
                     </button>
                   )}
                 </For>

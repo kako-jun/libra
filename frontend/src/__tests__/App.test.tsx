@@ -784,30 +784,93 @@ describe('App', () => {
     expect(second.container.textContent).toContain('スキャン間隔: 2.5 秒')
   })
 
-  describe('Issue #3: デザイン切替・文字サイズ・高コントラスト', () => {
+  describe('Issue #3 追加指示: 表示テーマ(明るい/夜間/自動)・文字サイズ・高コントラスト', () => {
+    // window.matchMedia の複雑なモック。複数のクエリ(prefers-color-scheme, display-mode)を
+    // 個別に扱い、addEventListener で登録されたリスナーを trigger() で発火できるようにする。
+    // App.tsx は起動時に matchMedia を同期的に呼ぶため、render() より前に呼び出しておく。
+    function mockMatchMedia(initial: Record<string, boolean> = {}) {
+      const instances = new Map<
+        string,
+        Array<{ mql: { matches: boolean }; listeners: Set<(e: { matches: boolean }) => void> }>
+      >()
+      const matchMediaFn = vi.fn((query: string) => {
+        const listeners = new Set<(e: { matches: boolean }) => void>()
+        const mql = {
+          matches: initial[query] ?? false,
+          media: query,
+          addEventListener: (_event: string, cb: (e: { matches: boolean }) => void) =>
+            listeners.add(cb),
+          removeEventListener: (_event: string, cb: (e: { matches: boolean }) => void) =>
+            listeners.delete(cb),
+        }
+        if (!instances.has(query)) instances.set(query, [])
+        instances.get(query)?.push({ mql, listeners })
+        return mql
+      })
+      ;(window as unknown as { matchMedia: typeof window.matchMedia }).matchMedia =
+        matchMediaFn as unknown as typeof window.matchMedia
+      return {
+        trigger(query: string, matches: boolean) {
+          for (const entry of instances.get(query) ?? []) {
+            entry.mql.matches = matches
+            for (const cb of entry.listeners) cb({ matches })
+          }
+        },
+      }
+    }
+
     afterEach(() => {
-      window.history.pushState({}, '', '/')
-      delete document.documentElement.dataset.design
+      delete document.documentElement.dataset.theme
       delete document.documentElement.dataset.fontSize
       delete document.documentElement.dataset.highContrast
     })
 
-    it('?design なしでは既定の a になる', () => {
-      window.history.pushState({}, '', '/')
+    it('theme=auto(既定)かつ OS が明るい設定なら data-theme は light になる', () => {
+      mockMatchMedia({ '(prefers-color-scheme: dark)': false })
       render(() => <App />)
-      expect(document.documentElement.dataset.design).toBe('a')
+      expect(document.documentElement.dataset.theme).toBe('light')
     })
 
-    it('?design=b で data-design が b になる', () => {
-      window.history.pushState({}, '', '/?design=b')
+    it('theme=auto(既定)かつ OS が暗い設定なら data-theme は dark になる', () => {
+      mockMatchMedia({ '(prefers-color-scheme: dark)': true })
       render(() => <App />)
-      expect(document.documentElement.dataset.design).toBe('b')
+      expect(document.documentElement.dataset.theme).toBe('dark')
     })
 
-    it('?design=不明値 では既定の a にフォールバックする', () => {
-      window.history.pushState({}, '', '/?design=z')
+    it('auto中にOSのテーマ変更(matchMediaのchangeイベント)が来ると即座に data-theme が追従する', () => {
+      const media = mockMatchMedia({ '(prefers-color-scheme: dark)': false })
       render(() => <App />)
-      expect(document.documentElement.dataset.design).toBe('a')
+      expect(document.documentElement.dataset.theme).toBe('light')
+      media.trigger('(prefers-color-scheme: dark)', true)
+      expect(document.documentElement.dataset.theme).toBe('dark')
+      media.trigger('(prefers-color-scheme: dark)', false)
+      expect(document.documentElement.dataset.theme).toBe('light')
+    })
+
+    it('介助者メニューで表示「夜間」を選ぶと、OSが明るくても data-theme は dark に固定される', () => {
+      mockMatchMedia({ '(prefers-color-scheme: dark)': false })
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const darkButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '夜間',
+      ) as HTMLElement
+      fireEvent.click(darkButton)
+      expect(document.documentElement.dataset.theme).toBe('dark')
+    })
+
+    it('介助者メニューで表示「明るい」を選ぶと、OSが暗くても data-theme は light に固定される', () => {
+      mockMatchMedia({ '(prefers-color-scheme: dark)': true })
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const lightButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '明るい',
+      ) as HTMLElement
+      fireEvent.click(lightButton)
+      expect(document.documentElement.dataset.theme).toBe('light')
     })
 
     it('起動直後は文字サイズ standard・高コントラスト false が data 属性に反映される', () => {

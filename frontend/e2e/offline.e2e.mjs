@@ -344,6 +344,10 @@ async function checkLettersScrollLayout(chromium, port) {
       await page.waitForTimeout(3000 + (commitIndex - 1) * 1500 + 150)
 
       const info = await page.evaluate(() => {
+        // kako-jun 追加指示で app-shell の余白を0にし、グリッドが端から端まで隙間なく
+        // 埋まるようになった結果、fr/minmax の分割計算にサブピクセルの端数が出ることがある
+        // (実測で 0.3px 程度)。ビューポート境界判定に 1px の許容誤差を持たせる
+        const EPSILON = 1
         const scanning = document.querySelector('.tile.scanning')
         const h1 = document.querySelector('h1')
         const scanningRect = scanning?.getBoundingClientRect()
@@ -352,16 +356,16 @@ async function checkLettersScrollLayout(chromium, port) {
           scrollY: window.scrollY,
           scanningLabel: scanning?.querySelector('.tile-label')?.textContent,
           scanningInViewport: scanningRect
-            ? scanningRect.top >= 0 &&
-              scanningRect.bottom <= window.innerHeight &&
-              scanningRect.left >= 0 &&
-              scanningRect.right <= window.innerWidth
+            ? scanningRect.top >= -EPSILON &&
+              scanningRect.bottom <= window.innerHeight + EPSILON &&
+              scanningRect.left >= -EPSILON &&
+              scanningRect.right <= window.innerWidth + EPSILON
             : false,
           h1InViewport: h1Rect
-            ? h1Rect.top >= 0 &&
-              h1Rect.bottom <= window.innerHeight &&
-              h1Rect.left >= 0 &&
-              h1Rect.right <= window.innerWidth
+            ? h1Rect.top >= -EPSILON &&
+              h1Rect.bottom <= window.innerHeight + EPSILON &&
+              h1Rect.left >= -EPSILON &&
+              h1Rect.right <= window.innerWidth + EPSILON
             : false,
         }
       })
@@ -391,10 +395,12 @@ async function checkLettersScrollLayout(chromium, port) {
 }
 
 /**
- * PR#11 4巡目 nit: 固定配置の「介助」ボタンと「警告音停止中」表示が、タイル領域
- * (grid-board)の右下と重なっていないことを確認する。overflow:auto でスクロール
- * アウトしている(実際には描画されていない)タイルは対象外にする(grid-board 自身の
- * クリップ矩形と交差しないタイルは無視する)。
+ * kako-jun 追加指示: 「介助」ボタンと「警告音停止中」表示は position:fixed をやめ、
+ * メッセージ欄右上(.message-panel-controls)へ移した。下部の帯(約130px)は廃止し、
+ * タイル領域は画面下端まで使う。このチェックは新配置で以下を確認する:
+ * - メッセージ文字(h1)と介助ボタン・警告音停止中表示が重ならない
+ * - タイル領域(grid-board)が介助ボタン・警告音停止中表示と重ならない
+ *   (overflow:auto でスクロールアウトしている、実際には描画されていないタイルは対象外)
  */
 async function checkNoOverlapWithFixedControls(chromium, port) {
   const base = `http://localhost:${port}/`
@@ -415,16 +421,24 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
   async function checkScreen(page, name, screenLabel) {
     const info = await page.evaluate(() => {
       const board = document.querySelector('.grid-board')
+      const h1 = document.querySelector('h1')
       const button = document.querySelector('.caregiver-button')
       const hint = document.querySelector('.audio-status-hint')
       const rectOf = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
       return {
         board: rectOf(board),
+        h1: rectOf(h1),
         button: rectOf(button),
         hint: rectOf(hint),
         tiles: [...document.querySelectorAll('.grid-board .tile')].map((t) => rectOf(t)),
       }
     })
+    if (info.h1 && info.button && rectsOverlap(info.h1, info.button)) {
+      failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助」ボタンと重なっている`)
+    }
+    if (info.h1 && info.hint && rectsOverlap(info.h1, info.hint)) {
+      failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「警告音停止中」表示と重なっている`)
+    }
     for (const tile of info.tiles) {
       if (info.board && !rectsOverlap(tile, info.board)) continue // スクロールアウトしている
       if (info.button && rectsOverlap(tile, info.button)) {

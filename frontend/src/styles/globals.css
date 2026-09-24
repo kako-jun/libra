@@ -2,12 +2,13 @@
    Design tokens (Issue #3)
    ------------------------------------------------------------------
    すべての色は変数に集約する。ハードコード色を残さない。
-   data-design="a" (明るい・穏やか、既定) / "b" (暗い・夜間向け) を
-   :root に付け、値だけを切り替える。構造(セレクタ)は両案で共通。
-   data-high-contrast="true" は両案の上に重ねて効く。
-   =================================================================== */
+   data-theme="light"(明るい・昼、既定) / "dark"(夜間向け) を :root に付け、
+   値だけを切り替える。構造(セレクタ)はテーマ間で共通。介助者設定「表示」で
+   light/dark/auto を選べ、auto は prefers-color-scheme に追従して App.tsx が
+   実際の data-theme を light/dark のどちらかに解決する(このCSSはlight/darkの
+   2値しか見ない)。data-high-contrast="true" はどちらのテーマにも重ねて効く。 */
 :root,
-:root[data-design='a'] {
+:root[data-theme='light'] {
   --bg: #eafaf1;
   --surface: #ffffff;
   --surface-calm: #dcf5e6;
@@ -39,7 +40,7 @@
   --grid-line-width: 1px;
 }
 
-:root[data-design='b'] {
+:root[data-theme='dark'] {
   --bg: #07140f;
   --surface: #17362a;
   --surface-calm: #123a29;
@@ -75,7 +76,7 @@
   --grid-line-width: 3px;
 }
 
-:root[data-design='a'][data-high-contrast='true'] {
+:root[data-theme='light'][data-high-contrast='true'] {
   --text: #000000;
   --message-bg: #003820;
   --message-text: #ffffff;
@@ -84,7 +85,7 @@
   --surface-positive: #b8ecd0;
 }
 
-:root[data-design='b'][data-high-contrast='true'] {
+:root[data-theme='dark'][data-high-contrast='true'] {
   --bg: #000000;
   --text: #ffffff;
   --surface: #000000;
@@ -177,13 +178,9 @@ button {
      フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
   height: 100vh;
   height: 100dvh;
-  /* PR#11 4巡目 nit: 右下に固定表示される「介助」ボタン(bottom:10px, 高さ約56px)と、
-     その上の「警告音停止中」表示(bottom:74px, 高さ約40px)が、タイル領域(grid-board)の
-     右下と重なっていた。grid-board の内側の padding では、視覚上の箱の大きさそのものは
-     変わらず(overflow-y:auto によるスクロール量だけが変わる)重なりを防げないため、
-     app-shell 側の padding-bottom でタイル領域自体をこの高さ分だけ手前で切り上げる */
-  /* Issue #3 再々レビュー: 格子を画面の端まで使い、外側の余白を最小にする */
-  padding: 0 0 130px;
+  /* kako-jun 追加指示: 介助ボタン・警告音停止中表示をメッセージ欄内(右上)へ移し、
+     下部に確保していた約130pxの帯を廃止。タイル領域を画面下端まで使う */
+  padding: 0;
   overflow: hidden;
   background: var(--bg);
   /* Issue #5: 本人画面はダブルタップ拡大・ピンチ拡大・スクロール・テキスト選択・
@@ -204,15 +201,48 @@ button {
    角丸・影はやめ、下の格子と地続きの一枚の盤に見えるよう区切り線だけで区切る */
 .message-panel {
   grid-row: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  /* controls は message とだけ同じ行に置く(details/sub 行にはまたがせない)。
+     auto サイズの行を複数またぐ配置は、またいだ分だけ各行を余分に膨らませてしまい
+     (実機検証: 文字盤スクロール画面でタイルがビューポート外に出た)、その分だけ
+     grid-board の使える高さが減ってしまうため避ける */
+  grid-template-areas:
+    'message controls'
+    'details details'
+    'sub sub';
+  align-content: center;
+  column-gap: 12px;
+  row-gap: 6px;
   min-height: 156px;
   padding: 22px;
   color: var(--message-text);
   background: var(--message-bg);
   border-bottom: var(--grid-line-width) solid var(--grid-line);
+}
+
+.message-panel h1 {
+  grid-area: message;
+}
+
+.message-panel .emergency-details {
+  grid-area: details;
+}
+
+.message-panel .emergency-sub {
+  grid-area: sub;
+}
+
+/* kako-jun 追加指示: 介助ボタン・警告音停止中表示はメッセージ欄右上に置く(文字と重ならない
+   よう grid で専用列を確保する。position:fixed はやめ、通常のレイアウトに組み込む) */
+.message-panel-controls {
+  grid-area: controls;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  justify-self: end;
+  align-self: start;
 }
 
 :root[data-message-tone='urgent'] .message-panel {
@@ -330,6 +360,10 @@ h1 {
 }
 
 .tile {
+  /* kako-jun 追加指示: 予告(.tile-preview)の文字サイズをラベルの45〜55%程度にするため、
+     ラベルの clamp() 式を変数化して共有する。ブレークポイントごとの上書きはここで行い、
+     .tile-label と .tile-preview の両方が追従する */
+  --tile-label-font: clamp(1.05rem, min(4.8vh, 15cqi), 3.4rem);
   container-type: inline-size;
   position: relative;
   display: grid;
@@ -413,7 +447,7 @@ h1 {
 .tile-label {
   white-space: pre-line;
   text-align: center;
-  font-size: calc(var(--font-scale) * clamp(1.05rem, min(4.8vh, 15cqi), 3.4rem));
+  font-size: calc(var(--font-scale) * var(--tile-label-font));
   font-weight: 900;
   line-height: 1.15;
   letter-spacing: 0;
@@ -451,7 +485,10 @@ h1 {
   left: 8px;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: calc(var(--font-scale) * clamp(0.6rem, 1.6vh, 0.85rem));
+  /* kako-jun 追加指示: ラベルの45〜55%程度(ここでは50%)、最小でも0.85rem相当にする。
+     --tile-label-font(.tile で定義、ブレークポイントごとに上書き)を参照するので、
+     画面幅が変わってもラベルとの比率を保ったまま追従する */
+  font-size: calc(var(--font-scale) * max(0.85rem, 0.5 * var(--tile-label-font)));
   font-weight: 700;
   line-height: 1.1;
   text-align: center;
@@ -463,19 +500,19 @@ h1 {
    介助者 UI — 目立たないが介助者には分かる見た目。
    =================================================================== */
 .caregiver-button {
-  position: fixed;
-  right: 10px;
-  bottom: 10px;
+  /* kako-jun 追加指示: 画面隅への固定配置(position:fixed)をやめ、メッセージ欄右上の
+     .message-panel-controls 内に通常のレイアウトとして置く */
   z-index: 20;
-  min-width: 56px;
-  min-height: 56px;
-  padding: 8px 12px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
   color: var(--message-text);
-  background: var(--caregiver-bg);
+  background: rgb(0 0 0 / 22%);
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
   font-weight: 800;
-  opacity: 0.8;
+  opacity: 0.85;
   /* S3: 長押し中にスクロール/選択/callout メニューが割り込まないようにする */
   touch-action: none;
   user-select: none;
@@ -594,15 +631,12 @@ h1 {
 }
 
 /* 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる小さな表示。
-   本人向けではないため介助者ボタンと同じ隅に置くが、data-caregiver-controlは付けない
-   (S-new-4)。pointer-events:noneでタップを素通しし、下のタイルへの本人のスイッチ入力
-   (resumeも走る)を妨げない。 */
+   本人向けではないため介助者ボタンと同じくメッセージ欄右上に置くが、
+   data-caregiver-controlは付けない(S-new-4)。pointer-events:noneでタップを素通しし、
+   下のタイルへの本人のスイッチ入力(resumeも走る)を妨げない。 */
 .audio-status-hint {
-  position: fixed;
-  right: 10px;
-  bottom: 74px;
   z-index: 20;
-  max-width: 260px;
+  max-width: 200px;
   margin: 0;
   padding: 4px 8px;
   pointer-events: none;
@@ -634,10 +668,7 @@ h1 {
   .tile {
     min-height: 112px;
     padding: 18px 8px 10px;
-  }
-
-  .tile-label {
-    font-size: calc(var(--font-scale) * clamp(1.1rem, min(4.7vh, 20cqi), 2.4rem));
+    --tile-label-font: clamp(1.1rem, min(4.7vh, 20cqi), 2.4rem);
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
@@ -664,6 +695,13 @@ h1 {
     font-size: calc(var(--font-scale) * clamp(1.5rem, 5.5vh, 2.4rem));
   }
 
+  /* 狭い画面ではメッセージ列の幅を大きく削らないよう、右上の警告音停止中表示を
+     小さめの折り返し幅にする(内容は変えず、より縦長に折り返すだけ) */
+  .audio-status-hint {
+    max-width: 128px;
+    font-size: 0.68rem;
+  }
+
   .grid-board {
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     grid-auto-rows: minmax(84px, 1fr);
@@ -672,9 +710,6 @@ h1 {
   .tile {
     min-height: 84px;
     padding: 14px 6px 8px;
-  }
-
-  .tile-label {
-    font-size: calc(var(--font-scale) * clamp(0.98rem, min(4vh, 22cqi), 1.9rem));
+    --tile-label-font: clamp(0.98rem, min(4vh, 22cqi), 1.9rem);
   }
 }
