@@ -487,6 +487,19 @@ describe('App', () => {
     expect(statusSpy).toHaveBeenCalled()
   })
 
+  it('S-new-4: 「警告音停止中」表示にはdata-caregiver-controlが無く、その位置へのタップはスイッチとして扱われる', () => {
+    vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
+    const { container } = render(() => <App />)
+    const hint = container.querySelector('.audio-status-hint') as HTMLElement
+    expect(hint).not.toBeNull()
+    expect(hint.closest('[data-caregiver-control]')).toBeNull()
+
+    // pointer-events:none は実ブラウザでのヒットテストにのみ影響するため、jsdom上では
+    // このタップがハンドラの除外対象(data-caregiver-control)に当たらないことを確認する
+    fireEvent.pointerDown(hint) // カーソルは index0(緊急、先頭待機中)
+    expect(container.querySelector('h1')?.textContent).toBe('緊急です。来てください')
+  })
+
   it('設定変更がリロード相当（再マウント）後も localStorage から復元される', () => {
     const first = render(() => <App />)
     const button = first.container.querySelector('.caregiver-button') as HTMLElement

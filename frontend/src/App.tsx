@@ -461,9 +461,9 @@ export default function App() {
       </section>
 
       <Show when={!alarmAudioRunning()}>
-        <p class="audio-status-hint" data-caregiver-control>
-          警告音停止中：画面をタップしてください
-        </p>
+        {/* S-new-4: data-caregiver-control を外し pointer-events:none にする。
+            本人のタップは下のタイルへ届き、通常のスイッチ入力として扱われる(resumeも走る) */}
+        <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
       </Show>
 
       <button

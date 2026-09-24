@@ -332,7 +332,9 @@ h1 {
 }
 
 /* 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる小さな表示。
-   本人向けではないため介助者ボタンと同じ隅に置き、スイッチ入力からは除外する。 */
+   本人向けではないため介助者ボタンと同じ隅に置くが、data-caregiver-controlは付けない
+   (S-new-4)。pointer-events:noneでタップを素通しし、下のタイルへの本人のスイッチ入力
+   (resumeも走る)を妨げない。 */
 .audio-status-hint {
   position: fixed;
   right: 10px;
@@ -341,6 +343,7 @@ h1 {
   max-width: 220px;
   margin: 0;
   padding: 4px 8px;
+  pointer-events: none;
   color: #7f1d1d;
   background: #fff7ed;
   border: 2px solid #f59e0b;
