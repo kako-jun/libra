@@ -254,6 +254,42 @@ describe('wakeLock', () => {
         expect(request).toHaveBeenCalledTimes(1)
         stop()
       })
+
+      it('PR#11 再レビュー nit: タブが非表示のあいだは入力/タイマーで再取得を試みない', async () => {
+        vi.useFakeTimers()
+        const sentinel = new MockSentinel()
+        const request = vi
+          .fn()
+          .mockResolvedValueOnce(sentinel)
+          .mockRejectedValueOnce(new Error('x'))
+        setWakeLockApi({ request })
+        const stop = mod.initWakeLock()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(mod.getWakeLockStatus()).toBe('active')
+
+        sentinel.emitRelease()
+        expect(mod.getWakeLockStatus()).toBe('released')
+
+        Object.defineProperty(document, 'visibilityState', {
+          value: 'hidden',
+          configurable: true,
+        })
+
+        window.dispatchEvent(new Event('pointerdown'))
+        window.dispatchEvent(new Event('keydown'))
+        await vi.advanceTimersByTimeAsync(30000)
+
+        // 非表示のあいだは pointerdown/keydown/タイマーいずれも再取得を試みない
+        expect(request).toHaveBeenCalledTimes(1)
+        expect(mod.getWakeLockStatus()).toBe('released')
+
+        Object.defineProperty(document, 'visibilityState', {
+          value: 'visible',
+          configurable: true,
+        })
+        stop()
+        vi.useRealTimers()
+      })
     })
 
     describe('nit-1: 並行 request() で sentinel が1つだけになる', () => {

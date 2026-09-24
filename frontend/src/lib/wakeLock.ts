@@ -112,8 +112,13 @@ export function initWakeLock(notify?: (status: WakeLockStatus) => void): () => v
   }
   document.addEventListener('visibilitychange', onVisibilityChange)
 
+  // PR#11 再レビュー nit: タブが非表示のあいだに Wake Lock を request() しても
+  // 仕様上取得できず(拒否されて 'error' になるだけ)無意味なので、可視のときだけ試す。
+  // 非表示から復帰したときの再取得は上の visibilitychange 側が別途担っている
   const retryIfNeeded = () => {
-    if (status !== 'active') void requestWakeLock(notify)
+    if (status !== 'active' && document.visibilityState === 'visible') {
+      void requestWakeLock(notify)
+    }
   }
   window.addEventListener('pointerdown', retryIfNeeded)
   window.addEventListener('keydown', retryIfNeeded)
