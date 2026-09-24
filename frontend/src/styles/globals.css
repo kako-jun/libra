@@ -39,7 +39,16 @@ button {
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   gap: 14px;
-  min-height: 100vh;
+  /* PR#11 再レビュー must-C: 従来は min-height:100vh だったため、内容がビューポートより
+     高くなると .app-shell 自身が育ってしまい、overflow:hidden が実際には何も切り取らず
+     document(html/body)側がスクロールしていた。その結果 scrollIntoView が document を
+     スクロールし、緊急表示を含むメッセージパネルが画面外に出てしまう不具合があった
+     (実機 Playwright 検証: 844x390 で h1 top -32px、320x568 で -266px)。
+     height を固定してビューポートちょうどの高さに収め、overflow:hidden を実際に効かせる。
+     縦方向にブラウザ UI が出入りする環境向けに 100dvh を優先し、非対応環境は 100vh に
+     フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
+  height: 100vh;
+  height: 100dvh;
   padding: 14px;
   overflow: hidden;
   /* Issue #5: 本人画面はダブルタップ拡大・ピンチ拡大・スクロール・テキスト選択・
@@ -176,6 +185,13 @@ h1 {
      overflow-y:auto であれば妨げられない(親の overflow:hidden は無関係) */
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* PR#11 再レビュー must-D: overflow-y:auto にした時点でこの要素はスクロールコンテナに
+     なり、子(.tile)へ touch-action の値を伝える起点が変わる。祖先(.app-shell)の
+     touch-action:none だけでは、この要素自身が明示していないとタイル上のスワイプで
+     パン(スクロール)ジェスチャが有効になってしまう(実機検証で pointercancel が発生)。
+     scrollIntoView 等のプログラム的スクロールは touch-action の影響を受けないため、
+     ここを none にしてもスキャン追従の自動スクロールは機能する */
+  touch-action: none;
 }
 
 .tile {
@@ -190,10 +206,11 @@ h1 {
   border: 4px solid #065f46;
   border-radius: 8px;
   cursor: pointer;
-  /* nit-4: touch-action:none は祖先の .app-shell で既に設定済みで、ここでの重複指定は
-     不要(タイル自身に別の値を指定しない限り、タップのジェスチャ判定は祖先の値を見る)。
-     user-select はここでは冗長でも明示しておく(将来 .app-shell 側の指定が変わっても
-     このタイルだけは選択不可のままにしたい) */
+  /* PR#11 再レビュー must-D: 前回(nit-4)はここでの touch-action:none を「.app-shell の
+     指定で足りる重複」として削除したが、.grid-board が overflow-y:auto でスクロール
+     コンテナになった今は、このタイル自身にも明示しないとスワイプでパンが有効になる。
+     nit-4 の判断は撤回し、.grid-board 側の指定と合わせて再度 none を明示する */
+  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
 }

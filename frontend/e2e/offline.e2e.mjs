@@ -13,10 +13,13 @@
 // 各モードについて、オフライン化した状態での reload とディープリンクへの直接アクセスが
 // 両方とも(白画面や net::ERR_FAILED にならず)アプリのシェルまで表示できることを確認する。
 //
-// 加えて1つの追加検証(PR#11 再レビュー must-B):
+// 加えて2つの追加検証(PR#11 再レビュー must-B/must-C):
 // - install-5xx: install 時に precache 対象の1件(manifest.webmanifest)が5xxを返す場合、
 //   その版のSWは有効化されず、既存の(直前まで正常だった)SWとキャッシュがそのまま残って
 //   動き続けることを確認する
+// - letters-scroll: 横向き小画面(844x390/667x375/320x568)で文字盤のスキャン対象が下段に
+//   来ても、document自体はスクロールせず(window.scrollY===0)、メッセージパネル(h1)と
+//   スキャン対象タイルの両方がビューポート内にあることを確認する
 
 import http from 'node:http'
 import fs from 'node:fs'
@@ -255,6 +258,90 @@ async function checkInstallFailureKeepsOldVersion(chromium, port) {
   return failures
 }
 
+/**
+ * PR#11 再レビュー must-C: orientation:any(縦横両対応)の横向き小画面で、文字盤画面の
+ * スキャン対象が下段に来ても、document 自体はスクロールせず(window.scrollY===0)、
+ * メッセージパネル(h1、緊急表示を含む)がビューポート内にあり続け、かつスキャン対象の
+ * タイル自体もビューポート内にあることを確認する。
+ */
+async function checkLettersScrollLayout(chromium, port) {
+  const base = `http://localhost:${port}/`
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+  const viewports = [
+    ['844x390', 844, 390],
+    ['667x375', 667, 375],
+    ['320x568', 320, 568],
+  ]
+
+  try {
+    for (const [name, width, height] of viewports) {
+      const context = await browser.newContext({ viewport: { width, height } })
+      const page = await context.newPage()
+      await page.goto(base)
+      await page.waitForTimeout(300)
+
+      // home: index5 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
+      await page.waitForTimeout(3000 + 4 * 1500 + 150)
+      await page.keyboard.press('Space')
+      await page.waitForTimeout(200)
+
+      // letters screen: 確定 が最後の項目(緊急,戻る,10文字,1字消す,確定)
+      const itemCount = await page.evaluate(
+        () => document.querySelectorAll('.grid-board .tile').length,
+      )
+      const commitIndex = itemCount - 1
+      await page.waitForTimeout(3000 + (commitIndex - 1) * 1500 + 150)
+
+      const info = await page.evaluate(() => {
+        const scanning = document.querySelector('.tile.scanning')
+        const h1 = document.querySelector('h1')
+        const scanningRect = scanning?.getBoundingClientRect()
+        const h1Rect = h1?.getBoundingClientRect()
+        return {
+          scrollY: window.scrollY,
+          scanningLabel: scanning?.querySelector('.tile-label')?.textContent,
+          scanningInViewport: scanningRect
+            ? scanningRect.top >= 0 &&
+              scanningRect.bottom <= window.innerHeight &&
+              scanningRect.left >= 0 &&
+              scanningRect.right <= window.innerWidth
+            : false,
+          h1InViewport: h1Rect
+            ? h1Rect.top >= 0 &&
+              h1Rect.bottom <= window.innerHeight &&
+              h1Rect.left >= 0 &&
+              h1Rect.right <= window.innerWidth
+            : false,
+        }
+      })
+
+      if (info.scrollY !== 0) {
+        failures.push(`[letters-scroll ${name}] window.scrollY が 0 ではない(${info.scrollY})`)
+      }
+      if (!info.h1InViewport) {
+        failures.push(`[letters-scroll ${name}] メッセージパネル(h1)がビューポート外`)
+      }
+      if (info.scanningLabel !== '確定') {
+        failures.push(
+          `[letters-scroll ${name}] タイミング計算がずれ、確定にカーソルが無い(${info.scanningLabel})`,
+        )
+      } else if (!info.scanningInViewport) {
+        failures.push(`[letters-scroll ${name}] スキャン対象(確定)がビューポート外`)
+      }
+
+      await context.close()
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+
+  return failures
+}
+
 async function main() {
   if (!fs.existsSync(DIST_DIR)) {
     console.error(`dist/ が無い。先に \`npm run build\` を実行すること: ${DIST_DIR}`)
@@ -286,6 +373,15 @@ async function main() {
   }
   allFailures.push(...installFailures)
   port += 1
+
+  console.log(`--- checking: letters-scroll (port ${port}) ---`)
+  const scrollFailures = await checkLettersScrollLayout(chromium, port)
+  if (scrollFailures.length === 0) {
+    console.log('[letters-scroll] OK')
+  } else {
+    scrollFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...scrollFailures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)
