@@ -169,6 +169,13 @@ h1 {
   grid-auto-rows: minmax(126px, 1fr);
   gap: 12px;
   min-height: 0;
+  /* PR#11 must-4: orientation:any(縦横両対応)のため、横向き小画面(例 844x390)では
+     文字盤等の項目数が多い画面で下段のタイルがビューポート外に出ることがある。
+     本人のタッチでは touch-action:none によりスクロールできないが、App.tsx がスキャン対象の
+     変化ごとに scrollIntoView するプログラム的スクロールは、この要素自身が
+     overflow-y:auto であれば妨げられない(親の overflow:hidden は無関係) */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .tile {
@@ -183,9 +190,10 @@ h1 {
   border: 4px solid #065f46;
   border-radius: 8px;
   cursor: pointer;
-  /* Issue #5: ピンチ拡大等を防ぐため、本人画面全体(.app-shell)の touch-action:none を
-     タイル個別でも維持する(以前の manipulation はダブルタップ拡大は防ぐがピンチは防げない) */
-  touch-action: none;
+  /* nit-4: touch-action:none は祖先の .app-shell で既に設定済みで、ここでの重複指定は
+     不要(タイル自身に別の値を指定しない限り、タップのジェスチャ判定は祖先の値を見る)。
+     user-select はここでは冗長でも明示しておく(将来 .app-shell 側の指定が変わっても
+     このタイルだけは選択不可のままにしたい) */
   -webkit-user-select: none;
   user-select: none;
 }

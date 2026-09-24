@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import * as alarmModule from '../lib/alarm'
 import * as wakeLockModule from '../lib/wakeLock'
+import * as offlineReadyModule from '../lib/offlineReady'
 
 // requirements.md 既定値: intervalMs=1500, headHoldMultiplier=2(=headHoldMs 3000), debounceMs=500
 const HEAD_HOLD_MS = 3000
@@ -632,6 +633,87 @@ describe('App', () => {
     ) as HTMLElement
     fireEvent.click(fullscreenButton)
     expect(requestFullscreen).toHaveBeenCalled()
+  })
+
+  it('PR#11 should-1: 介助者メニューにオフライン準備完了の状態が表示される', () => {
+    vi.spyOn(offlineReadyModule, 'initOfflineReadyWatch').mockImplementation((notify) => {
+      notify?.('ready')
+      return () => {}
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const statuses = Array.from(container.querySelectorAll('.caregiver-status'))
+    const offlineStatus = statuses.find((el) => el.textContent?.includes('オフライン準備'))
+    expect(offlineStatus?.textContent).toBe('オフライン準備: 完了')
+    expect(offlineStatus?.classList.contains('warn')).toBe(false)
+  })
+
+  it('PR#11 should-1: オフライン未準備のときは警告表示になる', () => {
+    vi.spyOn(offlineReadyModule, 'initOfflineReadyWatch').mockImplementation((notify) => {
+      notify?.('not-ready')
+      return () => {}
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const statuses = Array.from(container.querySelectorAll('.caregiver-status'))
+    const offlineStatus = statuses.find((el) => el.textContent?.includes('オフライン準備'))
+    expect(offlineStatus?.textContent).toBe('オフライン準備: 未完了')
+    expect(offlineStatus?.classList.contains('warn')).toBe(true)
+  })
+
+  it('nit-3: すでに Fullscreen API で全画面のときは「全画面にする」ボタンを出さない', () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined)
+    document.documentElement.requestFullscreen = requestFullscreen
+    Object.defineProperty(document, 'fullscreenElement', {
+      value: document.documentElement,
+      configurable: true,
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const fullscreenButton = Array.from(container.querySelectorAll('.caregiver-action')).find(
+      (el) => el.textContent?.includes('全画面'),
+    )
+    expect(fullscreenButton).toBeUndefined()
+    Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true })
+  })
+
+  it('nit-3: display-mode:fullscreen で起動済み(PWA)のときも「全画面にする」ボタンを出さない', () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined)
+    document.documentElement.requestFullscreen = requestFullscreen
+    const matchMedia = vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })
+    ;(window as unknown as { matchMedia: typeof window.matchMedia }).matchMedia = matchMedia
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const fullscreenButton = Array.from(container.querySelectorAll('.caregiver-action')).find(
+      (el) => el.textContent?.includes('全画面'),
+    )
+    expect(fullscreenButton).toBeUndefined()
+  })
+
+  it('PR#11 must-4: スキャン対象が変わるたびに scrollIntoView が呼ばれる', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    render(() => <App />)
+    scrollIntoView.mockClear()
+
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // 先頭待機終了、index1へ進む
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
   })
 
   it('設定変更がリロード相当（再マウント）後も localStorage から復元される', () => {

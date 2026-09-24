@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } from './lib/menus'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { loadSettings, saveSettings, type Settings } from './lib/settings'
@@ -10,6 +10,7 @@ import {
   stopAlarm,
 } from './lib/alarm'
 import { initWakeLock, type WakeLockStatus } from './lib/wakeLock'
+import { initOfflineReadyWatch, type OfflineReadyStatus } from './lib/offlineReady'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const ALARM_REPEAT_MS = 3000
@@ -32,6 +33,13 @@ const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
   unsupported: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
   error: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
   released: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
+}
+
+// PR #11 レビュー対応(should-1): オフラインで動く準備(Service Worker がこのページを
+// 制御しているか)を Wake Lock と同じ扱いで介助者メニューに表示する。
+const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
+  ready: 'オフライン準備: 完了',
+  'not-ready': 'オフライン準備: 未完了',
 }
 
 function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
@@ -83,6 +91,14 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = createSignal(
     typeof document !== 'undefined' && Boolean(document.fullscreenElement),
   )
+  // nit-3: ホーム画面から起動した PWA が既に display-mode:fullscreen で立ち上がっている場合、
+  // Fullscreen API の document.fullscreenElement は null のままなので isFullscreen() だけでは
+  // 判定できない。matchMedia でも確認し、どちらか一方でも全画面なら「全画面にする」を隠す
+  const [isDisplayModeFullscreen, setIsDisplayModeFullscreen] = createSignal(
+    typeof window !== 'undefined' && window.matchMedia?.('(display-mode: fullscreen)').matches,
+  )
+  // Issue #5 / PR#11 should-1: オフラインで動く準備(SWがこのページを制御しているか)
+  const [offlineReadyStatus, setOfflineReadyStatus] = createSignal<OfflineReadyStatus>('not-ready')
 
   // 表示中メニューはここでしか作らない。スキャン状態・レンダリングの双方が
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
@@ -91,6 +107,21 @@ export default function App() {
   )
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
+
+  // PR#11 must-4: orientation:any(縦横両対応)のため、横向き小画面(例 844x390)では
+  // 文字盤等の項目数が多い画面で下段のタイルがビューポート外に出ることがある。
+  // touch-action:none で本人のスクロール操作自体は塞いでいるため、代わりにスキャン対象が
+  // 変わるたびプログラム的に scrollIntoView して必ず画面内に入れる。scanState() 自体は
+  // 毎tickで新しいオブジェクトになるため、index の値だけを createMemo で取り出して
+  // 実際に index が変わったときだけ effect が走るようにする(不要な scrollIntoView 呼び出しを防ぐ)
+  const scanIndex = createMemo(() => scanState().index)
+  createEffect(() => {
+    scanIndex()
+    screen() // 画面遷移直後、遷移前と同じ index(例: どちらも先頭)でも再度スクロールする
+    if (typeof document === 'undefined') return
+    const el = document.querySelector('.tile.scanning')
+    el?.scrollIntoView?.({ block: 'nearest' })
+  })
 
   // S-new-1 / S-new-6 / nit: 伝達の読み上げ(announce。showMessage経由に限らず、緊急詳細や
   // 緊急中の伝達も含む)を行った直後は、次の1回のスキャン読み上げ(通常は goTo 直後の
@@ -314,10 +345,27 @@ export default function App() {
     onCleanup(() => window.clearInterval(id))
   })
 
-  // Issue #5: 画面スリープ防止。起動時に取得し、タブが再表示されたときに再取得する
+  // Issue #5: 画面スリープ防止。起動時に取得し、タブが再表示されたときに再取得する。
+  // PR#11 must-2: 可視のまま error/released になった場合の再取得(スイッチ入力毎・
+  // 30秒間隔タイマー)も initWakeLock 内でまとめて行う
   onMount(() => {
     const stopWakeLock = initWakeLock(setWakeLockStatus)
     onCleanup(stopWakeLock)
+  })
+
+  // PR#11 should-1: オフラインで動く準備(SWの制御下にあるか)を介助者メニューに表示する
+  onMount(() => {
+    const stopOfflineReadyWatch = initOfflineReadyWatch(setOfflineReadyStatus)
+    onCleanup(stopOfflineReadyWatch)
+  })
+
+  // nit-3: display-mode(ホーム画面追加で起動した際の全画面表示)の変化を追従する
+  onMount(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const query = window.matchMedia('(display-mode: fullscreen)')
+    const onChange = () => setIsDisplayModeFullscreen(query.matches)
+    query.addEventListener('change', onChange)
+    onCleanup(() => query.removeEventListener('change', onChange))
   })
 
   // Issue #5: 全画面状態の表示・介助者メニューからの解除操作にも追従させる
@@ -546,14 +594,13 @@ export default function App() {
               {WAKE_LOCK_LABELS[wakeLockStatus()]}
             </p>
 
-            <Show when={fullscreenSupported}>
-              <button
-                type="button"
-                class="caregiver-action"
-                onClick={enterFullscreen}
-                disabled={isFullscreen()}
-              >
-                全画面にする{isFullscreen() ? '（全画面中）' : ''}
+            <p class="caregiver-status" classList={{ warn: offlineReadyStatus() !== 'ready' }}>
+              {OFFLINE_READY_LABELS[offlineReadyStatus()]}
+            </p>
+
+            <Show when={fullscreenSupported && !isFullscreen() && !isDisplayModeFullscreen()}>
+              <button type="button" class="caregiver-action" onClick={enterFullscreen}>
+                全画面にする
               </button>
             </Show>
 
