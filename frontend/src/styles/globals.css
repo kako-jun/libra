@@ -34,8 +34,9 @@
   --caregiver-action-text: #ffffff;
   --caregiver-close-bg: #052e2b;
   --font-scale: 1;
-  --tile-border-width: 0px;
-  --tile-border-color: transparent;
+  /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る */
+  --grid-line: #cde3d4;
+  --grid-line-width: 1px;
 }
 
 :root[data-design='b'] {
@@ -64,13 +65,14 @@
   --caregiver-action-bg: #1a4a32;
   --caregiver-action-text: #eafaf1;
   --caregiver-close-bg: #06120c;
+  /* 暗い背景(#07140f)・タイル面(#17362a)のどちらよりも明るい緑にして区切り線を視認できるようにする */
+  --grid-line: #2d5a41;
 }
 
 /* 高コントラスト: 明暗どちらの案にも重ねて効く（介助者設定、既定 OFF）。
-   タイルに枠線を追加し、まだら模様(scan-ring)の視認性を上げる。 */
+   区切り線を太くして視認性を上げる。 */
 :root[data-high-contrast='true'] {
-  --tile-border-width: 3px;
-  --tile-border-color: currentColor;
+  --grid-line-width: 3px;
 }
 
 :root[data-design='a'][data-high-contrast='true'] {
@@ -146,7 +148,7 @@ button {
 .emergency-details,
 .emergency-sub,
 .tile-label,
-.status-stack span {
+.audio-status-hint {
   word-break: auto-phrase;
   line-break: strict;
   overflow-wrap: anywhere;
@@ -162,7 +164,9 @@ button {
      .letter-strip/.grid-board に明示的に grid-row を固定し、letter-strip の有無に関わらず
      grid-board が常に 1fr トラックを使うようにする */
   grid-template-rows: auto auto 1fr;
-  gap: 14px;
+  /* Issue #3 再々レビュー: メッセージ欄・文字盤入力欄・タイル格子を隙間なく連続した
+     一枚の盤に見せる。区切りは各要素の border-bottom(--grid-line)だけに任せる */
+  gap: 0;
   /* PR#11 再レビュー must-C: 従来は min-height:100vh だったため、内容がビューポートより
      高くなると .app-shell 自身が育ってしまい、overflow:hidden が実際には何も切り取らず
      document(html/body)側がスクロールしていた。その結果 scrollIntoView が document を
@@ -178,7 +182,8 @@ button {
      右下と重なっていた。grid-board の内側の padding では、視覚上の箱の大きさそのものは
      変わらず(overflow-y:auto によるスクロール量だけが変わる)重なりを防げないため、
      app-shell 側の padding-bottom でタイル領域自体をこの高さ分だけ手前で切り上げる */
-  padding: 14px 14px 130px;
+  /* Issue #3 再々レビュー: 格子を画面の端まで使い、外側の余白を最小にする */
+  padding: 0 0 130px;
   overflow: hidden;
   background: var(--bg);
   /* Issue #5: 本人画面はダブルタップ拡大・ピンチ拡大・スクロール・テキスト選択・
@@ -194,18 +199,20 @@ button {
 /* ===================================================================
    メッセージ欄 — 主役。枠線は使わず面の色だけで区切る。
    =================================================================== */
+/* Issue #3 追加指示: 状態表示(アプリ名・音声モード・スキャン位置)を撤去し、
+   メッセージ欄はメッセージそのもの(と緊急詳細)だけを大きく表示する専任にする。
+   角丸・影はやめ、下の格子と地続きの一枚の盤に見えるよう区切り線だけで区切る */
 .message-panel {
   grid-row: 1;
   display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 18px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
   min-height: 156px;
   padding: 22px;
   color: var(--message-text);
   background: var(--message-bg);
-  border-radius: 14px;
-  box-shadow: 0 6px 18px var(--shadow);
+  border-bottom: var(--grid-line-width) solid var(--grid-line);
 }
 
 :root[data-message-tone='urgent'] .message-panel {
@@ -231,7 +238,9 @@ h1 {
 .emergency-details {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.2em 0.8em;
+  /* 「・」区切り自体が項目間の間隔を示すため、flex の gap は入れない(二重の
+     間隔で「苦しい　・痛い」のように空いて見えるのを避け、「苦しい・痛い」に詰める) */
+  gap: 0.2em 0;
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
@@ -248,7 +257,6 @@ h1 {
 /* 「・」で区切って一続きの文として読みやすくする(先頭項目には付けない) */
 .emergency-details li:not(:first-child)::before {
   content: '・';
-  margin-right: 0.2em;
 }
 
 .emergency-sub {
@@ -258,29 +266,12 @@ h1 {
   font-weight: 800;
 }
 
-/* Issue #3: 英字の飾りラベルとボタン風ステータス表示を撤去。必要な状態(画面名・
-   音声モード・スキャン位置)は控えめな小さい文字で、枠やボタンに見えないようにする。 */
-.status-stack {
-  display: grid;
-  align-content: center;
-  min-width: 140px;
-  gap: 4px;
-  color: var(--message-text-muted);
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-align: right;
-}
-
-.status-stack span {
-  display: block;
-}
-
 .letter-strip {
   grid-row: 2;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
   align-items: center;
+  border-bottom: var(--grid-line-width) solid var(--grid-line);
 }
 
 .letter-strip output {
@@ -289,15 +280,14 @@ h1 {
   overflow: hidden;
   color: var(--text);
   background: var(--surface);
-  border-radius: 10px;
-  box-shadow: 0 2px 8px var(--shadow);
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 /* ===================================================================
-   タイル — 枠線主体をやめ、面の色・余白・角丸で区切る。
+   タイル — 隙間なしの格子。セルは右+下の細い区切り線だけで区切り、
+   角丸・影・gap は使わない(格子が一枚の盤に見えるようにする)。
    =================================================================== */
 .grid-board {
   /* PR#11 3巡目 question: letter-strip が無い画面(ほとんどの画面)でも常に3番目の
@@ -306,7 +296,7 @@ h1 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   grid-auto-rows: minmax(126px, 1fr);
-  gap: 12px;
+  gap: 0;
   min-height: 0;
   /* PR#11 must-4: orientation:any(縦横両対応)のため、横向き小画面(例 844x390)では
      文字盤等の項目数が多い画面で下段のタイルがビューポート外に出ることがある。
@@ -324,6 +314,21 @@ h1 {
   touch-action: none;
 }
 
+/* Issue #3 再レビュー: 項目数が少ない画面(目安8項目以内)では、孤立タイル・下部の
+   空白を出さないよう App.tsx(computeGridLayout)が算出した列数(--cols)・行数(--rows)で
+   grid 領域全体を等分してタイルで埋める。auto-fit/minmax によるスクロールは使わない。 */
+.grid-board.grid-fill {
+  grid-template-columns: repeat(var(--cols, 1), 1fr);
+  grid-template-rows: repeat(var(--rows, 1), 1fr);
+  grid-auto-rows: unset;
+  overflow-y: hidden;
+}
+
+.grid-board.grid-fill .tile {
+  min-height: 0;
+  height: 100%;
+}
+
 .tile {
   container-type: inline-size;
   position: relative;
@@ -334,11 +339,12 @@ h1 {
   padding: 18px 12px 12px;
   color: var(--text);
   background: var(--surface);
-  border: var(--tile-border-width) solid var(--tile-border-color);
-  border-radius: 14px;
-  box-shadow: 0 2px 8px var(--shadow);
+  /* Issue #3 再々レビュー: 枠線ではなく、右+下だけの細い区切り線(box-shadow inset)で
+     区切る。二重線にならないよう各セルは自分の右辺・下辺だけを描く。高コントラスト時は
+     --grid-line-width が太くなる */
+  box-shadow: inset calc(-1 * var(--grid-line-width)) calc(-1 * var(--grid-line-width)) 0 0
+    var(--grid-line);
   cursor: pointer;
-  transition: transform 0.12s ease-out;
   /* PR#11 再レビュー must-D: 前回(nit-4)はここでの touch-action:none を「.app-shell の
      指定で足りる重複」として削除したが、.grid-board が overflow-y:auto でスクロール
      コンテナになった今は、このタイル自身にも明示しないとスワイプでパンが有効になる。
@@ -346,10 +352,6 @@ h1 {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
-}
-
-.tile:active {
-  transform: translateY(1px);
 }
 
 .tile-urgent {
@@ -366,29 +368,26 @@ h1 {
   background: var(--surface-positive);
 }
 
-/* Issue #3: スキャン対象は遠目でも一目で分かる強調にする。
-   太い黄色のリング(outline) + 面の色変化 + わずかな拡大。
-   緊急タイルは常に最も目立つ濃い赤のベタ塗りのままなので、リングだけを重ねる。 */
+/* Issue #3 再々レビュー: スキャン対象は遠目でも一目で分かる強調にする。
+   隙間なしの格子では拡大(scale)すると隣のセルと重なるため使わない。
+   代わりに、そのセルだけ面の色を変え、セル内側に収まる(inset、隣セルへはみ出さない)
+   太い黄色枠を ::after で重ねる。緊急タイルは常に濃い赤のベタ塗りのままなので、
+   リングだけを重ねる。 */
 .tile.scanning {
-  outline: 8px solid var(--scan-ring);
-  outline-offset: -6px;
-  transform: scale(1.03);
-  box-shadow: 0 8px 22px var(--shadow);
+  background: var(--surface-scanning);
   z-index: 1;
 }
 
-.tile.scanning:not(.tile-urgent) {
-  background: var(--surface-scanning);
+.tile.scanning.tile-urgent {
+  background: var(--urgent-bg);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tile {
-    transition: none;
-  }
-
-  .tile.scanning {
-    transform: none;
-  }
+.tile.scanning::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 6px solid var(--scan-ring);
+  pointer-events: none;
 }
 
 .tile-number {
@@ -429,6 +428,35 @@ h1 {
 
 .tile-urgent .tile-detail {
   color: var(--urgent-text-muted);
+}
+
+/* Issue #3 追加指示: 下位画面へ進むタイル(navigate)の山形アイコン+中身の予告。
+   聴覚スキャン・読み上げはラベルのみを読むため、この2つはApp.tsx側でも
+   announce に渡らない(表示専用)。 */
+.tile-chevron {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: clamp(14px, 9cqi, 28px);
+  height: auto;
+  color: currentColor;
+  opacity: 0.75;
+  transform: translateY(-50%);
+}
+
+.tile-preview {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  left: 8px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: calc(var(--font-scale) * clamp(0.6rem, 1.6vh, 0.85rem));
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===================================================================
@@ -574,7 +602,7 @@ h1 {
   right: 10px;
   bottom: 74px;
   z-index: 20;
-  max-width: 220px;
+  max-width: 260px;
   margin: 0;
   padding: 4px 8px;
   pointer-events: none;
@@ -590,22 +618,10 @@ h1 {
 @media (orientation: portrait) {
   .message-panel {
     min-height: 148px;
-    flex-direction: column;
-  }
-
-  .status-stack {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    min-width: 0;
-    text-align: left;
   }
 }
 
 @media (max-width: 720px) {
-  .app-shell {
-    gap: 10px;
-    padding: 10px 10px 130px;
-  }
-
   .message-panel {
     padding: 16px;
   }
@@ -613,7 +629,6 @@ h1 {
   .grid-board {
     grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
     grid-auto-rows: minmax(112px, 1fr);
-    gap: 8px;
   }
 
   .tile {
@@ -640,11 +655,6 @@ h1 {
    タブレット(1024x600, 1180x700等)にも効いてタイルが小さくなってしまうため、
    500px まで下げてスマホ縦向きのみを狙う(S-new-7)。 */
 @media (max-width: 480px), (max-height: 500px) {
-  .app-shell {
-    gap: 8px;
-    padding: 8px 8px 130px;
-  }
-
   .message-panel {
     min-height: 0;
     padding: 10px 12px;
@@ -654,14 +664,9 @@ h1 {
     font-size: calc(var(--font-scale) * clamp(1.5rem, 5.5vh, 2.4rem));
   }
 
-  .status-stack {
-    gap: 4px;
-  }
-
   .grid-board {
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     grid-auto-rows: minmax(84px, 1fr);
-    gap: 6px;
   }
 
   .tile {

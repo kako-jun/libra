@@ -30,6 +30,47 @@ const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
 
 const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
 
+// Issue #3 再レビュー: 孤立タイル・下部の空白を出さないため、項目数と grid 領域の
+// 縦横比から列数(cols)を決め、タイルが grid 領域全体を埋めるようにする。
+// 目安8項目以内(requirements.md §4.1)の画面はこの「fill」モードで敷き詰め、
+// それを超える画面(文字盤等)は現行どおり最小タイル高を保ってスクロールする。
+const GRID_FILL_MAX_ITEMS = 8
+
+interface GridLayout {
+  fill: boolean
+  cols: number
+  rows: number
+  /** 最後の行に空き枠が出る場合、最後のタイルへ与える grid-column の span 数 */
+  lastSpan: number
+}
+
+function computeGridLayout(itemCount: number, width: number, height: number): GridLayout {
+  if (itemCount <= 0 || width <= 0 || height <= 0) {
+    return { fill: false, cols: 1, rows: 1, lastSpan: 1 }
+  }
+  if (itemCount > GRID_FILL_MAX_ITEMS) {
+    return { fill: false, cols: 1, rows: 1, lastSpan: 1 }
+  }
+  const aspect = width / height
+  let bestCols = 1
+  let bestScore = Infinity
+  for (let cols = 1; cols <= itemCount; cols += 1) {
+    const rows = Math.ceil(itemCount / cols)
+    // 縦横比の近さを優先しつつ、割り切れる(空き枠が出ない)列数を僅かに優遇する
+    // タイブレークを入れる。僅差なら見た目が整う偶数分割を選ぶ
+    const unevenPenalty = itemCount % cols === 0 ? 0 : 0.05
+    const score = Math.abs(cols / rows - aspect) + unevenPenalty
+    if (score < bestScore) {
+      bestScore = score
+      bestCols = cols
+    }
+  }
+  const rows = Math.ceil(itemCount / bestCols)
+  const remainder = itemCount % bestCols
+  const lastSpan = remainder === 0 ? 1 : bestCols - remainder + 1
+  return { fill: true, cols: bestCols, rows, lastSpan }
+}
+
 // Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者メニューに表示する文言。
 // 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
 const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
@@ -131,6 +172,14 @@ export default function App() {
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
   const currentMenu = createMemo(() =>
     buildMenu(screen(), { showUndo: showUndo(), emergencyActive: emergencyActive() }),
+  )
+
+  // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
+  // ResizeObserver で追従するので、回転・キャレギバー設定変更後の再計算も自動で効く。
+  let gridBoardEl: HTMLElement | undefined
+  const [gridSize, setGridSize] = createSignal({ width: 0, height: 0 })
+  const gridLayout = createMemo(() =>
+    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height),
   )
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
@@ -372,6 +421,21 @@ export default function App() {
     onCleanup(() => window.clearInterval(id))
   })
 
+  // Issue #3 再レビュー: grid-board の実測サイズを追従し、列数計算(computeGridLayout)へ渡す
+  onMount(() => {
+    if (!gridBoardEl || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const box = entry.contentBoxSize?.[0]
+      const width = box ? box.inlineSize : entry.contentRect.width
+      const height = box ? box.blockSize : entry.contentRect.height
+      setGridSize({ width, height })
+    })
+    observer.observe(gridBoardEl)
+    onCleanup(() => observer.disconnect())
+  })
+
   // Issue #5: 画面スリープ防止。起動時に取得し、タブが再表示されたときに再取得する。
   // PR#11 must-2: 可視のまま error/released になった場合の再取得(スイッチ入力毎・
   // 30秒間隔タイマー)も initWakeLock 内でまとめて行う
@@ -537,24 +601,15 @@ export default function App() {
   return (
     <main class="app-shell">
       <section class="message-panel" aria-live="polite">
-        <div>
-          <h1>{message()}</h1>
-          <Show when={emergencyActive() && emergencyDetails().length > 0}>
-            <ul class="emergency-details">
-              <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
-            </ul>
-          </Show>
-          <Show when={emergencyActive() && emergencySubMessage()}>
-            <p class="emergency-sub">最新: {emergencySubMessage()}</p>
-          </Show>
-        </div>
-        <div class="status-stack" aria-label="現在の状態">
-          <span>{SCREEN_TITLES[screen()]}</span>
-          <span>音声 {VOICE_LABELS[settings().voiceMode]}</span>
-          <span>
-            {scanState().index + 1} / {currentMenu().length}
-          </span>
-        </div>
+        <h1>{message()}</h1>
+        <Show when={emergencyActive() && emergencyDetails().length > 0}>
+          <ul class="emergency-details">
+            <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
+          </ul>
+        </Show>
+        <Show when={emergencyActive() && emergencySubMessage()}>
+          <p class="emergency-sub">最新: {emergencySubMessage()}</p>
+        </Show>
       </section>
 
       <Show when={screen() === 'letters'}>
@@ -565,20 +620,55 @@ export default function App() {
 
       <section
         class="grid-board"
-        classList={{ 'show-numbers': showDevNumbers }}
+        classList={{ 'show-numbers': showDevNumbers, 'grid-fill': gridLayout().fill }}
+        style={{
+          '--cols': String(gridLayout().cols),
+          '--rows': String(gridLayout().rows),
+        }}
         aria-label={`${SCREEN_TITLES[screen()]}の選択肢`}
+        ref={(el) => {
+          gridBoardEl = el
+        }}
       >
         <For each={currentMenu()}>
           {(item, index) => (
             <div
               class={`tile tile-${item.tone ?? 'neutral'}`}
               classList={{ scanning: scanState().index === index() }}
+              style={
+                gridLayout().fill &&
+                index() === currentMenu().length - 1 &&
+                gridLayout().lastSpan > 1
+                  ? { 'grid-column': `span ${gridLayout().lastSpan}` }
+                  : undefined
+              }
               aria-hidden="true"
             >
               <span class="tile-number">{index() + 1}</span>
               <span class="tile-label">{item.label}</span>
               <Show when={item.detail}>
                 <span class="tile-detail">{item.detail}</span>
+              </Show>
+              {/* Issue #3 追加指示: 下位画面へ進むタイルは矢印文字ではなく、山形アイコン+
+                  中身の予告(menus.ts で自動生成)で示す。読み上げはラベルのみ(記号は読まない) */}
+              <Show when={item.action.type === 'navigate'}>
+                <svg
+                  class="tile-chevron"
+                  viewBox="0 0 20 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M5 3 L15 12 L5 21"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <Show when={item.preview}>
+                  <span class="tile-preview">{item.preview}</span>
+                </Show>
               </Show>
             </div>
           )}

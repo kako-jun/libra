@@ -123,7 +123,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     // 文字盤ナビへ進める(index5)
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 4)
-    expect(scanningLabel(container)).toBe('文字盤 →')
+    expect(scanningLabel(container)).toBe('文字盤')
     fireEvent.keyDown(window, { key: ' ' }) // letters 画面へ遷移
     expect(container.querySelector('.letter-strip')).not.toBeNull()
 
@@ -140,7 +140,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // index0=緊急
     expect(h1Text(container)).toBe('緊急です。来てください')
-    expect(container.querySelector('.status-stack')?.textContent).toContain('緊急')
+    expect(container.querySelector('.grid-board')?.getAttribute('aria-label')).toContain('緊急')
   })
 
   it('緊急中にホームで「はい」を選んでも見出しは緊急のまま副表示に「最新: はい」が出る', () => {
@@ -328,12 +328,40 @@ describe('App', () => {
 
     // home: 0緊急,1はい,2いいえ,3不快→,... index3まで進めて不快へ遷移する
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2)
-    expect(scanningLabel(container)).toBe('不快 →')
+    expect(scanningLabel(container)).toBe('不快')
     fireEvent.keyDown(window, { key: ' ' }) // discomfort へ遷移(goTo)
 
     expect(speak).toHaveBeenCalled()
     const lastUtterance = speak.mock.calls[speak.mock.calls.length - 1][0] as { text: string }
     expect(lastUtterance.text).toBe('緊急')
+  })
+
+  it('Issue #3 追加指示: navigate タイルの聴覚スキャン読み上げはラベルのみ(山形アイコン・予告の記号は読まない)', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
+    fireEvent.click(checkbox) // 聴覚スキャンON
+    const closeButton = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === '閉じる',
+    ) as HTMLElement
+    fireEvent.click(closeButton) // home へ戻る
+
+    const speak = (window as unknown as { speechSynthesis: { speak: ReturnType<typeof vi.fn> } })
+      .speechSynthesis.speak as ReturnType<typeof vi.fn>
+    speak.mockClear()
+
+    // home: 0緊急,1はい,2いいえ,3不快(navigate) までカーソルを進める
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2)
+    expect(scanningLabel(container)).toBe('不快')
+
+    expect(speak).toHaveBeenCalled()
+    const lastUtterance = speak.mock.calls[speak.mock.calls.length - 1][0] as { text: string }
+    expect(lastUtterance.text).toBe('不快')
+    expect(lastUtterance.text).not.toContain('→')
+    expect(lastUtterance.text).not.toContain('…')
+    expect(lastUtterance.text).not.toContain('・')
   })
 
   it('S-new-1/nit: 伝達の読み上げは画面遷移直後の読み上げ1回だけ打ち切られず、その次のカーソル移動は通常どおりcancelされる', () => {
@@ -813,6 +841,29 @@ describe('App', () => {
       ) as HTMLInputElement
       fireEvent.click(highContrastCheckbox)
       expect(document.documentElement.dataset.highContrast).toBe('true')
+    })
+  })
+
+  describe('Issue #3 追加指示: navigate タイルの山形アイコン・予告表示', () => {
+    it('不快タイル(navigate)には山形アイコンと予告が表示され、ラベルに矢印文字は含まない', () => {
+      const { container } = render(() => <App />)
+      const tiles = Array.from(container.querySelectorAll('.tile'))
+      const discomfortTile = tiles.find(
+        (tile) => tile.querySelector('.tile-label')?.textContent === '不快',
+      ) as HTMLElement
+      expect(discomfortTile.querySelector('.tile-label')?.textContent).not.toContain('→')
+      expect(discomfortTile.querySelector('.tile-chevron')).not.toBeNull()
+      expect(discomfortTile.querySelector('.tile-preview')?.textContent).toContain('痛い')
+    })
+
+    it('はい(message)タイルには山形アイコン・予告が表示されない', () => {
+      const { container } = render(() => <App />)
+      const tiles = Array.from(container.querySelectorAll('.tile'))
+      const yesTile = tiles.find(
+        (tile) => tile.querySelector('.tile-label')?.textContent === 'はい',
+      ) as HTMLElement
+      expect(yesTile.querySelector('.tile-chevron')).toBeNull()
+      expect(yesTile.querySelector('.tile-preview')).toBeNull()
     })
   })
 })
