@@ -97,7 +97,7 @@ describe('computeGridLayout', () => {
     }
   })
 
-  it('選ばれた列数・行数のセルは既定の最小セル寸法(160x96)を下回らない', () => {
+  it('選ばれた列数・行数のセルは既定の最小セル寸法(160x84)を下回らない', () => {
     for (const dims of [LANDSCAPE, PORTRAIT, SQUARE]) {
       for (let n = 2; n <= GRID_FILL_MAX_ITEMS; n += 1) {
         const result = computeGridLayout(n, dims.width, dims.height)
@@ -110,14 +110,14 @@ describe('computeGridLayout', () => {
 
   describe('最小セル寸法(minCellWidth/minCellHeight)のオプション', () => {
     it('最小セル寸法を満たす分割が無い場合は fill しない(スクロールへフォールバック)', () => {
-      // 8項目を 50x50 の領域に収めようとしても、既定の最小セル寸法(160x96)を
+      // 8項目を 50x50 の領域に収めようとしても、既定の最小セル寸法(160x84)を
       // 満たす分割は存在しない
       const result = computeGridLayout(8, 50, 50)
       expect(result.fill).toBe(false)
     })
 
     it('minCellWidth/minCellHeight を大きくすると、それに応じて列数が絞られる', () => {
-      // 8項目、実測領域は 768x600。最小セル寸法が既定(160x96)なら4列×2行が入るはずだが、
+      // 8項目、実測領域は 768x600。最小セル寸法が既定(160x84)なら4列×2行が入るはずだが、
       // 最小幅を200pxまで引き上げると4列(セル幅192px)は入らなくなり、列数が減る
       const withDefault = computeGridLayout(8, 768, 600)
       expect(withDefault.cols).toBe(4)
@@ -155,11 +155,11 @@ describe('computeGridLayout', () => {
     // フィットしなければスクロールへフォールバックすることを許容していた。
     // これだと大/特大文字で8項目以下の画面までスクロール化し、巡回中に緊急タイルが
     // 画面外へ消えることがあった。方針を転換し、最小セル寸法は文字サイズに関係なく
-    // 既定(160x96)で固定する(App.tsx は computeGridLayout をオプション無しで呼ぶ)。
+    // 既定(160x84)で固定する(App.tsx は computeGridLayout をオプション無しで呼ぶ)。
     // 文字が収まらない分はCSS側(--tile-label-font の min())で文字自体を縮めて対応する。
     it('文字サイズ設定(呼び出し側のオプション)に関係なく、8項目以下は常に全面充填する', () => {
       // 実機サイズ相当の格子領域×項目数1〜8の全組み合わせで、オプション無し
-      // (既定の 160x96)なら必ず fill:true になることを確認する
+      // (既定の 160x84)なら必ず fill:true になることを確認する
       const dimsList = [
         { width: 768, height: 850 },
         { width: 390, height: 680 },
