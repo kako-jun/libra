@@ -77,8 +77,12 @@ h1 {
 }
 
 /* 見出し(h1)の6割程度の大きさ。緊急の赤背景(#7f1d1d)上で読める配色にする
-   (DESIGN.md §2 の Urgent tile 色を文字色として再利用)。 */
+   (DESIGN.md §2 の Urgent tile 色を文字色として再利用)。
+   横並び+折り返し(S-new-3)にし、詳細が積み上がっても縦に伸びすぎないようにする。 */
 .emergency-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em 0.8em;
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
@@ -86,6 +90,16 @@ h1 {
   font-size: clamp(1.4rem, 4.2vh, 3.2rem);
   font-weight: 800;
   line-height: 1.15;
+}
+
+.emergency-details li {
+  white-space: nowrap;
+}
+
+/* 「・」で区切って一続きの文として読みやすくする(先頭項目には付けない) */
+.emergency-details li:not(:first-child)::before {
+  content: '・';
+  margin-right: 0.2em;
 }
 
 .emergency-sub {
@@ -371,5 +385,57 @@ h1 {
 
   .tile-label {
     font-size: clamp(1.28rem, 4.7vh, 2.4rem);
+  }
+
+  /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
+     見出し下の表示を狭幅では小さくする */
+  .emergency-details,
+  .emergency-sub {
+    font-size: clamp(1rem, 3.2vh, 1.6rem);
+  }
+}
+
+/* S-new-3: 携帯電話幅(例 390x844)でも、不快画面(8項目)のようにタイル数が多い画面が
+   ビューポート内に収まるよう、見出しの文字サイズと余白をさらに詰める。 */
+@media (max-width: 420px) {
+  .app-shell {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .message-panel {
+    min-height: 0;
+    padding: 10px 12px;
+  }
+
+  .eyebrow {
+    margin-bottom: 4px;
+  }
+
+  h1 {
+    font-size: clamp(1.5rem, 5.5vh, 2.4rem);
+  }
+
+  .status-stack {
+    gap: 4px;
+  }
+
+  .status-stack span {
+    padding: 4px 6px;
+  }
+
+  .grid-board {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-auto-rows: minmax(84px, 1fr);
+    gap: 6px;
+  }
+
+  .tile {
+    min-height: 84px;
+    padding: 14px 6px 8px;
+  }
+
+  .tile-label {
+    font-size: clamp(1.05rem, 4vh, 1.9rem);
   }
 }
