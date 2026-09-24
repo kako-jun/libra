@@ -4,21 +4,35 @@
     <meta charset="UTF-8" />
     <!-- PR#16 Opus レビュー nit: 起動直後のテーマ一瞬ちらつき(FOUC)防止。App.tsx(Solid)の
          初回描画より前に、localStorageのsettings.theme(無ければprefers-color-scheme)から
-         data-theme を先に決めておく。例外は握りつぶし、失敗しても既定(light)のまま動く -->
+         data-theme を先に決めておく。例外は握りつぶし、失敗しても既定(light)のまま動く。
+         PR#16 再レビュー nit-c: 以前は localStorage/JSON の読み取りが失敗すると catch 内で
+         何もせず既定(light)のまま固定していたため、OS側がダークモードでもFOUCが起きて
+         いた。catch 内でも改めて prefers-color-scheme だけは見て、そこが失敗した場合のみ
+         最終的に light へ倒す。
+         このインラインスクリプトは実行を許可されている前提(script-src 'unsafe-inline' 相当)
+         で書いている。将来 CSP を導入する場合は、このスクリプトの内容が変わるたびに
+         ハッシュ値を script-src に追加する(またはnonceを都度発行する)運用が必要になる点に
+         注意する -->
     <script>
       ;(function () {
+        var fallbackToSystemPreference = function () {
+          try {
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+          } catch (e2) {
+            return 'light'
+          }
+        }
         try {
           var raw = localStorage.getItem('libra')
           var theme = raw ? JSON.parse(raw).theme : undefined
           var resolved =
-            theme === 'light' || theme === 'dark'
-              ? theme
-              : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-                ? 'dark'
-                : 'light'
+            theme === 'light' || theme === 'dark' ? theme : fallbackToSystemPreference()
           document.documentElement.dataset.theme = resolved
         } catch (e) {
-          // 失敗しても既定(light)のまま動き続ける
+          // localStorage/JSON が失敗しても、OS設定の検知自体は諦めない
+          document.documentElement.dataset.theme = fallbackToSystemPreference()
         }
       })()
     </script>
