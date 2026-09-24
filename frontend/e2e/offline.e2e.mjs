@@ -611,20 +611,32 @@ async function checkFontSizeMonotonicity(chromium, port) {
     [1280, 720],
   ]
   const FONTS = ['standard', 'large', 'xlarge']
+  // PR#16 4巡目 should-b: ホーム＋取り消し(伝達直後の1周だけ出る取り消しボタン)・
+  // 痛い(不快→痛い、部位選択画面)・緊急中ホーム(緊急詳細を5件積んでホームへ戻った
+  // 状態、emergencyActive のまま)を追加
   const SCREENS = [
     ['home', []],
+    ['home+undo', ['3']],
     ['discomfort', ['4']],
     ['discomfortOther', ['4', '8']],
     ['moodRequest', ['5']],
+    ['pain', ['4', '3']],
     ['urgentDetail', ['1']],
+    ['emerg5(緊急中ホーム)', ['1', '3', '1', '4', '1', '5', '1', '6', '1', '7']],
     ['letters', ['6']],
+    ['letters-a', ['6', '2']],
   ]
+  // PR#16 4巡目 must-F: --tile-label-font の絶対下限(clamp() の最小値、1.05rem)。
+  // セルが小さすぎて label-ratio を上げても既にこの下限に張り付いている場合、
+  // 「特大 ≥ 標準×1.15」の判定は意味を持たない(除外する)
+  const LABEL_FLOOR_PX = 1.05 * 16
 
   try {
     for (const [vw, vh] of VPS) {
       for (const [screenName, keys] of SCREENS) {
         let prevSize = null
         let prevFont = ''
+        let standardSize = null
         for (const font of FONTS) {
           const context = await browser.newContext({ viewport: { width: vw, height: vh } })
           const page = await context.newPage()
@@ -646,21 +658,36 @@ async function checkFontSizeMonotonicity(chromium, port) {
           // バグではない)
           await page.evaluate(() => document.fonts.ready)
           // .audio-status-hint(警告音停止中表示)は AudioContext が resume 完了する
-          // (最大500msごとのポーリングで検知)までの間だけ一時的に出る。表示中は
-          // メッセージ欄右上の介助ボタン列が広がり、h1(と、それに押し出される形で
-          // grid-board)の実効幅が変わってしまうため、文字サイズ間で条件を揃えるために
-          // 消えるまで待つ(最大1200ms、消えなければそのまま計測へ進む)
+          // (最大500msごとのポーリングで検知)までの間だけ一時的に出る。PR#16 4巡目
+          // nit-b でこの表示枠の幅を常に確保するようにしたため、表示の有無で
+          // レイアウトが変わることは無くなったが、念のため待機も残しておく
           await page
             .waitForSelector('.audio-status-hint', { state: 'detached', timeout: 1200 })
             .catch(() => {})
+          // PR#16 4巡目 should-b: 1つのラベルだけでなく、画面上の全 .tile-label の
+          // 最小値で比較する(should-cのラベルサイズ統一が崩れた場合も検知できるように)
           const size = await page.evaluate(() => {
-            const label = document.querySelector('.tile-label')
-            return label ? parseFloat(getComputedStyle(label).fontSize) : null
+            const labels = [...document.querySelectorAll('.tile-label')].map((el) =>
+              parseFloat(getComputedStyle(el).fontSize),
+            )
+            return labels.length > 0 ? Math.min(...labels) : null
           })
+          if (font === 'standard') standardSize = size
           if (size != null && prevSize != null && size < prevSize - 0.1) {
             failures.push(
               `[monotonic ${vw}x${vh} ${screenName}] ${prevFont}=${prevSize.toFixed(1)}px > ${font}=${size.toFixed(1)}px(文字サイズを上げたのにラベルが縮んだ)`,
             )
+          }
+          // PR#16 4巡目 should-b: セルの上限(絶対下限floor)に張り付いていない限り、
+          // 特大は標準の1.15倍以上になるべき(--label-ratio は標準0.8→特大1.0で
+          // 1.25倍差になる設計。1.15はその下に余裕を持たせた下限値)
+          if (font === 'xlarge' && size != null && standardSize != null) {
+            const atFloor = standardSize <= LABEL_FLOOR_PX + 0.5
+            if (!atFloor && size < standardSize * 1.15 - 0.1) {
+              failures.push(
+                `[ratio ${vw}x${vh} ${screenName}] 標準=${standardSize.toFixed(1)}px 特大=${size.toFixed(1)}px(1.15倍未満、セル上限張り付きでもない)`,
+              )
+            }
           }
           prevSize = size
           prevFont = font
