@@ -12,7 +12,7 @@ Theme: green-based, calm, medical-adjacent, and readable. Urgent actions may use
 
 ## 2. Color Palette & Roles (Issue #3)
 
-Border-first tiles were retired: tiles now carry no default border, only a background surface color, a 14px rounded corner and a soft shadow — the point is to stop every tile looking like a form field. Every color is a CSS custom property on `:root` in `frontend/src/styles/globals.css` (the source of truth); component CSS never hardcodes a color.
+Border-first tiles were retired, then (再レビュー) gap/radius/shadow were retired too: the grid is now a seamless, edge-to-edge board. Cells carry no gap between them, no rounded corners, no drop shadow — only a background fill color and a thin divider line on each cell's right and bottom edge (`box-shadow: inset`, so it never doubles up with the neighbor's own line). The message panel and the letter-board input strip use the same seamless treatment (`border-bottom` in the divider color) so the whole screen reads as one continuous plate. Every color is a CSS custom property on `:root` in `frontend/src/styles/globals.css` (the source of truth); component CSS never hardcodes a color.
 
 Two design variants are switched by the `?design=a|b` URL query (default `a`) via `:root[data-design]`. This query is a development/decision-making entry point for comparing the two, not something the patient operates. Selectors are identical between variants — only token values differ.
 
@@ -31,7 +31,9 @@ Two design variants are switched by the `?design=a|b` URL query (default `a`) vi
 | `--message-text`     | `#f3fbf7` | Message panel text                                 |
 | `--urgent-bg`        | `#b3261e` | Emergency tile / message panel (solid fill)        |
 | `--urgent-text`      | `#ffffff` | Text on urgent fill                                |
-| `--scan-ring`        | `#facc15` | Scan-cursor outline (same value in both variants)  |
+| `--scan-ring`        | `#facc15` | Scan-cursor ring (same value in both variants)     |
+| `--grid-line`        | `#cde3d4` | Cell divider line (pale green-gray)                |
+| `--grid-line-width`  | `1px`     | Divider line thickness (`3px` under high contrast) |
 
 ### Design B — 暗い・夜間向け (dark, night ward)
 
@@ -48,12 +50,13 @@ Two design variants are switched by the `?design=a|b` URL query (default `a`) vi
 | `--message-text`     | `#eafaf1` | Message panel text                                 |
 | `--urgent-bg`        | `#d7263d` | Emergency tile / message panel (solid fill)        |
 | `--urgent-text`      | `#ffffff` | Text on urgent fill                                |
+| `--grid-line`        | `#2d5a41` | Cell divider line (lighter green than the dark bg/tile fill, so it stays visible on both) |
 
 The emergency tile and message panel are always a solid deep-red fill (`--urgent-bg`) with white text, in both variants, so emergency stays the single most attention-grabbing surface on screen regardless of design or time of day.
 
 ### High contrast (caregiver setting, layers on top of either variant)
 
-`:root[data-high-contrast="true"]` adds a `3px solid currentColor` border to every tile (tiles otherwise carry none) and pushes text/background toward pure black/white:
+`:root[data-high-contrast="true"]` only thickens `--grid-line-width` to `3px` (cells still carry no separate border) and pushes text/background toward pure black/white:
 
 | Variant + HC | `--text`  | `--bg`    | `--message-bg` | `--message-text` |
 | ------------ | --------- | --------- | ---------------- | ------------------- |
@@ -66,7 +69,19 @@ The emergency tile and message panel are always a solid deep-red fill (`--urgent
 
 ### Scan cursor emphasis
 
-The current scan target gets a thick yellow outline (`--scan-ring`, `outline: 8px solid`), a surface-color shift (`--surface-scanning`) on non-urgent tiles, and a small scale-up (`transform: scale(1.03)`, disabled under `prefers-reduced-motion: reduce`) so it reads at a glance from across a room. The emergency tile keeps its solid red fill even while scanning — only the ring is added on top.
+The current scan target gets a surface-color shift (`--surface-scanning`) on non-urgent tiles, plus a thick yellow ring drawn with an absolutely-positioned `::after` inset a few pixels from the cell's own edges — so it stays fully inside that cell and never overlaps the seamless-grid divider line or the neighboring cell. Scale-up is intentionally not used here (Issue #3 再レビュー): in a gap-less grid, enlarging the scanning cell would overlap its neighbors. The emergency tile keeps its solid red fill even while scanning — only the ring is added on top.
+
+### Cell divider lines
+
+Instead of a border on every side (which would double up between adjacent cells), each `.tile` draws a single `box-shadow: inset` line on its own right and bottom edge only (`--grid-line` color, `--grid-line-width` thickness). This means the outermost left/top edge of the whole grid has no line, while every internal seam and the outer right/bottom edge do — a uniform rule applied to every cell, not a special case per edge.
+
+### Navigate tiles: chevron + content preview (Issue #3 追加指示)
+
+A tile that navigates to a sub-screen no longer ends its label with an arrow character. Instead:
+
+- A `›`-shaped inline SVG chevron sits at the tile's right edge, sized with `cqi` so it scales with the tile's own width, colored `currentColor`, `aria-hidden`.
+- A small one-line content preview sits at the tile's bottom edge, truncated with `text-overflow: ellipsis` at the tile's width. It's generated automatically from the destination screen's menu — `menus.ts`'s `buildPreview()` takes that screen's first few items (excluding Emergency and Back) and joins their labels with `・`, ending in `…`. Nothing is hand-written per tile, so editing `menus.ts` keeps the preview in sync.
+- Auditory scan / speech only ever reads `item.label` — the chevron and preview are display-only and never reach `announceScanItem`/`announce`.
 
 ## 3. Typography Rules
 
@@ -76,14 +91,15 @@ BIZ UDPGothic (400/700) is bundled via `@fontsource/biz-udpgothic` and imported 
 - Tile label: `calc(var(--font-scale) * clamp(1.05rem, min(4.8vh, 15cqi), 3.4rem))` — the `cqi` term (each `.tile` is `container-type: inline-size`) shrinks the label with the tile's own width, not just the viewport, so a narrow tile on a small screen never overflows
 - Tile detail: smaller but bold
 - Letter spacing: `0`
-- Word breaking (Issue #3): `h1`, `.tile-label`, `.emergency-details`, `.emergency-sub` and `.status-stack span` use `word-break: auto-phrase; line-break: strict; overflow-wrap: anywhere;` so Japanese text wraps at phrase boundaries (e.g. "緊急です。" / "来てください") instead of mid-word (previously "ゆっく" / "り"), with `overflow-wrap: anywhere` as a safety net on browsers that don't yet support `auto-phrase`.
+- Word breaking (Issue #3): `h1`, `.tile-label`, `.emergency-details`, `.emergency-sub` and `.audio-status-hint` use `word-break: auto-phrase; line-break: strict; overflow-wrap: anywhere;` so Japanese text wraps at phrase boundaries (e.g. "緊急です。" / "来てください", "警告音停止中：" / "画面をタップしてください") instead of mid-word (previously "ゆっく" / "り", "くださ" / "い"), with `overflow-wrap: anywhere` as a safety net on browsers that don't yet support `auto-phrase`.
 
 ## 4. Layout Principles
 
-- Message panel stays at the top.
-- Tile grid fills the remaining space.
-- Grid is responsive: `repeat(auto-fit, minmax(...))`.
-- No nested cards.
+- Message panel stays at the top, flush with the grid below it (no gap, no radius — see §2).
+- Tile grid fills the remaining space edge-to-edge; `app-shell` padding is `0` on the sides/top (only the bottom keeps clearance for the fixed caregiver button/audio hint).
+- Screens with 8 items or fewer (requirements.md §4.1's "1画面8項目以内" target) use a **fill grid**: `computeGridLayout()` (App.tsx) measures the grid area's real size via `ResizeObserver`, picks the column count whose resulting aspect ratio best matches the area (with a small tie-break toward an evenly-divisible column count), and sets `--cols`/`--rows` so `grid-template-columns/rows: repeat(var(--cols/rows), 1fr)` divides the area exactly — no isolated tile, no leftover blank space. If the last row would be short, the last tile gets `grid-column: span N` to fill it instead of leaving empty cells.
+- Screens with more items (the letter board) fall back to `repeat(auto-fit, minmax(...))` with a scrollable grid and a minimum tile height, same as before Issue #3.
+- No nested cards; no gap between cells (see §2's seamless-grid rule).
 - Buttons use stable min-heights so labels do not resize the layout.
 - Touch targets should remain large enough for tablet bedside use.
 
@@ -114,6 +130,8 @@ Source of truth: `docs/requirements.md`.
 - Do not mix urgent actions with deep setup flows.
 - Do not rely on small icons or dense text.
 - Do not make the app dependent on backend availability for core communication.
+- Do not round tile corners or add per-cell shadows/gaps (Issue #3 再レビュー) — the grid is a single seamless plate, divided only by thin lines (§2).
+- Do not show app-name/voice-mode/scan-position status text in the message panel (Issue #3 追加指示) — the patient reads their position from the emphasized scan cursor, not a counter; that surface is for the message and emergency detail only.
 
 ## 7. Icon
 
