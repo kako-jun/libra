@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node --input-type=commonjs -e \"const f=require('fs'),p='dist/sw.js';f.writeFileSync(p,f.readFileSync(p,'utf-8').replace('__BUILD_DATE__',new Date(Date.now()+9*36e5).toISOString().split('T')[0]))\"",
+    "build": "vite build && node --input-type=commonjs -e \"const f=require('fs'),p='dist/sw.js';f.writeFileSync(p,f.readFileSync(p,'utf-8').replace('__BUILD_DATE__',new Date(Date.now()+9*36e5).toISOString().split('T')[0]))\" && node scripts/generate-precache-manifest.mjs dist",
     "preview": "vite preview",
     "test": "vitest run"
   },
