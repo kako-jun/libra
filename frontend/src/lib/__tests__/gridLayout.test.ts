@@ -32,11 +32,16 @@ describe('computeGridLayout', () => {
   })
 
   describe('横長(landscape 1000x500, aspect 2.0, 既定の最小セル寸法)', () => {
+    // PR#16 4巡目 must-E: labelScore(ラベル文字が何pxまで大きくなれるか)を
+    // 空きセル数より優先する評価に変更(空きセルは僅差のタイブレークとしての
+    // 小さな減点のみ)。n=5 は以前 5列×1行(空きセル0)だったが、それは幅200pxの
+    // 帯(BAND_MIN_LONG_SIDE=5により候補から除外される)になるため、
+    // 3列×2行(span2、空きセル1だがラベルがずっと大きい)に変わる
     const expected: Record<number, { cols: number; rows: number; lastSpan: number }> = {
       2: { cols: 2, rows: 1, lastSpan: 1 },
       3: { cols: 3, rows: 1, lastSpan: 1 },
       4: { cols: 2, rows: 2, lastSpan: 1 },
-      5: { cols: 5, rows: 1, lastSpan: 1 },
+      5: { cols: 3, rows: 2, lastSpan: 2 },
       6: { cols: 3, rows: 2, lastSpan: 1 },
       7: { cols: 4, rows: 2, lastSpan: 2 },
       8: { cols: 4, rows: 2, lastSpan: 1 },
@@ -50,18 +55,18 @@ describe('computeGridLayout', () => {
   })
 
   describe('縦長(portrait 500x1000, aspect 0.5, 既定の最小セル寸法)', () => {
-    // PR#16 3巡目 must-2: 評価関数を |log(cellAspect)|(正方形に近いか)から
-    // score=min(0.15*cellWidth, 0.20*cellHeight)(ラベル文字が何pxまで大きくなれるか)の
-    // 最大化に変更。n=7 は空きセル数が0になる候補が cols=1(1列7行、全幅の縦積み)しか
-    // 無く、空きセル最小優先(維持する制約)によりそちらが選ばれるため 2列×4行(span2)
-    // から 1列×7行 に変わる(1列でも幅は500pxとcqi上限に対し十分あり、細い帯ではない)
+    // PR#16 4巡目 must-E 再検証: 3巡目では空きセル数0を最優先していたため、n=7 は
+    // 空きセル数0を実現できる列数が1列(1列7行、全幅の縦積み)しか無く、そちらが
+    // 選ばれていた。4巡目でラベルの大きさを主キーに戻したため(空きセル数は僅差の
+    // タイブレークに後退)、2列×4行(span2、空きセル1だがラベルがずっと大きい)に戻る。
+    // n=3/5 も同様に、1列(空きセル0)よりラベルが大きい2列(span2、空きセル1)を選ぶ
     const expected: Record<number, { cols: number; rows: number; lastSpan: number }> = {
       2: { cols: 1, rows: 2, lastSpan: 1 },
       3: { cols: 1, rows: 3, lastSpan: 1 },
       4: { cols: 1, rows: 4, lastSpan: 1 },
-      5: { cols: 1, rows: 5, lastSpan: 1 },
+      5: { cols: 2, rows: 3, lastSpan: 2 },
       6: { cols: 2, rows: 3, lastSpan: 1 },
-      7: { cols: 1, rows: 7, lastSpan: 1 },
+      7: { cols: 2, rows: 4, lastSpan: 2 },
       8: { cols: 2, rows: 4, lastSpan: 1 },
     }
     for (const [n, want] of Object.entries(expected)) {
@@ -73,16 +78,15 @@ describe('computeGridLayout', () => {
   })
 
   describe('正方形(square 600x600, aspect 1.0, 既定の最小セル寸法)', () => {
-    // PR#16 3巡目 must-2: 上のportraitと同じ理由で、空きセル数0を実現できる列数が
-    // 1列しか無い n(3,5,7)は、スコア(ラベル文字の大きさ)ではなく空きセル数0が優先され
-    // 1列の縦積みになる(600px幅は十分広く、細い帯ではない)
+    // PR#16 4巡目 must-E 再検証: 上のportraitと同じ理由で、n=3/5/7 は1列(空きセル0)
+    // ではなくラベルが大きくなる2列(span2、空きセル1)を選ぶ
     const expected: Record<number, { cols: number; rows: number; lastSpan: number }> = {
       2: { cols: 1, rows: 2, lastSpan: 1 },
-      3: { cols: 1, rows: 3, lastSpan: 1 },
+      3: { cols: 2, rows: 2, lastSpan: 2 },
       4: { cols: 2, rows: 2, lastSpan: 1 },
-      5: { cols: 1, rows: 5, lastSpan: 1 },
+      5: { cols: 2, rows: 3, lastSpan: 2 },
       6: { cols: 2, rows: 3, lastSpan: 1 },
-      7: { cols: 1, rows: 7, lastSpan: 1 },
+      7: { cols: 2, rows: 4, lastSpan: 2 },
       8: { cols: 2, rows: 4, lastSpan: 1 },
     }
     for (const [n, want] of Object.entries(expected)) {
@@ -91,6 +95,34 @@ describe('computeGridLayout', () => {
         expect(result).toEqual({ fill: true, ...want })
       })
     }
+  })
+
+  describe('PR#16 4巡目 must-E: 帯(1×N/N×1、N>=5)は最小セル寸法を満たしていても選ばれない', () => {
+    it('1024x607(格子領域相当) n=7 → 4列×2行(帯にならない)', () => {
+      const result = computeGridLayout(7, 1024, 607)
+      expect(result).toEqual({ fill: true, cols: 4, rows: 2, lastSpan: 2 })
+    })
+
+    it('390x844 n=7 → 2列×4行(帯にならない)', () => {
+      const result = computeGridLayout(7, 390, 844)
+      expect(result).toEqual({ fill: true, cols: 2, rows: 4, lastSpan: 2 })
+    })
+
+    it('1280x720 n=7 は帯(cols===1 または rows===1)にならない', () => {
+      const result = computeGridLayout(7, 1280, 720)
+      expect(result.fill).toBe(true)
+      expect(result.cols).not.toBe(1)
+      expect(result.rows).not.toBe(1)
+    })
+
+    it('横に極端に広い領域(2000x300)で n=8 でも 1行の帯にはならない', () => {
+      // 幅は十分あるが高さが厳しい領域。8列×1行(空きセル0)は帯として除外され、
+      // 別の(帯でない)候補が選ばれる
+      const result = computeGridLayout(8, 2000, 300)
+      if (result.fill) {
+        expect(result.rows).not.toBe(1)
+      }
+    })
   })
 
   it('lastSpan は常に1か2で、cols*rows - itemCount(空きセル数)は1以下', () => {
@@ -123,14 +155,14 @@ describe('computeGridLayout', () => {
     })
 
     it('minCellWidth/minCellHeight を大きくすると、それに応じて列数が絞られる', () => {
-      // 8項目、実測領域は 1200x900。最小セル寸法が既定(160x84)なら2列×4行(セル幅600px)
-      // が選ばれるが、最小幅を650pxまで引き上げると2列(セル幅600px)は入らなくなり、
-      // 1列(全幅、セル幅1200px)まで列数が減る
+      // 8項目、実測領域は 1200x900。最小セル寸法が既定(160x84)なら3列×3行(span2、
+      // セル幅400px)が選ばれるが、最小幅を500pxまで引き上げると3列(セル幅400px)は
+      // 入らなくなり、2列(セル幅600px)まで列数が減る
       const withDefault = computeGridLayout(8, 1200, 900)
-      expect(withDefault.cols).toBe(2)
-      const withLargerMin = computeGridLayout(8, 1200, 900, { minCellWidth: 650 })
-      expect(withLargerMin.cols).toBeLessThan(2)
-      expect(1200 / withLargerMin.cols).toBeGreaterThanOrEqual(650)
+      expect(withDefault.cols).toBe(3)
+      const withLargerMin = computeGridLayout(8, 1200, 900, { minCellWidth: 500 })
+      expect(withLargerMin.cols).toBeLessThan(3)
+      expect(1200 / withLargerMin.cols).toBeGreaterThanOrEqual(500)
     })
   })
 
@@ -144,19 +176,18 @@ describe('computeGridLayout', () => {
       '390x844(グリッド領域 390x680相当)': { width: 390, height: 680 },
       '320x568(グリッド領域 320x420相当)': { width: 320, height: 420 },
     }
-    // PR#16 3巡目 must-2: 「cols/rows が n と一致しない」という以前の判定基準は、旧
-    // |log(aspect)| 評価の時代に「N列×1行/1列×N行の細い帯」を弾くための代理指標
-    // だった。新しい評価(ラベル文字が最大になる候補を選ぶ)では、空きセル数0を
-    // 実現できる列数の候補が1列(全幅)しか無い n(例: 7)で意図的に1列を選ぶことがある。
-    // 全幅の1列は「セルが小さすぎて読みにくい細い帯」とは別物(むしろ幅は最大)なので、
-    // 実際に守るべき不変条件である最小セル寸法(160x84)の充足だけを確認する
+    // PR#16 4巡目 must-E: 最小セル寸法の充足に加え、帯(cols===1 かつ
+    // rows>=BAND_MIN_LONG_SIDE、または rows===1 かつ cols>=BAND_MIN_LONG_SIDE)にも
+    // ならないことを確認する
     for (const [label, dims] of Object.entries(realDims)) {
       for (const n of [6, 7, 8]) {
-        it(`${label} で n=${n} は既定の最小セル寸法(160x84)を満たしたまま全面充填する`, () => {
+        it(`${label} で n=${n} は既定の最小セル寸法(160x84)を満たし、帯にもならずに全面充填する`, () => {
           const result = computeGridLayout(n, dims.width, dims.height)
           expect(result.fill).toBe(true)
           expect(dims.width / result.cols).toBeGreaterThanOrEqual(DEFAULT_MIN_CELL_WIDTH)
           expect(dims.height / result.rows).toBeGreaterThanOrEqual(DEFAULT_MIN_CELL_HEIGHT)
+          expect(result.cols === 1 && result.rows >= 5).toBe(false)
+          expect(result.rows === 1 && result.cols >= 5).toBe(false)
         })
       }
     }

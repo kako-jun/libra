@@ -1,23 +1,31 @@
 // タイル格子の列数・行数を、項目数と格子領域の実測サイズから算出する。副作用なし。
 // 正本: docs/grid-layout.md, DESIGN.md §4
 //
-// 方針(kako-jun レビュー 2026-09-24、PR#16 Opus レビュー 2026-09-25、3巡目 2026-09-26 で改訂):
+// 方針(kako-jun レビュー 2026-09-24、PR#16 Opus レビュー 2026-09-25、3巡目 2026-09-26、
+// 4巡目 2026-09-27 で改訂):
 // 1. 最小セル寸法(既定 160×84、文字サイズ設定に関係なく固定)を下回る候補は採らない
 //    (これが無いと、例えば7項目で「7列×1行」のような極端に細い帯が選ばれてしまう)
-// 2. 空きセル数が最小(0か1のみ許可、span は最大2まで)になる候補を優先する
-// 3. PR#16 3巡目 must-2: セルの評価を |log(cellAspect)|(縦横比が正方形に近いかどうか)
-//    から「タイルのラベル文字が実際に何pxまで大きくなれるか」に変更する。
-//    globals.css の --tile-label-font は横幅由来(cqi、係数0.15 ≒ 15cqi)と
-//    高さ由来(cqb、係数0.20 ≒ 20cqb)の小さい方で頭打ちになるので、
-//    score = min(0.15*cellWidth, 0.20*cellHeight) がそのままCSS側の実際の
-//    頭打ち値(px)に一致する。これを最大化する候補を選ぶ(縦横比が多少いびつでも、
-//    ラベル文字が大きく読めるほうを優先する)。旧方式(縦横比を正方形に寄せる)は、
-//    「正方形に近いが小さいセルを選び、面積で選べば大きくできたはずの文字を逆に
-//    縮める」ことがあった(3巡目で発覚: 文字サイズ設定を上げるとメッセージ欄が
-//    伸びて格子が縮み、旧方式が選ぶ列数が反転してタイル文字が逆に縮む新規バグの
-//    一因)
-// 4. 条件を満たす候補が1つも無い場合(最小セル寸法が厳しすぎる等)は fill しない。
-//    呼び出し側は従来どおり auto-fit/minmax のスクロールレイアウトにフォールバックする
+// 2. PR#16 4巡目 must-E: 「帯」を明示的に禁止する。rows===1 かつ cols>=5、または
+//    cols===1 かつ rows>=5 の候補は、最小セル寸法をたとえ満たしていても採らない
+//    (最小セル寸法の floor は絶対値だけを見るため、画面が大きければ「1列7行、
+//    でも各セルは十分広い」を通してしまう。帯そのものの形を禁止することで、
+//    どんな画面サイズでも極端に細長いレイアウトを選ばせない)
+// 3. セルの評価は「タイルのラベル文字が実際に何pxまで大きくなれるか」
+//    (score = min(0.15*cellWidth, 0.20*cellHeight)。globals.css の
+//    --tile-label-font が横幅由来(cqi、係数0.15)・高さ由来(cqb、係数0.20)の
+//    小さい方で頭打ちになるのと一致させてある)を主キーとして最大化する候補を選ぶ。
+//    空きセル数(0か1のみ許可、span は最大2まで)は、スコアからの小さな減点
+//    (0.5px×空きセル数)、実質的には同点(またはごく僅差)のときのタイブレークとして
+//    働く。
+//    PR#16 4巡目 must-E 再検証: 3巡目では「空きセル数0を最優先」を主キーにしていた
+//    ため、n=7 のように空きセル数0を実現する列数が1列(または7列)しか無い項目数で、
+//    スコアがどれだけ悪くても強制的にその帯が選ばれてしまっていた(3巡目で
+//    「全幅の1列だから細い帯ではない」と判断していたが、4巡目の再レビューで
+//    「7×1/1×7の帯に戻った」と判定された)。優先順位を入れ替え、ラベルの大きさを
+//    主キーにする(空きセル数は僅差の候補間のタイブレークに後退させる)
+// 4. 条件を満たす候補が1つも無い場合(最小セル寸法が厳しすぎる、または全候補が
+//    帯として除外された等)は fill しない。呼び出し側は従来どおり auto-fit/minmax
+//    のスクロールレイアウトにフォールバックする
 
 export interface GridLayout {
   /** true のとき格子領域全体を敷き詰める「fill」モード。false は従来の
@@ -54,12 +62,22 @@ export const DEFAULT_MIN_CELL_HEIGHT = 84
 const LABEL_WIDTH_FACTOR = 0.15
 const LABEL_HEIGHT_FACTOR = 0.2
 
+/** 空きセル1つあたりの減点(px相当)。labelScore(px)からこれを引いた値で
+ *  ソートする。空きセルの見た目上の悪さは労力に比べ小さいので、僅差の候補間の
+ *  タイブレークとしてだけ効くよう、絶対値を小さくしてある */
+const EMPTY_CELL_PENALTY = 0.5
+
+/** 「帯」とみなして除外する形状のしきい値。cols(またはrows)が1で、もう一方が
+ *  これ以上ある候補は、最小セル寸法を満たしていても採らない(must-E) */
+const BAND_MIN_LONG_SIDE = 5
+
 interface Candidate {
   cols: number
   rows: number
   emptyCells: number
   lastSpan: number
   labelScore: number
+  adjustedScore: number
 }
 
 export interface GridLayoutOptions {
@@ -90,6 +108,14 @@ export function computeGridLayout(
     const emptyCells = remainder === 0 ? 0 : cols - remainder
     // 空きセルが2以上になる(最後のタイルのspanが3以上必要になる)候補は採らない
     if (emptyCells > 1) continue
+    // must-E: 「帯」(cols/rowsの一方が1で、もう一方が5以上)は最小セル寸法を
+    // 満たしていても除外する
+    if (
+      (cols === 1 && rows >= BAND_MIN_LONG_SIDE) ||
+      (rows === 1 && cols >= BAND_MIN_LONG_SIDE)
+    ) {
+      continue
+    }
     const cellWidth = width / cols
     const cellHeight = height / rows
     // 最小セル寸法を下回る候補(細い帯になる)は採らない
@@ -102,20 +128,21 @@ export function computeGridLayout(
       emptyCells,
       lastSpan,
       labelScore,
+      adjustedScore: labelScore - EMPTY_CELL_PENALTY * emptyCells,
     })
   }
 
   if (candidates.length === 0) {
-    // 最小セル寸法を満たす分割が無い(項目が多すぎる/画面が小さすぎる)。
-    // fill をあきらめ、呼び出し側の通常レイアウト(スクロール)へフォールバックする
+    // 最小セル寸法を満たす分割が無い、または全候補が帯として除外された
+    // (項目が多すぎる/画面が小さすぎる)。fill をあきらめ、呼び出し側の通常
+    // レイアウト(スクロール)へフォールバックする
     return { fill: false, cols: 1, rows: 1, lastSpan: 1 }
   }
 
-  candidates.sort((a, b) => {
-    if (a.emptyCells !== b.emptyCells) return a.emptyCells - b.emptyCells
-    // labelScore は大きいほど良い(ラベル文字が大きく描ける)候補なので降順に並べる
-    return b.labelScore - a.labelScore
-  })
+  // must-E: labelScore(空きセルへの小さな減点込みのadjustedScore)を主キーに
+  // 降順で並べる。空きセル数はスコアへの減点として既に織り込まれているため、
+  // 別立てのソートキーにはしない(僅差ならadjustedScoreの差自体がタイブレークになる)
+  candidates.sort((a, b) => b.adjustedScore - a.adjustedScore)
 
   const best = candidates[0]
   return { fill: true, cols: best.cols, rows: best.rows, lastSpan: best.lastSpan }
