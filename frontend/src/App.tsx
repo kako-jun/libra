@@ -1,56 +1,28 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
+import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } from './lib/menus'
+import { press, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
+import { loadSettings, saveSettings, type Settings } from './lib/settings'
+import { resumeAlarmAudioContext, startAlarm, stopAlarm } from './lib/alarm'
 
-type Page =
-  | 'home'
-  | 'urgent'
-  | 'slow'
-  | 'pain'
-  | 'discomfort'
-  | 'mood'
-  | 'letters'
-  | 'voice'
-  | 'settings'
-type VoiceMode = 'off' | 'tone' | 'short' | 'full'
-type Tone = 'neutral' | 'urgent' | 'calm' | 'positive'
+const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
+const ALARM_REPEAT_MS = 3000
 
-type Tile = {
-  label: string
-  detail?: string
-  tone?: Tone
-  disabled?: boolean
-  action: () => void
-}
-
-const VOICE_LABELS: Record<VoiceMode, string> = {
+const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
   off: 'OFF',
   tone: '効果音だけ',
   short: '短く読む',
   full: '全部読む',
 }
 
-const PAGE_TITLES: Record<Page, string> = {
-  home: 'libra',
-  urgent: 'いそいで伝える',
-  slow: 'ゆっくり伝える',
-  pain: '痛い場所',
-  discomfort: '困りごと',
-  mood: '気分',
-  letters: '文字盤',
-  voice: '音声',
-  settings: '設定',
-}
+const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
 
-const LETTERS = ['あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ', '消す', '空白']
-
-function speak(mode: VoiceMode, text: string, shortText = text) {
+function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
   window.speechSynthesis?.cancel()
-
   if (mode === 'off') return
   if (mode === 'tone') {
     navigator.vibrate?.(35)
     return
   }
-
   const utterance = new SpeechSynthesisUtterance(mode === 'short' ? shortText : text)
   utterance.lang = 'ja-JP'
   utterance.rate = 0.85
@@ -59,279 +31,243 @@ function speak(mode: VoiceMode, text: string, shortText = text) {
 }
 
 export default function App() {
-  const [page, setPage] = createSignal<Page>('home')
-  const [voiceMode, setVoiceMode] = createSignal<VoiceMode>('off')
-  const [scanEnabled, setScanEnabled] = createSignal(false)
-  const [scanIndex, setScanIndex] = createSignal(0)
-  const [message, setMessage] = createSignal('選んだ内容がここに大きく出ます')
-  const [letterText, setLetterText] = createSignal('')
-  const [history, setHistory] = createSignal<string[]>([])
+  // 開発補助: URL に ?dev を付けると番号バッジを表示する（既定は非表示）
+  const showDevNumbers = new URLSearchParams(window.location.search).has('dev')
 
-  const announce = (full: string, shortText?: string) => speak(voiceMode(), full, shortText)
+  const [settings, setSettings] = createSignal<Settings>(loadSettings())
+  const scanConfig = createMemo<ScanConfig>(() => ({
+    intervalMs: settings().intervalMs,
+    headHoldMs: settings().intervalMs * settings().headHoldMultiplier,
+    debounceMs: settings().debounceMs,
+  }))
+
+  const [screen, setScreen] = createSignal<ScreenId>('home')
+  const [emergencyActive, setEmergencyActive] = createSignal(false)
+  const [message, setMessage] = createSignal(DEFAULT_MESSAGE)
+  const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
+  const [messageHistory, setMessageHistory] = createSignal<string[]>([])
+  const [showUndo, setShowUndo] = createSignal(false)
+  let undoLapsRemaining = 0
+
+  const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
+  const [letterText, setLetterText] = createSignal('')
+
+  const currentMenu = createMemo(() =>
+    buildMenu(screen(), { showUndo: showUndo() && !emergencyActive() }),
+  )
+
+  const [scanState, setScanState] = createSignal<ScanState>(
+    startScan(currentMenu().length, Date.now(), scanConfig()),
+  )
+
+  const announce = (text: string, shortText = text) => speak(settings().voiceMode, text, shortText)
+
+  const announceScanItem = (label: string) => {
+    if (!settings().auditoryScan) return
+    window.speechSynthesis?.cancel()
+    const utterance = new SpeechSynthesisUtterance(label.replace(/\n/g, ' '))
+    utterance.lang = 'ja-JP'
+    utterance.rate = 1.0
+    window.speechSynthesis?.speak(utterance)
+  }
 
   const showMessage = (text: string, tone: Tone = 'neutral') => {
     setMessage(text)
-    setHistory((items) => [text, ...items.filter((item) => item !== text)].slice(0, 4))
+    setMessageTone(tone)
+    setMessageHistory((items) => [text, ...items].slice(0, 5))
     document.documentElement.dataset.messageTone = tone
     navigator.vibrate?.(tone === 'urgent' ? [60, 40, 60] : 35)
     announce(text)
   }
 
-  const go = (next: Page, spoken?: string) => {
-    setPage(next)
-    setScanIndex(0)
-    if (spoken) announce(spoken)
+  const goTo = (next: ScreenId) => {
+    setScreen(next)
+    const items = currentMenu()
+    setScanState(startScan(items.length, Date.now(), scanConfig()))
   }
 
-  const back = () => {
-    const current = page()
-    if (current === 'home') return
-    if (['pain', 'discomfort', 'mood', 'letters'].includes(current))
-      go('slow', 'ゆっくり伝えるに戻りました')
-    else go('home', 'ホームに戻りました')
+  const completeTransmission = (text: string, tone: Tone = 'neutral') => {
+    showMessage(text, tone)
+    const allowUndo = !emergencyActive()
+    setShowUndo(allowUndo)
+    undoLapsRemaining = allowUndo ? 1 : 0
+    goTo('home')
   }
 
-  const homeTiles = (): Tile[] => [
-    {
-      label: 'いそいで\n伝える',
-      detail: '緊急の短い用件',
-      tone: 'urgent',
-      action: () => go('urgent', 'いそいで伝える'),
-    },
-    {
-      label: 'ゆっくり\n伝える',
-      detail: '場所や気分を選ぶ',
-      tone: 'calm',
-      action: () => go('slow', 'ゆっくり伝える'),
-    },
-    { label: 'はい', tone: 'positive', action: () => showMessage('はい', 'positive') },
-    { label: 'いいえ', action: () => showMessage('いいえ') },
-    {
-      label: '来て\nください',
-      tone: 'urgent',
-      action: () => showMessage('来てください', 'urgent'),
-    },
-    { label: '水', action: () => showMessage('水がほしいです') },
-    { label: `音声\n${VOICE_LABELS[voiceMode()]}`, action: () => go('voice', '音声設定') },
-    {
-      label: scanEnabled() ? 'スキャン\n停止' : 'スキャン\n開始',
-      action: () => setScanEnabled((value) => !value),
-    },
-    { label: '設定', action: () => go('settings', '設定') },
-  ]
-
-  const urgentTiles = (): Tile[] => [
-    { label: '戻る', action: back },
-    {
-      label: '来て\nください',
-      tone: 'urgent',
-      action: () => showMessage('来てください', 'urgent'),
-    },
-    { label: '苦しい', tone: 'urgent', action: () => showMessage('苦しいです', 'urgent') },
-    { label: '痛い', tone: 'urgent', action: () => showMessage('痛いです', 'urgent') },
-    { label: '水', action: () => showMessage('水がほしいです') },
-    { label: '体位を\n変えたい', action: () => showMessage('体の向きを変えたいです') },
-    { label: 'はい', tone: 'positive', action: () => showMessage('はい', 'positive') },
-    { label: 'いいえ', action: () => showMessage('いいえ') },
-    {
-      label: '止めて',
-      tone: 'urgent',
-      action: () => showMessage('いったん止めてください', 'urgent'),
-    },
-  ]
-
-  const slowTiles = (): Tile[] => [
-    { label: '戻る', action: back },
-    { label: '痛い場所', action: () => go('pain', '痛い場所') },
-    { label: '困りごと', action: () => go('discomfort', '困りごと') },
-    { label: '気分', action: () => go('mood', '気分') },
-    { label: '文字盤', action: () => go('letters', '文字盤') },
-    { label: '家族に\n伝える', action: () => showMessage('家族に伝えたいことがあります') },
-    { label: '少し待つ', action: () => showMessage('少し待ってください') },
-    { label: 'もう一度', action: () => showMessage('もう一度お願いします') },
-    {
-      label: '読み上げ',
-      action: () => announce('ゆっくり伝える画面です。痛い場所、困りごと、気分、文字盤を選べます'),
-    },
-  ]
-
-  const painTiles = (): Tile[] => [
-    { label: '戻る', action: back },
-    { label: '頭', action: () => showMessage('頭が痛いです') },
-    { label: '胸', action: () => showMessage('胸が痛いです', 'urgent') },
-    { label: 'お腹', action: () => showMessage('お腹が痛いです') },
-    { label: '背中', action: () => showMessage('背中が痛いです') },
-    { label: '足', action: () => showMessage('足が痛いです') },
-    { label: '少し', action: () => showMessage('少し痛いです') },
-    { label: 'かなり', tone: 'urgent', action: () => showMessage('かなり痛いです', 'urgent') },
-    { label: 'とても', tone: 'urgent', action: () => showMessage('とても痛いです', 'urgent') },
-  ]
-
-  const discomfortTiles = (): Tile[] => [
-    { label: '戻る', action: back },
-    { label: '暑い', action: () => showMessage('暑いです') },
-    { label: '寒い', action: () => showMessage('寒いです') },
-    { label: '眠れない', action: () => showMessage('眠れません') },
-    { label: '痰', action: () => showMessage('痰がつらいです', 'urgent') },
-    { label: 'トイレ', action: () => showMessage('トイレに行きたいです') },
-    { label: '向きを\n変えたい', action: () => showMessage('体の向きを変えたいです') },
-    { label: '明るい', action: () => showMessage('部屋が明るいです') },
-    { label: '静かに', action: () => showMessage('静かにしてほしいです') },
-  ]
-
-  const moodTiles = (): Tile[] => [
-    { label: '戻る', action: back },
-    { label: '不安', action: () => showMessage('不安です') },
-    { label: 'さみしい', action: () => showMessage('さみしいです') },
-    { label: '落ち着かない', action: () => showMessage('落ち着きません') },
-    { label: '大丈夫', tone: 'positive', action: () => showMessage('大丈夫です', 'positive') },
-    { label: '疲れた', action: () => showMessage('疲れました') },
-    { label: '眠い', action: () => showMessage('眠いです') },
-    { label: '会いたい', action: () => showMessage('会いたいです') },
-    { label: 'ありがとう', tone: 'positive', action: () => showMessage('ありがとう', 'positive') },
-  ]
-
-  const letterTiles = (): Tile[] =>
-    LETTERS.map((char) => ({
-      label: char,
-      action: () => {
-        if (char === '消す') setLetterText((text) => text.slice(0, -1))
-        else if (char === '空白') setLetterText((text) => `${text} `)
-        else setLetterText((text) => text + char)
-        announce(char === '空白' ? '空白' : char)
-      },
-    }))
-
-  const voiceTiles = (): Tile[] => [
-    { label: '戻る', action: back },
-    {
-      label: 'OFF',
-      action: () => {
-        setVoiceMode('off')
-        window.speechSynthesis?.cancel()
-      },
-    },
-    {
-      label: '効果音\nだけ',
-      action: () => {
-        setVoiceMode('tone')
-        navigator.vibrate?.(35)
-      },
-    },
-    {
-      label: '短く\n読む',
-      action: () => {
-        setVoiceMode('short')
-        speak('short', '短く読みます')
-      },
-    },
-    {
-      label: '全部\n読む',
-      action: () => {
-        setVoiceMode('full')
-        speak('full', '全文読み上げにしました')
-      },
-    },
-    { label: '停止', action: () => window.speechSynthesis?.cancel() },
-    { label: '音量は\n端末側', disabled: true, action: () => {} },
-    { label: '夜間は\nOFF推奨', disabled: true, action: () => {} },
-    { label: 'テスト', action: () => speak('full', 'libra の読み上げテストです') },
-  ]
-
-  const settingsTiles = (): Tile[] => [
-    { label: '戻る', action: back },
-    {
-      label: scanEnabled() ? 'スキャン\n停止' : 'スキャン\n開始',
-      action: () => setScanEnabled((value) => !value),
-    },
-    { label: '速度\nゆっくり', action: () => showMessage('スキャン速度は今後設定できます') },
-    { label: '文字\n大きく', action: () => document.body.classList.toggle('large-text') },
-    { label: '高コントラスト', action: () => document.body.classList.toggle('high-contrast') },
-    { label: '横向き\n対応', disabled: true, action: () => {} },
-    {
-      label: 'ボタン入力',
-      detail: 'Space / Enter',
-      action: () => showMessage('Space または Enter で決定できます'),
-    },
-    { label: '履歴\n消去', action: () => setHistory([]) },
-    {
-      label: '読み上げ',
-      action: () => announce('設定画面です。スキャン、文字サイズ、高コントラストを試せます'),
-    },
-  ]
-
-  const tiles = createMemo<Tile[]>(() => {
-    switch (page()) {
-      case 'urgent':
-        return urgentTiles()
-      case 'slow':
-        return slowTiles()
-      case 'pain':
-        return painTiles()
-      case 'discomfort':
-        return discomfortTiles()
-      case 'mood':
-        return moodTiles()
-      case 'letters':
-        return letterTiles()
-      case 'voice':
-        return voiceTiles()
-      case 'settings':
-        return settingsTiles()
-      default:
-        return homeTiles()
-    }
-  })
-
-  const visibleTiles = createMemo(() => tiles())
-
-  const activateTile = (index: number) => {
-    const tile = visibleTiles()[index]
-    if (!tile || tile.disabled) return
-    tile.action()
+  const updateSettings = (patch: Partial<Settings>) => {
+    setSettings((current) => {
+      const next = { ...current, ...patch }
+      saveSettings(next)
+      return next
+    })
   }
 
-  createEffect(() => {
-    if (scanIndex() >= visibleTiles().length) setScanIndex(0)
-  })
+  const clearEmergency = () => {
+    setEmergencyActive(false)
+    stopAlarm()
+    setMessage(DEFAULT_MESSAGE)
+    setMessageTone('neutral')
+    document.documentElement.dataset.messageTone = 'neutral'
+  }
 
-  onMount(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (/^[1-9]$/.test(event.key)) {
-        event.preventDefault()
-        activateTile(Number(event.key) - 1)
-      } else if (event.key === 'Escape') {
-        event.preventDefault()
-        back()
-      } else if (event.key === ' ' || event.key === 'Enter') {
-        event.preventDefault()
-        if (scanEnabled()) activateTile(scanIndex())
-      } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-        event.preventDefault()
-        setScanIndex((index) => (index + 1) % visibleTiles().length)
-      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        setScanIndex((index) => (index + visibleTiles().length - 1) % visibleTiles().length)
+  const closeCaregiverMenu = () => {
+    setCaregiverMenuOpen(false)
+    goTo('home')
+  }
+
+  const runAction = (item: ReturnType<typeof currentMenu>[number]) => {
+    const action = item.action
+    switch (action.type) {
+      case 'emergency': {
+        setEmergencyActive(true)
+        showMessage('緊急です。来てください', 'urgent')
+        startAlarm(ALARM_REPEAT_MS)
+        goTo('urgentDetail')
+        return
+      }
+      case 'emergencyDetail': {
+        showMessage(`緊急です。来てください — ${action.label}`, 'urgent')
+        setShowUndo(false)
+        goTo('home')
+        return
+      }
+      case 'undo': {
+        const previous = messageHistory()[1] ?? DEFAULT_MESSAGE
+        setMessageHistory((items) => items.slice(1))
+        setMessage(previous)
+        setMessageTone('neutral')
+        document.documentElement.dataset.messageTone = 'neutral'
+        setShowUndo(false)
+        goTo('home')
+        return
+      }
+      case 'back': {
+        const current = screen()
+        const parent = current === 'home' ? 'home' : PARENT_SCREEN[current]
+        goTo(parent)
+        return
+      }
+      case 'navigate': {
+        goTo(action.screen)
+        return
+      }
+      case 'message': {
+        completeTransmission(action.text, action.tone ?? 'neutral')
+        return
+      }
+      case 'letterAppend': {
+        setLetterText((text) => text + action.char)
+        announce(action.char, action.char)
+        return
+      }
+      case 'letterBackspace': {
+        setLetterText((text) => text.slice(0, -1))
+        return
+      }
+      case 'letterCommit': {
+        const text = letterText().trim()
+        setLetterText('')
+        if (!text) {
+          goTo('letters')
+          return
+        }
+        completeTransmission(text, 'neutral')
+        return
       }
     }
+  }
 
+  const activateIndex = (index: number) => {
+    const item = currentMenu()[index]
+    if (!item) return
+    runAction(item)
+  }
+
+  const handleSwitchOn = (now: number) => {
+    if (caregiverMenuOpen()) return
+    const result = press(scanState(), now, scanConfig())
+    setScanState(result.state)
+    if (result.activatedIndex === null) return
+    activateIndex(result.activatedIndex)
+  }
+
+  // スキャンの進行ループ。setTimeout を自己再スケジュールし、次に進めるべき時刻に合わせる。
+  onMount(() => {
+    let timeoutId: number | undefined
+
+    const schedule = (delay: number) => {
+      timeoutId = window.setTimeout(step, Math.max(16, delay))
+    }
+
+    function step() {
+      if (!caregiverMenuOpen()) {
+        const now = Date.now()
+        const previous = scanState()
+        const next = tick(previous, now, scanConfig())
+        if (next !== previous) {
+          setScanState(next)
+          if (next.index === 0 && screen() === 'home' && undoLapsRemaining > 0) {
+            undoLapsRemaining -= 1
+            if (undoLapsRemaining === 0) setShowUndo(false)
+          }
+          if (settings().auditoryScan) {
+            const item = currentMenu()[next.index]
+            if (item) announceScanItem(item.label)
+          }
+        }
+      }
+      schedule(scanState().nextAdvanceAt - Date.now())
+    }
+
+    schedule(0)
+    onCleanup(() => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    })
+  })
+
+  // 本人のスイッチ入力: 画面タップ / 任意キー / Bluetooth シャッター(キー入力として届く)
+  onMount(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[data-caregiver-control]')) return
+      resumeAlarmAudioContext()
+      if (caregiverMenuOpen()) return
+      handleSwitchOn(Date.now())
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return
+      resumeAlarmAudioContext()
+      if (caregiverMenuOpen()) return
+      if (/^[1-9]$/.test(event.key)) {
+        // 開発補助: 数字キーで先頭9項目を直接実行する。スイッチ扱いより先に処理し二重実行しない
+        event.preventDefault()
+        activateIndex(Number(event.key) - 1)
+        return
+      }
+      event.preventDefault()
+      handleSwitchOn(Date.now())
+    }
+
+    window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('keydown', onKeyDown)
-    onCleanup(() => window.removeEventListener('keydown', onKeyDown))
+    onCleanup(() => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    })
   })
 
-  createEffect(() => {
-    if (!scanEnabled()) return
-    const id = window.setInterval(() => {
-      setScanIndex((index) => (index + 1) % visibleTiles().length)
-    }, 1500)
-    onCleanup(() => window.clearInterval(id))
-  })
-
-  const commitLetters = () => {
-    const text = letterText().trim()
-    if (!text) return
-    showMessage(text)
-    setLetterText('')
+  let longPressTimer: number | undefined
+  const onCaregiverButtonDown = () => {
+    longPressTimer = window.setTimeout(() => {
+      setCaregiverMenuOpen(true)
+    }, 2000)
+  }
+  const onCaregiverButtonUp = () => {
+    if (longPressTimer !== undefined) {
+      window.clearTimeout(longPressTimer)
+      longPressTimer = undefined
+    }
   }
 
   return (
@@ -342,56 +278,147 @@ export default function App() {
           <h1>{message()}</h1>
         </div>
         <div class="status-stack" aria-label="現在の状態">
-          <span>{PAGE_TITLES[page()]}</span>
-          <span>音声 {VOICE_LABELS[voiceMode()]}</span>
-          <span>{scanEnabled() ? `スキャン ${scanIndex() + 1}` : '手動'}</span>
+          <span>{SCREEN_TITLES[screen()]}</span>
+          <span>音声 {VOICE_LABELS[settings().voiceMode]}</span>
+          <span>
+            {scanState().index + 1} / {currentMenu().length}
+          </span>
         </div>
       </section>
 
-      <Show when={page() === 'letters'}>
+      <Show when={screen() === 'letters'}>
         <section class="letter-strip">
           <output>{letterText() || '文字を選んでください'}</output>
-          <button type="button" onClick={commitLetters}>
-            表示する
-          </button>
-          <button type="button" onClick={() => setLetterText((text) => text.slice(0, -1))}>
-            消す
-          </button>
         </section>
       </Show>
 
-      <section class="grid-board" aria-label={`${PAGE_TITLES[page()]}の選択肢`}>
-        <For each={visibleTiles()}>
-          {(tile, index) => (
-            <button
-              type="button"
-              class={`tile tile-${tile.tone ?? 'neutral'}`}
-              classList={{
-                scanning: scanEnabled() && scanIndex() === index(),
-                disabled: tile.disabled,
-              }}
-              disabled={tile.disabled}
-              onClick={() => activateTile(index())}
+      <section
+        class="grid-board"
+        classList={{ 'show-numbers': showDevNumbers }}
+        aria-label={`${SCREEN_TITLES[screen()]}の選択肢`}
+      >
+        <For each={currentMenu()}>
+          {(item, index) => (
+            <div
+              class={`tile tile-${item.tone ?? 'neutral'}`}
+              classList={{ scanning: scanState().index === index() }}
+              aria-hidden="true"
             >
               <span class="tile-number">{index() + 1}</span>
-              <span class="tile-label">{tile.label}</span>
-              <Show when={tile.detail}>
-                <span class="tile-detail">{tile.detail}</span>
+              <span class="tile-label">{item.label}</span>
+              <Show when={item.detail}>
+                <span class="tile-detail">{item.detail}</span>
               </Show>
-            </button>
+            </div>
           )}
         </For>
       </section>
 
-      <section class="history-row" aria-label="最近の表示">
-        <For each={history()}>
-          {(item) => (
-            <button type="button" onClick={() => showMessage(item)}>
-              {item}
+      <button
+        type="button"
+        class="caregiver-button"
+        data-caregiver-control
+        onPointerDown={onCaregiverButtonDown}
+        onPointerUp={onCaregiverButtonUp}
+        onPointerLeave={onCaregiverButtonUp}
+        onPointerCancel={onCaregiverButtonUp}
+        aria-label="介助者メニュー（2秒長押し）"
+      >
+        介助
+      </button>
+
+      <Show when={caregiverMenuOpen()}>
+        <div class="caregiver-overlay" data-caregiver-control>
+          <div class="caregiver-panel">
+            <h2>介助者メニュー</h2>
+
+            <button
+              type="button"
+              class="caregiver-action"
+              onClick={clearEmergency}
+              disabled={!emergencyActive()}
+            >
+              緊急解除{emergencyActive() ? '' : '（緊急なし）'}
             </button>
-          )}
-        </For>
-      </section>
+
+            <label class="caregiver-field">
+              <span>スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒</span>
+              <input
+                type="range"
+                min="500"
+                max="5000"
+                step="100"
+                value={settings().intervalMs}
+                onInput={(event) =>
+                  updateSettings({ intervalMs: Number(event.currentTarget.value) })
+                }
+              />
+            </label>
+
+            <label class="caregiver-field">
+              <span>先頭待機倍率: 間隔 × {settings().headHoldMultiplier}</span>
+              <input
+                type="range"
+                min="1"
+                max="5"
+                step="0.5"
+                value={settings().headHoldMultiplier}
+                onInput={(event) =>
+                  updateSettings({ headHoldMultiplier: Number(event.currentTarget.value) })
+                }
+              />
+            </label>
+
+            <label class="caregiver-field">
+              <span>連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒</span>
+              <input
+                type="range"
+                min="0"
+                max="3000"
+                step="100"
+                value={settings().debounceMs}
+                onInput={(event) =>
+                  updateSettings({ debounceMs: Number(event.currentTarget.value) })
+                }
+              />
+            </label>
+
+            <label class="caregiver-field caregiver-checkbox">
+              <input
+                type="checkbox"
+                checked={settings().auditoryScan}
+                onChange={(event) => updateSettings({ auditoryScan: event.currentTarget.checked })}
+              />
+              <span>聴覚スキャン</span>
+            </label>
+
+            <div class="caregiver-field">
+              <span>音声モード</span>
+              <div class="caregiver-voice-options">
+                <For each={VOICE_MODES}>
+                  {(mode) => (
+                    <button
+                      type="button"
+                      classList={{ active: settings().voiceMode === mode }}
+                      onClick={() => updateSettings({ voiceMode: mode })}
+                    >
+                      {VOICE_LABELS[mode]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="caregiver-action caregiver-close"
+              onClick={closeCaregiverMenu}
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      </Show>
     </main>
   )
 }
