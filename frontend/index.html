@@ -2,6 +2,26 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
+    <!-- PR#16 Opus レビュー nit: 起動直後のテーマ一瞬ちらつき(FOUC)防止。App.tsx(Solid)の
+         初回描画より前に、localStorageのsettings.theme(無ければprefers-color-scheme)から
+         data-theme を先に決めておく。例外は握りつぶし、失敗しても既定(light)のまま動く -->
+    <script>
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('libra')
+          var theme = raw ? JSON.parse(raw).theme : undefined
+          var resolved =
+            theme === 'light' || theme === 'dark'
+              ? theme
+              : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+          document.documentElement.dataset.theme = resolved
+        } catch (e) {
+          // 失敗しても既定(light)のまま動き続ける
+        }
+      })()
+    </script>
     <!-- Issue #5: 常設運用でダブルタップ/ピンチ拡大が起きないよう、本人のタップをズームに
          奪われないようにする。介助者パネル内の range/checkbox/button 操作は妨げない
          (globals.css の touch-action 上書きで確保する) -->

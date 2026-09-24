@@ -69,6 +69,22 @@ const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
 
 const FONT_SIZES: Settings['fontSize'][] = ['standard', 'large', 'xlarge']
 
+// PR#16 Opus レビュー must-3: 文字サイズが大きいほど、gridLayout に渡す最小セル寸法も
+// 大きくする。これにより「収まらない列数」自体を候補から外せる(CSS側のcqb/overflow:hidden
+// は最後の保険)。値は目視調整(--font-scale 1/1.25/1.55に対応)。
+const MIN_CELL_SIZE_BY_FONT_SIZE: Record<
+  Settings['fontSize'],
+  { minCellWidth: number; minCellHeight: number }
+> = {
+  standard: { minCellWidth: 160, minCellHeight: 96 },
+  // PR#16 Opus レビュー 再検証(2回目): 大/特大は当初の値だと「かろうじて条件を満たす
+  // 2列」を選んでしまい(実測 390px幅で195px列)、8文字前後のラベルが3〜4行に折り返した。
+  // fill モードで無理に敷き詰めず、条件を満たせなければスクロールの1列(全幅)へ
+  // フォールバックさせたほうが結果的に読みやすいため、閾値を引き上げる
+  large: { minCellWidth: 230, minCellHeight: 150 },
+  xlarge: { minCellWidth: 280, minCellHeight: 190 },
+}
+
 const THEME_LABELS: Record<Settings['theme'], string> = {
   light: '明るい',
   dark: '夜間',
@@ -76,6 +92,13 @@ const THEME_LABELS: Record<Settings['theme'], string> = {
 }
 
 const THEMES: Settings['theme'][] = ['light', 'dark', 'auto']
+
+// PR#16 Opus レビュー nit: <meta name="theme-color"> をテーマに追従させる。
+// --message-bg(通常時)と同じ値にする(globals.cssのトークンと目視で揃えている)
+const THEME_COLOR: Record<'light' | 'dark', string> = {
+  light: '#0f5132',
+  dark: '#0a2318',
+}
 
 export default function App() {
   // 開発補助: URL に ?dev を付けると番号バッジを表示する（既定は非表示）
@@ -106,6 +129,9 @@ export default function App() {
     document.documentElement.dataset.theme = resolvedTheme()
     document.documentElement.dataset.fontSize = settings().fontSize
     document.documentElement.dataset.highContrast = String(settings().highContrast)
+    // PR#16 Opus レビュー nit: ブラウザ/OSのUI色(タブバー等)もテーマに追従させる
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', THEME_COLOR[resolvedTheme()])
   })
   const scanConfig = createMemo<ScanConfig>(() => ({
     intervalMs: settings().intervalMs,
@@ -157,7 +183,9 @@ export default function App() {
   let gridBoardEl: HTMLElement | undefined
   const [gridSize, setGridSize] = createSignal({ width: 0, height: 0 })
   const gridLayout = createMemo(() =>
-    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height),
+    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height, {
+      ...MIN_CELL_SIZE_BY_FONT_SIZE[settings().fontSize],
+    }),
   )
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
@@ -172,6 +200,9 @@ export default function App() {
   createEffect(() => {
     scanIndex()
     screen() // 画面遷移直後、遷移前と同じ index(例: どちらも先頭)でも再度スクロールする
+    // PR#16 Opus レビュー nit: 画面サイズ変化(回転・キーボード開閉等)でタイル位置が
+    // ずれた場合にも追従して再スクロールする
+    gridSize()
     if (typeof document === 'undefined') return
     const el = document.querySelector('.tile.scanning')
     el?.scrollIntoView?.({ block: 'nearest' })
@@ -558,6 +589,8 @@ export default function App() {
 
   let longPressTimer: number | undefined
   const onCaregiverButtonDown = () => {
+    // PR#16 Opus レビュー nit: 前回分のタイマーが残っていたら先に消してから開始する
+    if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
     longPressTimer = window.setTimeout(() => {
       setCaregiverMenuOpen(true)
       resetCaregiverIdleTimer()
@@ -592,12 +625,9 @@ export default function App() {
         {/* kako-jun 追加指示: 下部の帯(介助ボタン・警告音停止中)を廃止し、タイル領域を
             画面下端まで使う。両方ともメッセージ欄右上、文字と重ならない位置へ移す */}
         <div class="message-panel-controls">
-          <Show when={!alarmAudioRunning()}>
-            {/* S-new-4: data-caregiver-control を外し pointer-events:none にする。
-                本人のタップは下のタイルへ届き、通常のスイッチ入力として扱われる(resumeも走る) */}
-            <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
-          </Show>
-
+          {/* PR#16 Opus レビュー should-6: 警告音停止中表示の有無でボタン位置が
+              跳ねないよう、介助ボタンを先頭固定にする(常に同じ位置)。表示が
+              現れる/消えるのはボタンの下だけ */}
           <button
             type="button"
             class="caregiver-button"
@@ -611,6 +641,12 @@ export default function App() {
           >
             介助
           </button>
+
+          <Show when={!alarmAudioRunning()}>
+            {/* S-new-4: data-caregiver-control を外し pointer-events:none にする。
+                本人のタップは下のタイルへ届き、通常のスイッチ入力として扱われる(resumeも走る) */}
+            <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
+          </Show>
         </div>
       </section>
 
@@ -636,7 +672,10 @@ export default function App() {
           {(item, index) => (
             <div
               class={`tile tile-${item.tone ?? 'neutral'}`}
-              classList={{ scanning: scanState().index === index() }}
+              classList={{
+                scanning: scanState().index === index(),
+                'tile-nav': item.action.type === 'navigate',
+              }}
               style={
                 gridLayout().fill &&
                 index() === currentMenu().length - 1 &&

@@ -474,6 +474,74 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
   return failures
 }
 
+/**
+ * PR#16 Opus レビュー must-3: 文字サイズ「特大」× 390x844 × 不快画面(8項目)で、
+ * タイルのラベルがタイル自身の矩形からはみ出さない(隣セルへ食い込まない)ことを確認する。
+ * gridLayout への最小セル寸法連動・container-type:size + cqb clamp・overflow:hiddenの
+ * 3段構えの対策がすべて外れた場合にここで検知する。
+ */
+async function checkLabelsFitAtXlarge(chromium, port) {
+  const base = `http://localhost:${port}/`
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+
+  try {
+    for (const theme of ['light', 'dark']) {
+      const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+      const page = await context.newPage()
+      await page.addInitScript(
+        (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
+        { intervalMs: 5000, fontSize: 'xlarge', theme },
+      )
+      await page.goto(base)
+      await page.waitForTimeout(300)
+      // home: index3 = 不快(先頭待機5000ms、以降intervalMs=5000msごとに進む。addInitScriptで
+      // intervalMsを伸ばし、タイミングのブレでずれないようにしている)
+      await page.waitForTimeout(5000 + 2 * 5000 + 200)
+      await page.keyboard.press('Space')
+      await page.waitForTimeout(300)
+
+      const info = await page.evaluate(() => {
+        const rectOf = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
+        const board = document.querySelector('.grid-board')
+        const boardRect = rectOf(board)
+        return [...document.querySelectorAll('.grid-board .tile')].map((tile) => {
+          const tileRect = rectOf(tile)
+          const label = tile.querySelector('.tile-label')
+          return {
+            label: label?.textContent,
+            tileRect,
+            labelRect: rectOf(label),
+            visible: tileRect.bottom > boardRect.top + 1 && tileRect.top < boardRect.bottom - 1,
+          }
+        })
+      })
+      for (const t of info) {
+        if (!t.visible || !t.labelRect) continue
+        const fits =
+          t.labelRect.left >= t.tileRect.left - 0.5 &&
+          t.labelRect.right <= t.tileRect.right + 0.5 &&
+          t.labelRect.top >= t.tileRect.top - 0.5 &&
+          t.labelRect.bottom <= t.tileRect.bottom + 0.5
+        if (!fits) {
+          failures.push(
+            `[xlarge-fit 390x844 ${theme} discomfort] ラベル"${t.label}"がタイルからはみ出している ` +
+              `(label ${JSON.stringify(t.labelRect)} / tile ${JSON.stringify(t.tileRect)})`,
+          )
+        }
+      }
+      await context.close()
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+
+  return failures
+}
+
 async function main() {
   if (!fs.existsSync(DIST_DIR)) {
     console.error(`dist/ が無い。先に \`npm run build\` を実行すること: ${DIST_DIR}`)
@@ -524,6 +592,16 @@ async function main() {
     overlapFailures.forEach((f) => console.error(f))
   }
   allFailures.push(...overlapFailures)
+  port += 1
+
+  console.log(`--- checking: xlarge-fit (port ${port}) ---`)
+  const xlargeFitFailures = await checkLabelsFitAtXlarge(chromium, port)
+  if (xlargeFitFailures.length === 0) {
+    console.log('[xlarge-fit] OK')
+  } else {
+    xlargeFitFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...xlargeFitFailures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)

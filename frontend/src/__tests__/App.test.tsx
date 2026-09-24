@@ -929,4 +929,66 @@ describe('App', () => {
       expect(yesTile.querySelector('.tile-preview')).toBeNull()
     })
   })
+
+  describe('PR#16 Opus レビュー should-4: ResizeObserver 実測 → 列数 → 最後のタイルのspan', () => {
+    // jsdom には ResizeObserver が無いため、App.tsx の `new ResizeObserver(cb)` を
+    // 差し替えて捕まえ、trigger() で実測イベントを手動発火できるようにする
+    class MockResizeObserver {
+      static instances: MockResizeObserver[] = []
+      callback: (entries: unknown[]) => void
+      constructor(callback: (entries: unknown[]) => void) {
+        this.callback = callback
+        MockResizeObserver.instances.push(this)
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      trigger(width: number, height: number) {
+        this.callback([
+          {
+            contentBoxSize: [{ inlineSize: width, blockSize: height }],
+            contentRect: { width, height },
+          },
+        ])
+      }
+    }
+
+    beforeEach(() => {
+      MockResizeObserver.instances = []
+      ;(window as unknown as { ResizeObserver: unknown }).ResizeObserver = MockResizeObserver
+    })
+
+    it('横長 1000x500 で7項目(ホーム+取り消し)なら 4列×2行、最後のタイルが span 2 になる', () => {
+      const { container } = render(() => <App />)
+      // 「はい」を選んで home+取り消しの7項目状態にする(緊急,取り消し,はい,いいえ,不快,快要望,文字盤)
+      vi.advanceTimersByTime(HEAD_HOLD_MS)
+      fireEvent.keyDown(window, { key: ' ' }) // はい選択 → home(取り消し表示)
+      expect(tileLabels(container)).toHaveLength(7)
+
+      const observer = MockResizeObserver.instances[MockResizeObserver.instances.length - 1]
+      observer.trigger(1000, 500)
+
+      const board = container.querySelector('.grid-board') as HTMLElement
+      expect(board.classList.contains('grid-fill')).toBe(true)
+      expect(board.style.getPropertyValue('--cols')).toBe('4')
+      expect(board.style.getPropertyValue('--rows')).toBe('2')
+
+      const tiles = Array.from(container.querySelectorAll('.tile'))
+      const lastTile = tiles[tiles.length - 1] as HTMLElement
+      expect(lastTile.style.gridColumn).toBe('span 2')
+    })
+
+    it('画面サイズが変わり列数が変化すると --cols が追従する', () => {
+      const { container } = render(() => <App />)
+      const observer = MockResizeObserver.instances[MockResizeObserver.instances.length - 1]
+
+      observer.trigger(1000, 500) // 横長: 6項目(ホーム)は3列×2行になるはず
+      const board = container.querySelector('.grid-board') as HTMLElement
+      expect(board.style.getPropertyValue('--cols')).toBe('3')
+
+      observer.trigger(500, 1000) // 縦長に変化: 2列側に変わる
+      expect(board.style.getPropertyValue('--cols')).toBe('2')
+      expect(board.style.getPropertyValue('--rows')).toBe('3')
+    })
+  })
 })
