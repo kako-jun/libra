@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
+  getAlarmAudioStatus,
   initAlarmVisibilityResume,
   resumeAlarmAudioContext,
   startAlarm,
@@ -13,6 +14,7 @@ let mod: {
   startAlarm: typeof startAlarm
   stopAlarm: typeof stopAlarm
   initAlarmVisibilityResume: typeof initAlarmVisibilityResume
+  getAlarmAudioStatus: typeof getAlarmAudioStatus
 }
 
 class MockGain {
@@ -180,6 +182,9 @@ describe('alarm', () => {
       ;(window as unknown as { AudioContext?: unknown }).AudioContext = TrackedAudioContext
       mod = await import('../alarm')
       mod.resumeAlarmAudioContext() // audioContext を作らせておく(この呼び出し自体もresumeする)
+      // resume 進行中フラグが解除されるまでマイクロタスクを進める(多重resume防止と競合しないように)
+      await Promise.resolve()
+      await Promise.resolve()
       getInstance()?.resume.mockClear()
 
       const stop = mod.initAlarmVisibilityResume()
@@ -217,6 +222,107 @@ describe('alarm', () => {
     it('document が存在しない等の環境でも例外を出さず、呼ばれても何もしない解除関数を返す', () => {
       const stop = mod.initAlarmVisibilityResume()
       expect(() => stop()).not.toThrow()
+    })
+  })
+
+  describe('S-new-2: resume 完了時、アラーム動作中なら次の周期を待たず即座に1回鳴らす', () => {
+    // 実機の AudioContext は resume() を何度呼んでも実際に running になるタイミングは
+    // 1つなので、テストの mock も呼び出しごとに新しい Promise を作らず、保留中の resolver
+    // を全部まとめて解決できるようにする(beep() 内部が独自に resume() を呼ぶこともあるため)。
+    let pendingResumeResolvers: Array<() => void> = []
+    const resolveAllPendingResumes = () => {
+      const resolvers = pendingResumeResolvers
+      pendingResumeResolvers = []
+      resolvers.forEach((resolve) => resolve())
+    }
+
+    class DeferredResumeAudioContext extends MockAudioContext {
+      state = 'suspended'
+      resume = vi.fn().mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            // 実機同様、resume が実際に解決するときには state も running になっている
+            pendingResumeResolvers.push(() => {
+              this.state = 'running'
+              resolve()
+            })
+          }),
+      )
+    }
+
+    it('タッチで緊急を選んだ直後(suspendedでbeepがスキップされた後)、resumeが解決した瞬間に鳴る', async () => {
+      vi.resetModules()
+      beepCount = 0
+      pendingResumeResolvers = []
+      ;(window as unknown as { AudioContext?: unknown }).AudioContext = DeferredResumeAudioContext
+      mod = await import('../alarm')
+
+      mod.startAlarm(3000) // suspended のため1周期目は鳴らない
+      expect(beepCount).toBe(0)
+
+      resolveAllPendingResumes() // resume が実際に完了した
+      await Promise.resolve()
+      await Promise.resolve()
+
+      // repeatMs(3000ms)を待たずに鳴っている
+      expect(beepCount).toBe(1)
+    })
+
+    it('resumeAlarmAudioContext を連打しても、resume解決時に複数回まとめて鳴らない', async () => {
+      vi.resetModules()
+      beepCount = 0
+      pendingResumeResolvers = []
+      ;(window as unknown as { AudioContext?: unknown }).AudioContext = DeferredResumeAudioContext
+      mod = await import('../alarm')
+
+      mod.startAlarm(3000)
+      mod.resumeAlarmAudioContext()
+      mod.resumeAlarmAudioContext()
+      mod.resumeAlarmAudioContext()
+
+      resolveAllPendingResumes()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(beepCount).toBe(1)
+    })
+
+    it('アラームが動作していない(intervalId===null)ときは resume 完了でも鳴らない', async () => {
+      vi.resetModules()
+      beepCount = 0
+      pendingResumeResolvers = []
+      ;(window as unknown as { AudioContext?: unknown }).AudioContext = DeferredResumeAudioContext
+      mod = await import('../alarm')
+
+      mod.resumeAlarmAudioContext() // startAlarm は呼ばない(アラーム未動作)
+
+      resolveAllPendingResumes()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(beepCount).toBe(0)
+    })
+  })
+
+  describe('getAlarmAudioStatus', () => {
+    it('AudioContext が未生成のときは not-running', () => {
+      expect(mod.getAlarmAudioStatus()).toBe('not-running')
+    })
+
+    it('running な AudioContext を生成した後は running', () => {
+      mod.resumeAlarmAudioContext()
+      expect(mod.getAlarmAudioStatus()).toBe('running')
+    })
+
+    it('suspended な AudioContext のときは not-running', async () => {
+      class SuspendedAudioContext extends MockAudioContext {
+        state = 'suspended'
+      }
+      vi.resetModules()
+      ;(window as unknown as { AudioContext?: unknown }).AudioContext = SuspendedAudioContext
+      mod = await import('../alarm')
+      mod.resumeAlarmAudioContext()
+      expect(mod.getAlarmAudioStatus()).toBe('not-running')
     })
   })
 })

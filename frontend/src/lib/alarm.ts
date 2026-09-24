@@ -12,6 +12,7 @@ function getAudioContextCtor(): AudioContextCtor | undefined {
 
 let audioContext: AudioContext | null = null
 let intervalId: number | null = null
+let resumeInFlight = false
 
 /** 最初のユーザー入力で呼ぶ。AudioContext は自動再生ポリシーのため resume が要る。 */
 export function resumeAlarmAudioContext(): void {
@@ -21,10 +22,31 @@ export function resumeAlarmAudioContext(): void {
       if (!Ctor) return
       audioContext = new Ctor()
     }
-    if (audioContext.state === 'suspended') void audioContext.resume()
+    // 連打で resume() を何度呼んでも、その解決時に複数回キャッチアップ鳴動しないよう
+    // 進行中は多重に .then を積まない。
+    if (audioContext.state === 'suspended' && !resumeInFlight) {
+      resumeInFlight = true
+      audioContext
+        .resume()
+        .then(() => {
+          resumeInFlight = false
+          // S-new-2: タッチで最初に緊急を選ぶと pointerdown 時点では suspended のため
+          // beep がスキップされ、最大 repeatMs(既定3秒)警告音が遅れる。resume が実際に
+          // 完了した瞬間、アラーム動作中(intervalId!==null)なら次の周期を待たず1回鳴らす。
+          if (intervalId !== null) beep()
+        })
+        .catch(() => {
+          resumeInFlight = false
+        })
+    }
   } catch {
     // AudioContext が使えない環境ではアラームなしで動作を続ける
   }
+}
+
+/** 警告音が鳴る状態かどうか。AudioContext が running でなければ鳴らない。 */
+export function getAlarmAudioStatus(): 'running' | 'not-running' {
+  return audioContext?.state === 'running' ? 'running' : 'not-running'
 }
 
 function beep(): void {
@@ -35,7 +57,9 @@ function beep(): void {
   // 複数周期分の音がまとめて鳴る(キャッチアップ)ことになるため、このタイミングでは諦める。
   if (ctx.state !== 'running') {
     try {
-      void ctx.resume()
+      void ctx.resume().catch(() => {
+        // resume できない環境でもアラーム自体は落とさない(unhandled rejection 防止)
+      })
     } catch {
       // resume できない環境でもアラーム自体は落とさない
     }
