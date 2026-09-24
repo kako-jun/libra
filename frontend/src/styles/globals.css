@@ -314,10 +314,14 @@ button {
 h1 {
   margin: 0;
   max-width: 16ch;
+  /* PR#16 再レビュー should-b 再検証: 初版(vh項7・cqi上限14・倍率上限5.4rem、タイルと
+     同じ比率)は大/特大で40dvhの上限を最大75px超える組み合わせがあった(768x1024 特大
+     高コントラスト等、720状態監査 scratchpad/rv16r.mjs で検出)。vh項・cqi上限・倍率
+     上限をいずれも切り詰め、40dvh一杯まで育つ手前で頭打ちにする */
   font-size: clamp(
     2.35rem,
-    min(calc(var(--font-scale) * 7vh), 14cqi),
-    calc(var(--font-scale) * 5.4rem)
+    min(calc(var(--font-scale) * 5vh), 10cqi),
+    calc(var(--font-scale) * 4.2rem)
   );
   line-height: 1.05;
   letter-spacing: 0;
@@ -850,10 +854,11 @@ h1 {
   }
 
   h1 {
+    /* should-b 再検証(狭幅ブレークポイント側も同様に切り詰める。上の基本ルールと同じ理由) */
     font-size: clamp(
       1.5rem,
-      min(calc(var(--font-scale) * 5.5vh), 16cqi),
-      calc(var(--font-scale) * 2.4rem)
+      min(calc(var(--font-scale) * 4vh), 12cqi),
+      calc(var(--font-scale) * 1.9rem)
     );
   }
 
