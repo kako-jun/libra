@@ -8,26 +8,30 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 
 ## Features
 
+- **Single-switch input only** — The patient has exactly one input: a tap anywhere on the screen, any key (Bluetooth shutter buttons arrive as key presses), or a Bluetooth shutter itself. All of these are the same "on" signal.
+- **Always-on auto scan** — Scanning runs from app startup; there is no start/stop control in the patient's path, since a stopped scan can't be restarted by someone who can't reach a "start" button.
+- **Safety-ordered screens** — Every screen's scan lap starts with Emergency; sub-screens put Back right after it. Free-text letter board sits behind the structured menus, never in front.
 - **Large grid UI** — Not fixed to Esuna's 9-grid rule, but keeps the same easy-to-press grid feeling.
-- **Urgent / slow paths** — Urgent phrases are one tap away; slower communication can go deeper.
 - **Message display** — The selected phrase is shown in large type so the person nearby can read it.
+- **Emergency alarm** — Selecting Emergency shows a red banner with no confirmation step and sounds a Web Audio alarm (works even with speech OFF) until a caregiver clears it.
+- **Caregiver menu** — A 2-second long-press on a corner button opens scan interval / head-hold / debounce / auditory-scan / speech-mode settings and emergency clear. Settings persist to localStorage.
 - **Speech modes** — Off, vibration/tone only, short speech, and full speech.
-- **Auto scan mode** — Space / Enter can activate the currently highlighted tile, matching Bluetooth shutter button style input.
 - **PWA-ready structure** — Same frontend/backend/release shape as Esuna.
 
 ## Prototype Scope
 
-| Area | Status |
-|---|---|
-| Urgent phrases | Working |
-| Slow menus | Working |
-| Pain / discomfort / mood | Working |
-| Letter board | Prototype |
-| Speech mode | Prototype |
-| Auto scan | Prototype |
-| Custom phrase editing | Planned |
-| Caregiver confirmation | Planned |
-| External switch pairing | Planned |
+| Area                                                  | Status                                                               |
+| ----------------------------------------------------- | -------------------------------------------------------------------- |
+| Single-switch scanning (tap / any key / BT shutter)   | Working                                                              |
+| Safety-ordered screens (Emergency first, Back second) | Working                                                              |
+| Emergency + alarm                                     | Working                                                              |
+| Yes / No                                              | Working                                                              |
+| Discomfort / mood / pain location                     | Working                                                              |
+| Letter board                                          | Prototype (simplified entry; full 2-stage kana keyboard is planned)  |
+| Speech mode                                           | Working                                                              |
+| Caregiver menu (long-press settings)                  | Working                                                              |
+| Custom phrase editing                                 | Planned                                                              |
+| External switch pairing                               | Planned (keyboard-event bridge only; native pairing not implemented) |
 
 ## For Developers
 
