@@ -311,6 +311,40 @@ describe('alarm', () => {
     })
   })
 
+  describe('nit: closed になった AudioContext を破棄して作り直す', () => {
+    it('ensureAudioContext は closed のインスタンスを再利用せず、新しく作って onstatechange を配線し直す', async () => {
+      const instances: Array<{ state: string; onstatechange: (() => void) | null }> = []
+      class TrackedAudioContext extends MockAudioContext {
+        onstatechange: (() => void) | null = null
+        constructor() {
+          super()
+          instances.push(this)
+        }
+      }
+      vi.resetModules()
+      beepCount = 0
+      ;(window as unknown as { AudioContext?: unknown }).AudioContext = TrackedAudioContext
+      mod = await import('../alarm')
+
+      mod.resumeAlarmAudioContext() // 1つ目のインスタンスを作る
+      expect(instances.length).toBe(1)
+      expect(mod.getAlarmAudioStatus()).toBe('running')
+
+      instances[0].state = 'closed'
+      mod.resumeAlarmAudioContext() // closed を検出し、新しいインスタンスを作るはず
+      expect(instances.length).toBe(2)
+      expect(instances[0]).not.toBe(instances[1])
+      expect(instances[1].onstatechange).not.toBeNull()
+
+      // 新しいインスタンスにも onstatechange が配線されていることを確認する
+      mod.startAlarm(3000)
+      beepCount = 0
+      instances[1].state = 'running'
+      instances[1].onstatechange?.()
+      expect(beepCount).toBe(1)
+    })
+  })
+
   describe('getAlarmAudioStatus', () => {
     it('AudioContext が未生成のときは not-running', () => {
       expect(mod.getAlarmAudioStatus()).toBe('not-running')

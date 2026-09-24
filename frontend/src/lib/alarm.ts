@@ -25,6 +25,11 @@ let intervalId: number | null = null
  * 実際に running へ遷移した瞬間だけ onstatechange で捉える。
  */
 function ensureAudioContext(): AudioContext | null {
+  // nit: closed になった AudioContext は resume() しても二度と running にならない。
+  // 破棄して作り直し、onstatechange も新しいインスタンスに配線し直す。
+  if (audioContext && audioContext.state === 'closed') {
+    audioContext = null
+  }
   if (audioContext) return audioContext
   const Ctor = getAudioContextCtor()
   if (!Ctor) return null
