@@ -296,6 +296,14 @@ button {
   gap: 6px;
   justify-self: end;
   align-self: start;
+  /* PR#16 4巡目 nit-b: .audio-status-hint(警告音停止中表示)はAudioContextのresume待ちの
+     間だけ一時的に現れる。この列は grid-template-columns:1fr auto の auto 側なので、
+     出現/消失のたびに列幅(≒このcontrols列の実際の幅)が変わり、それに押し出される形で
+     h1 の実効幅・折返し行数、ひいては grid-board の面積まで変わってしまっていた
+     (実測: 320x568特大ホーム+取り消しで22.7px→21.8pxのラベル縮小として現れた)。
+     .audio-status-hint の max-width(下の宣言、ブレークポイントで128pxに上書き)と
+     同じ幅を表示の有無に関わらず常に確保し、出現・消失で列幅が変化しないようにする */
+  min-width: 200px;
 }
 
 :root[data-message-tone='urgent'] .message-panel {
@@ -889,6 +897,12 @@ h1 {
   .audio-status-hint {
     max-width: 128px;
     font-size: 0.68rem;
+  }
+
+  /* PR#16 4巡目 nit-b: 上の .audio-status-hint の max-width 上書きに合わせて、
+     常時確保する幅もこのブレークポイントでは128pxに縮める */
+  .message-panel-controls {
+    min-width: 128px;
   }
 
   .grid-board {
