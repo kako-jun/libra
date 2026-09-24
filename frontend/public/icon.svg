@@ -1,11 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="libra">
   <rect width="512" height="512" fill="#f3fbf7" />
-  <rect x="88" y="112" width="336" height="256" rx="40" fill="#064e3b" />
-  <circle cx="146" cy="392" r="26" fill="#064e3b" />
-  <g fill="#f3fbf7">
-    <rect x="128" y="152" width="112" height="80" rx="14" />
-    <rect x="272" y="152" width="112" height="80" rx="14" />
-    <rect x="128" y="248" width="112" height="80" rx="14" />
-    <rect x="272" y="248" width="112" height="80" rx="14" />
+  <!-- 天秤(libra=天秤座)を3要素だけに単純化したモチーフ(DESIGN.md Icon 節参照):
+       正三角形(支点。頂点が上)/ 頂点の丸(支点の軸)/ その丸を通る水平の横棒(梁)。
+       皿・吊り紐は描かない。左右対称・横棒は傾けず水平のまま。すべて面で塗り、
+       favicon サイズ(16-32px)でも潰れない太さにする -->
+  <g fill="#064e3b">
+    <!-- 正三角形(支点) -->
+    <path d="M256 180 L346 380 L166 380 Z" />
+    <!-- 横棒(梁)。頂点の丸を貫通する水平バー。太さは全体幅の1/10以上 -->
+    <rect x="90" y="160" width="332" height="40" />
+    <!-- 頂点の丸(支点の軸) -->
+    <circle cx="256" cy="180" r="54" />
   </g>
 </svg>
