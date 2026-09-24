@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } from './lib/menus'
-import { press, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
+import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { loadSettings, saveSettings, type Settings } from './lib/settings'
 import { resumeAlarmAudioContext, startAlarm, stopAlarm } from './lib/alarm'
 
@@ -46,19 +46,21 @@ export default function App() {
   const [message, setMessage] = createSignal(DEFAULT_MESSAGE)
   const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
   const [messageHistory, setMessageHistory] = createSignal<string[]>([])
+  // 緊急中に選ばれた伝達（はい等）は見出しを上書きせず、この副表示にのみ出す
+  const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(null)
   const [showUndo, setShowUndo] = createSignal(false)
   let undoLapsRemaining = 0
 
   const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
   const [letterText, setLetterText] = createSignal('')
 
+  // 表示中メニューはここでしか作らない。スキャン状態・レンダリングの双方が
+  // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
   const currentMenu = createMemo(() =>
-    buildMenu(screen(), { showUndo: showUndo() && !emergencyActive() }),
+    buildMenu(screen(), { showUndo: showUndo(), emergencyActive: emergencyActive() }),
   )
 
-  const [scanState, setScanState] = createSignal<ScanState>(
-    startScan(currentMenu().length, Date.now(), scanConfig()),
-  )
+  const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
 
   const announce = (text: string, shortText = text) => speak(settings().voiceMode, text, shortText)
 
@@ -82,15 +84,22 @@ export default function App() {
 
   const goTo = (next: ScreenId) => {
     setScreen(next)
-    const items = currentMenu()
-    setScanState(startScan(items.length, Date.now(), scanConfig()))
+    setScanState(startScan(Date.now(), scanConfig()))
   }
 
+  // 通常の伝達完了。緊急中は見出し(緊急表示)を上書きせず、副表示にだけ出す
+  // （requirements.md §4.3: 緊急表示は介助者が解除するまで残り、本人入力で上書きされない）。
   const completeTransmission = (text: string, tone: Tone = 'neutral') => {
+    if (emergencyActive()) {
+      setEmergencySubMessage(text)
+      navigator.vibrate?.(35)
+      announce(text)
+      goTo('home')
+      return
+    }
     showMessage(text, tone)
-    const allowUndo = !emergencyActive()
-    setShowUndo(allowUndo)
-    undoLapsRemaining = allowUndo ? 1 : 0
+    setShowUndo(true)
+    undoLapsRemaining = 1
     goTo('home')
   }
 
@@ -104,6 +113,7 @@ export default function App() {
 
   const clearEmergency = () => {
     setEmergencyActive(false)
+    setEmergencySubMessage(null)
     stopAlarm()
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
@@ -132,6 +142,9 @@ export default function App() {
         return
       }
       case 'undo': {
+        // menus.ts の buildHomeMenu が緊急中は取り消しをメニューに含めないが、
+        // 数字キー等での直接実行に備えてここでも二重に防ぐ
+        if (emergencyActive()) return
         const previous = messageHistory()[1] ?? DEFAULT_MESSAGE
         setMessageHistory((items) => items.slice(1))
         setMessage(previous)
@@ -185,13 +198,16 @@ export default function App() {
 
   const handleSwitchOn = (now: number) => {
     if (caregiverMenuOpen()) return
-    const result = press(scanState(), now, scanConfig())
+    const itemCount = currentMenu().length
+    const resynced = resync(scanState(), itemCount)
+    const result = press(resynced, itemCount, now, scanConfig())
     setScanState(result.state)
     if (result.activatedIndex === null) return
     activateIndex(result.activatedIndex)
   }
 
   // スキャンの進行ループ。setTimeout を自己再スケジュールし、次に進めるべき時刻に合わせる。
+  // 毎回 currentMenu() から項目数を取り、表示中メニューとスキャン状態を同じ配列から導出する。
   onMount(() => {
     let timeoutId: number | undefined
 
@@ -202,16 +218,19 @@ export default function App() {
     function step() {
       if (!caregiverMenuOpen()) {
         const now = Date.now()
-        const previous = scanState()
-        const next = tick(previous, now, scanConfig())
-        if (next !== previous) {
+        const items = currentMenu()
+        const previous = resync(scanState(), items.length)
+        const next = tick(previous, items.length, now, scanConfig())
+        if (next !== scanState()) {
           setScanState(next)
+        }
+        if (next.index !== previous.index) {
           if (next.index === 0 && screen() === 'home' && undoLapsRemaining > 0) {
             undoLapsRemaining -= 1
             if (undoLapsRemaining === 0) setShowUndo(false)
           }
           if (settings().auditoryScan) {
-            const item = currentMenu()[next.index]
+            const item = items[next.index]
             if (item) announceScanItem(item.label)
           }
         }
@@ -239,8 +258,8 @@ export default function App() {
       if (event.repeat) return
       resumeAlarmAudioContext()
       if (caregiverMenuOpen()) return
-      if (/^[1-9]$/.test(event.key)) {
-        // 開発補助: 数字キーで先頭9項目を直接実行する。スイッチ扱いより先に処理し二重実行しない
+      if (showDevNumbers && /^[1-9]$/.test(event.key)) {
+        // 開発補助(?dev限定): 数字キーで先頭9項目を直接実行する。スイッチ扱いより先に処理し二重実行しない
         event.preventDefault()
         activateIndex(Number(event.key) - 1)
         return
@@ -276,6 +295,9 @@ export default function App() {
         <div>
           <p class="eyebrow">bedside communication</p>
           <h1>{message()}</h1>
+          <Show when={emergencyActive() && emergencySubMessage()}>
+            <p class="emergency-sub">最新: {emergencySubMessage()}</p>
+          </Show>
         </div>
         <div class="status-stack" aria-label="現在の状態">
           <span>{SCREEN_TITLES[screen()]}</span>
