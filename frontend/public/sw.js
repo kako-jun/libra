@@ -12,21 +12,35 @@ const PRECACHE_URLS = __PRECACHE_URLS__
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) =>
-        Promise.all(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME)
+      try {
+        // まず全URLを取得して全件 response.ok を確認してから、まとめて cache.put する。
+        // 1件でも取得失敗(reject)/非ok(4xx/5xx)があれば、この時点で cache.put を1件も
+        // 行わずに throw して install 自体を失敗させる。install が失敗すればこの新しい
+        // SWは有効化されず、既存の(直前まで正常だった)SWがそのまま動き続けるため、
+        // 壊れた版に丸ごと入れ替わって白画面固定になることを防げる(PR#11 再レビュー must-B。
+        // 以前は個々の fetch の成否を見ずに cache.put していたため、5xx/404 応答がそのまま
+        // precache に入り、しかも旧キャッシュは activate 時に削除済みで復旧手段が無かった)
+        const fetched = await Promise.all(
           PRECACHE_URLS.map(async (url) => {
+            const response = await fetch(url, { cache: 'reload' })
+            if (!response.ok) {
+              throw new Error(`precache fetch failed: ${url} responded ${response.status}`)
+            }
+            return { url, response }
+          }),
+        )
+        await Promise.all(
+          fetched.map(async ({ url, response }) => {
             // Cache.addAll() は使わない。Cloudflare Pages 等は `/index.html` への直接
             // アクセスを `/` へ 308 リダイレクトすることがあり(PRECACHE_URLS 側は既に
             // `/` キーで統一済みだが、配信側の設定次第では `/` 自体が何かにリダイレクト
             // される可能性もゼロではない)、redirected な Response をそのまま
             // cache.put() すると、オフライン時にそれを返した際ブラウザが存在しない
             // リダイレクト先を辿ろうとして失敗する(実機 Playwright 検証で
-            // net::ERR_FAILED として再現)。{cache:'reload'} でキャッシュを経由せず
-            // 取得し、redirected なら本文だけを取り出して素の 200 レスポンスに
-            // 作り直してから保存する
-            const response = await fetch(url, { cache: 'reload' })
+            // net::ERR_FAILED として再現)。redirected なら本文だけを取り出して素の
+            // 200 レスポンスに作り直してから保存する
             const toStore = response.redirected
               ? new Response(await response.blob(), {
                   status: response.status,
@@ -36,9 +50,14 @@ self.addEventListener('install', (event) => {
               : response
             await cache.put(url, toStore)
           }),
-        ),
-      )
-      .then(() => self.skipWaiting()),
+        )
+      } catch (error) {
+        // 途中まで cache.put していても、この版は不完全なので使わせない
+        await caches.delete(CACHE_NAME)
+        throw error
+      }
+      await self.skipWaiting()
+    })(),
   )
 })
 
@@ -88,20 +107,26 @@ self.addEventListener('fetch', (event) => {
   // 無いため、常に ignoreVary で見る
   const matchOptions = { ignoreVary: true }
 
-  async function navigateFallback() {
-    const cache = await caches.open(CACHE_NAME)
-    return (await cache.match('/', matchOptions)) ?? Response.error()
-  }
-
   // ナビゲーション(URL直入力・リロード等)は 3秒タイムアウト付き network-first。
-  // オフライン・タイムアウト・5xx等の失敗時はキャッシュ済みの `/` へ必ずフォールバックする
+  // オフライン・タイムアウト・5xx等の失敗時はキャッシュ済みの `/` へフォールバックする
   // (SPA なので実ファイルが無いパスでもこれで起動できる)。lie-fi 等で応答は来るが
-  // !response.ok なだけの場合も、白画面よりキャッシュ済みの本体を出す方を優先する
+  // !response.ok なだけの場合も、白画面よりキャッシュ済みの本体を出す方を優先する。
+  // PR#11 再レビュー should-1: キャッシュが無い場合(初回アクセス等)は、3秒で諦めて
+  // Response.error() を返すのではなく、タイムアウト無しでネットワークの応答を待ち続ける
+  // (非ok応答であってもそのまま返す。真っ白より情報のあるエラーページの方がよい)
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetchWithTimeout(request, 3000)
-        .then((response) => (response.ok ? response : navigateFallback()))
-        .catch(() => navigateFallback()),
+      (async () => {
+        const cache = await caches.open(CACHE_NAME)
+        const cached = await cache.match('/', matchOptions)
+        if (!cached) return fetch(request)
+        try {
+          const response = await fetchWithTimeout(request, 3000)
+          return response.ok ? response : cached
+        } catch {
+          return cached
+        }
+      })(),
     )
     return
   }
