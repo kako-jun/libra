@@ -75,12 +75,12 @@ Source of truth: `docs/requirements.md`.
 
 ## 7. Icon
 
-Decided at planning time (2026-05-07): an abstract balance-scale (libra = the zodiac Libra) motif, green-based. `frontend/public/icon.svg` is the source; PWA icons and the favicon are generated from it.
+Decided at planning time (2026-05-07, corrected 2026-09-24): an abstract balance-scale (libra = the zodiac Libra) motif, single-color green (`#064e3b`) on the app background (`#f3fbf7`). `frontend/public/icon.svg` is the source; PWA icons and the favicon are generated from it.
 
-The motif is exactly three shapes, filled (not stroked), all in Primary `#064e3b` (a slightly different shade such as Tile border `#065f46` may be used for the circle alone, but a single flat color is also fine):
+The motif is exactly these shapes, all in `#064e3b`:
 
-1. An upward-pointing equilateral-ish triangle (the fulcrum/base), apex up.
-2. A circle centered on the triangle's apex (the pivot).
-3. A horizontal bar passing through that circle, perfectly level (never tilted) and symmetric left/right. Its thickness is at least 1/10 of its length so it survives a 16–32px favicon without collapsing into a hairline.
+1. Two equal-sized, upward-pointing (roughly equilateral) triangles side by side, bases at the same height. **Outline only — never filled.** The stroke is thick enough to survive a 16–32px favicon (≈28–36px at the 512×512 canvas scale) with rounded joins/caps.
+2. A filled circle sitting on each triangle's apex (one per triangle — two circles total).
+3. A single horizontal bar that only connects the two circles — it runs from the right edge of the left circle to the left edge of the right circle, ending flush with (or barely overlapping) each circle. It never pierces through either circle, and it stays perfectly level (never tilted).
 
-No pans, no hanging strings, no other motif (e.g. a speech bubble or grid) — do not swap this for a different icon concept without an explicit decision, since this was chosen deliberately over the app's own tile-grid visual language. All shapes stay within the maskable safe zone (the centered 80% circle of the 512×512 canvas) so launchers that crop to a circle/squircle never cut into the scale.
+No pans, no hanging strings, no other motif (e.g. a speech bubble, grid, or a single triangle+circle+bar) — do not swap this for a different icon concept without an explicit decision, since this was chosen deliberately over the app's own tile-grid visual language. All shapes stay within the maskable safe zone (the centered 80% circle of the 512×512 canvas) so launchers that crop to a circle/squircle never cut into the scale.
