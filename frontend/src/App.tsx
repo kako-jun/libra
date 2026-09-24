@@ -60,11 +60,34 @@ function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
   window.speechSynthesis?.speak(utterance)
 }
 
+const DESIGN_VARIANTS = ['a', 'b'] as const
+type DesignVariant = (typeof DESIGN_VARIANTS)[number]
+
+const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
+  standard: '標準',
+  large: '大',
+  xlarge: '特大',
+}
+
+const FONT_SIZES: Settings['fontSize'][] = ['standard', 'large', 'xlarge']
+
 export default function App() {
   // 開発補助: URL に ?dev を付けると番号バッジを表示する（既定は非表示）
   const showDevNumbers = new URLSearchParams(window.location.search).has('dev')
 
+  // Issue #3: ?design=a|b で見た目の案を切り替える（既定 a）。値だけが違う2案を
+  // 見比べられるようにするための開発・意思決定用の入口で、本人の操作対象ではない。
+  const designParam = new URLSearchParams(window.location.search).get('design')
+  const design: DesignVariant = DESIGN_VARIANTS.includes(designParam as DesignVariant)
+    ? (designParam as DesignVariant)
+    : 'a'
+  document.documentElement.dataset.design = design
+
   const [settings, setSettings] = createSignal<Settings>(loadSettings())
+  createEffect(() => {
+    document.documentElement.dataset.fontSize = settings().fontSize
+    document.documentElement.dataset.highContrast = String(settings().highContrast)
+  })
   const scanConfig = createMemo<ScanConfig>(() => ({
     intervalMs: settings().intervalMs,
     headHoldMs: settings().intervalMs * settings().headHoldMultiplier,
@@ -515,7 +538,6 @@ export default function App() {
     <main class="app-shell">
       <section class="message-panel" aria-live="polite">
         <div>
-          <p class="eyebrow">bedside communication</p>
           <h1>{message()}</h1>
           <Show when={emergencyActive() && emergencyDetails().length > 0}>
             <ul class="emergency-details">
@@ -678,6 +700,32 @@ export default function App() {
                 </For>
               </div>
             </div>
+
+            <div class="caregiver-field">
+              <span>文字サイズ</span>
+              <div class="caregiver-choice-options">
+                <For each={FONT_SIZES}>
+                  {(size) => (
+                    <button
+                      type="button"
+                      classList={{ active: settings().fontSize === size }}
+                      onClick={() => updateSettings({ fontSize: size })}
+                    >
+                      {FONT_SIZE_LABELS[size]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <label class="caregiver-field caregiver-checkbox">
+              <input
+                type="checkbox"
+                checked={settings().highContrast}
+                onChange={(event) => updateSettings({ highContrast: event.currentTarget.checked })}
+              />
+              <span>高コントラスト</span>
+            </label>
 
             <button
               type="button"

@@ -1,6 +1,110 @@
+/* ===================================================================
+   Design tokens (Issue #3)
+   ------------------------------------------------------------------
+   すべての色は変数に集約する。ハードコード色を残さない。
+   data-design="a" (明るい・穏やか、既定) / "b" (暗い・夜間向け) を
+   :root に付け、値だけを切り替える。構造(セレクタ)は両案で共通。
+   data-high-contrast="true" は両案の上に重ねて効く。
+   =================================================================== */
+:root,
+:root[data-design='a'] {
+  --bg: #eafaf1;
+  --surface: #ffffff;
+  --surface-calm: #dcf5e6;
+  --surface-positive: #c9f0d9;
+  --surface-scanning: #fff6c8;
+  --text: #0f241d;
+  --text-muted: #4b6358;
+  --message-bg: #0f5132;
+  --message-text: #f3fbf7;
+  --message-text-muted: #bfe8d4;
+  --urgent-bg: #b3261e;
+  --urgent-text: #ffffff;
+  --urgent-text-muted: #ffd9d6;
+  --scan-ring: #facc15;
+  --shadow: rgb(15 36 29 / 12%);
+  --caregiver-bg: #052e2b;
+  --caregiver-panel-bg: #ffffff;
+  --caregiver-status-ok-bg: #ecfdf5;
+  --caregiver-status-ok-border: #86efac;
+  --caregiver-status-warn-bg: #fff7ed;
+  --caregiver-status-warn-border: #f59e0b;
+  --caregiver-status-warn-text: #7f1d1d;
+  --caregiver-action-bg: #065f46;
+  --caregiver-action-text: #ffffff;
+  --caregiver-close-bg: #052e2b;
+  --font-scale: 1;
+  --tile-border-width: 0px;
+  --tile-border-color: transparent;
+}
+
+:root[data-design='b'] {
+  --bg: #07140f;
+  --surface: #17362a;
+  --surface-calm: #123a29;
+  --surface-positive: #1a4a32;
+  --surface-scanning: #4a3d0b;
+  --text: #eafaf1;
+  --text-muted: #9fc4b0;
+  --message-bg: #0a2318;
+  --message-text: #eafaf1;
+  --message-text-muted: #9fc4b0;
+  --urgent-bg: #d7263d;
+  --urgent-text: #ffffff;
+  --urgent-text-muted: #ffd9d6;
+  --scan-ring: #facc15;
+  --shadow: rgb(0 0 0 / 55%);
+  --caregiver-bg: #0a2318;
+  --caregiver-panel-bg: #14261f;
+  --caregiver-status-ok-bg: #123a29;
+  --caregiver-status-ok-border: #4ade80;
+  --caregiver-status-warn-bg: #3a2408;
+  --caregiver-status-warn-border: #f59e0b;
+  --caregiver-status-warn-text: #ffd9a8;
+  --caregiver-action-bg: #1a4a32;
+  --caregiver-action-text: #eafaf1;
+  --caregiver-close-bg: #06120c;
+}
+
+/* 高コントラスト: 明暗どちらの案にも重ねて効く（介助者設定、既定 OFF）。
+   タイルに枠線を追加し、まだら模様(scan-ring)の視認性を上げる。 */
+:root[data-high-contrast='true'] {
+  --tile-border-width: 3px;
+  --tile-border-color: currentColor;
+}
+
+:root[data-design='a'][data-high-contrast='true'] {
+  --text: #000000;
+  --message-bg: #003820;
+  --message-text: #ffffff;
+  --surface: #ffffff;
+  --surface-calm: #d7f4e2;
+  --surface-positive: #b8ecd0;
+}
+
+:root[data-design='b'][data-high-contrast='true'] {
+  --bg: #000000;
+  --text: #ffffff;
+  --surface: #000000;
+  --surface-calm: #001a10;
+  --surface-positive: #00301c;
+  --message-bg: #000000;
+  --message-text: #ffffff;
+}
+
+/* 文字サイズ（介助者設定）。clamp() の結果に係数を掛けるだけで、
+   ビューポート追従は保ったまま全体を拡大する。 */
+:root[data-font-size='large'] {
+  --font-scale: 1.25;
+}
+
+:root[data-font-size='xlarge'] {
+  --font-scale: 1.55;
+}
+
 :root {
-  color: #052e2b;
-  background: #f3fbf7;
+  color: var(--text);
+  background: var(--bg);
   /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
      Linux 等で中国語フォントへ落ちうるため、日本語書体より前に置かない。 */
   font-family:
@@ -28,11 +132,24 @@ body {
 }
 
 body {
-  background: #f3fbf7;
+  background: var(--bg);
 }
 
 button {
   font: inherit;
+}
+
+/* Issue #3: 見出し・ラベル類の文節改行。対応ブラウザでは意味の区切りで折り返し、
+   語の途中(「ゆっく/り」等)での改行を避ける。未対応ブラウザでは overflow-wrap が
+   安全弁になる（タイル自体の余裕はコンテナクエリで確保する）。 */
+.message-panel h1,
+.emergency-details,
+.emergency-sub,
+.tile-label,
+.status-stack span {
+  word-break: auto-phrase;
+  line-break: strict;
+  overflow-wrap: anywhere;
 }
 
 .app-shell {
@@ -63,6 +180,7 @@ button {
      app-shell 側の padding-bottom でタイル領域自体をこの高さ分だけ手前で切り上げる */
   padding: 14px 14px 130px;
   overflow: hidden;
+  background: var(--bg);
   /* Issue #5: 本人画面はダブルタップ拡大・ピンチ拡大・スクロール・テキスト選択・
      長押しコンテキストメニューを起こさない。介助者パネル内の操作(input/button)は
      .caregiver-panel 側で明示的に上書きして妨げない */
@@ -73,6 +191,9 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ===================================================================
+   メッセージ欄 — 主役。枠線は使わず面の色だけで区切る。
+   =================================================================== */
 .message-panel {
   grid-row: 1;
   display: flex;
@@ -81,41 +202,31 @@ button {
   gap: 18px;
   min-height: 156px;
   padding: 22px;
-  color: #f7fee7;
-  background: #064e3b;
-  border: 4px solid #052e2b;
-  border-radius: 8px;
+  color: var(--message-text);
+  background: var(--message-bg);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px var(--shadow);
 }
 
 :root[data-message-tone='urgent'] .message-panel {
-  background: #7f1d1d;
-  border-color: #dc2626;
+  color: var(--urgent-text);
+  background: var(--urgent-bg);
 }
 
 :root[data-message-tone='positive'] .message-panel {
-  background: #065f46;
-  border-color: #10b981;
-}
-
-.eyebrow {
-  margin: 0 0 8px;
-  color: #bbf7d0;
-  font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  background: var(--surface-positive);
+  color: var(--text);
 }
 
 h1 {
   margin: 0;
   max-width: 16ch;
-  font-size: clamp(2.35rem, 7vh, 5.4rem);
-  line-height: 1.02;
+  font-size: calc(var(--font-scale) * clamp(2.35rem, 7vh, 5.4rem));
+  line-height: 1.05;
   letter-spacing: 0;
 }
 
-/* 見出し(h1)の6割程度の大きさ。緊急の赤背景(#7f1d1d)上で読める配色にする
-   (DESIGN.md §2 の Urgent tile 色を文字色として再利用)。
+/* 見出し(h1)の6割程度の大きさ。緊急の赤背景上でも読める配色にする。
    横並び+折り返し(S-new-3)にし、詳細が積み上がっても縦に伸びすぎないようにする。 */
 .emergency-details {
   display: flex;
@@ -124,8 +235,8 @@ h1 {
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
-  color: #fee2e2;
-  font-size: clamp(1.4rem, 4.2vh, 3.2rem);
+  color: var(--urgent-text-muted);
+  font-size: calc(var(--font-scale) * clamp(1.4rem, 4.2vh, 3.2rem));
   font-weight: 800;
   line-height: 1.15;
 }
@@ -142,27 +253,26 @@ h1 {
 
 .emergency-sub {
   margin: 8px 0 0;
-  color: #fee2e2;
-  font-size: clamp(1.4rem, 4.2vh, 3.2rem);
+  color: var(--urgent-text-muted);
+  font-size: calc(var(--font-scale) * clamp(1.4rem, 4.2vh, 3.2rem));
   font-weight: 800;
 }
 
+/* Issue #3: 英字の飾りラベルとボタン風ステータス表示を撤去。必要な状態(画面名・
+   音声モード・スキャン位置)は控えめな小さい文字で、枠やボタンに見えないようにする。 */
 .status-stack {
   display: grid;
   align-content: center;
-  min-width: 152px;
-  gap: 8px;
+  min-width: 140px;
+  gap: 4px;
+  color: var(--message-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: right;
 }
 
 .status-stack span {
   display: block;
-  padding: 8px 10px;
-  color: #052e2b;
-  background: #ecfdf5;
-  border: 2px solid #86efac;
-  border-radius: 6px;
-  font-weight: 800;
-  text-align: center;
 }
 
 .letter-strip {
@@ -177,15 +287,18 @@ h1 {
   min-height: 54px;
   padding: 10px 14px;
   overflow: hidden;
-  color: #052e2b;
-  background: #ffffff;
-  border: 3px solid #065f46;
-  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px var(--shadow);
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* ===================================================================
+   タイル — 枠線主体をやめ、面の色・余白・角丸で区切る。
+   =================================================================== */
 .grid-board {
   /* PR#11 3巡目 question: letter-strip が無い画面(ほとんどの画面)でも常に3番目の
      1fr トラックを使う。.letter-strip が DOM に無いときの auto-placement 任せにしない */
@@ -212,17 +325,20 @@ h1 {
 }
 
 .tile {
+  container-type: inline-size;
   position: relative;
   display: grid;
   place-items: center;
   min-width: 0;
   min-height: 126px;
   padding: 18px 12px 12px;
-  color: #052e2b;
-  background: #ffffff;
-  border: 4px solid #065f46;
-  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: var(--tile-border-width) solid var(--tile-border-color);
+  border-radius: 14px;
+  box-shadow: 0 2px 8px var(--shadow);
   cursor: pointer;
+  transition: transform 0.12s ease-out;
   /* PR#11 再レビュー must-D: 前回(nit-4)はここでの touch-action:none を「.app-shell の
      指定で足りる重複」として削除したが、.grid-board が overflow-y:auto でスクロール
      コンテナになった今は、このタイル自身にも明示しないとスワイプでパンが有効になる。
@@ -237,24 +353,42 @@ h1 {
 }
 
 .tile-urgent {
-  background: #fee2e2;
-  border-color: #991b1b;
+  color: var(--urgent-text);
+  background: var(--urgent-bg);
+  font-weight: 900;
 }
 
 .tile-calm {
-  background: #dcfce7;
-  border-color: #15803d;
+  background: var(--surface-calm);
 }
 
 .tile-positive {
-  background: #d1fae5;
-  border-color: #047857;
+  background: var(--surface-positive);
 }
 
+/* Issue #3: スキャン対象は遠目でも一目で分かる強調にする。
+   太い黄色のリング(outline) + 面の色変化 + わずかな拡大。
+   緊急タイルは常に最も目立つ濃い赤のベタ塗りのままなので、リングだけを重ねる。 */
 .tile.scanning {
-  outline: 8px solid #facc15;
-  outline-offset: -12px;
-  background: #fefce8;
+  outline: 8px solid var(--scan-ring);
+  outline-offset: -6px;
+  transform: scale(1.03);
+  box-shadow: 0 8px 22px var(--shadow);
+  z-index: 1;
+}
+
+.tile.scanning:not(.tile-urgent) {
+  background: var(--surface-scanning);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile {
+    transition: none;
+  }
+
+  .tile.scanning {
+    transform: none;
+  }
 }
 
 .tile-number {
@@ -265,8 +399,8 @@ h1 {
   place-items: center;
   width: 30px;
   height: 30px;
-  color: #ffffff;
-  background: #065f46;
+  color: var(--message-text);
+  background: var(--message-bg);
   border-radius: 50%;
   font-size: 0.9rem;
   font-weight: 900;
@@ -280,19 +414,26 @@ h1 {
 .tile-label {
   white-space: pre-line;
   text-align: center;
-  font-size: clamp(1.55rem, 4.8vh, 3.4rem);
+  font-size: calc(var(--font-scale) * clamp(1.05rem, min(4.8vh, 15cqi), 3.4rem));
   font-weight: 900;
-  line-height: 1.04;
+  line-height: 1.15;
   letter-spacing: 0;
 }
 
 .tile-detail {
-  color: #166534;
-  font-size: clamp(0.92rem, 1.8vh, 1.1rem);
+  color: var(--text-muted);
+  font-size: calc(var(--font-scale) * clamp(0.92rem, 1.8vh, 1.1rem));
   font-weight: 800;
   text-align: center;
 }
 
+.tile-urgent .tile-detail {
+  color: var(--urgent-text-muted);
+}
+
+/* ===================================================================
+   介助者 UI — 目立たないが介助者には分かる見た目。
+   =================================================================== */
 .caregiver-button {
   position: fixed;
   right: 10px;
@@ -301,12 +442,12 @@ h1 {
   min-width: 56px;
   min-height: 56px;
   padding: 8px 12px;
-  color: #f7fee7;
-  background: #052e2b;
-  border: 2px solid #065f46;
-  border-radius: 8px;
+  color: var(--message-text);
+  background: var(--caregiver-bg);
+  border: none;
+  border-radius: 10px;
   font-weight: 800;
-  opacity: 0.85;
+  opacity: 0.8;
   /* S3: 長押し中にスクロール/選択/callout メニューが割り込まないようにする */
   touch-action: none;
   user-select: none;
@@ -321,7 +462,7 @@ h1 {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgb(5 46 43 / 70%);
+  background: rgb(0 0 0 / 55%);
 }
 
 .caregiver-panel {
@@ -331,10 +472,10 @@ h1 {
   max-height: 90vh;
   padding: 20px;
   overflow-y: auto;
-  color: #052e2b;
-  background: #ffffff;
-  border: 4px solid #065f46;
-  border-radius: 10px;
+  color: var(--text);
+  background: var(--caregiver-panel-bg);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
   /* Issue #5: 親(.app-shell)の touch-action:none / user-select:none を打ち消し、
      スライダー操作・チェックボックス・文言の選択など通常の介助者操作を妨げない */
   touch-action: auto;
@@ -365,49 +506,53 @@ h1 {
   gap: 10px;
 }
 
-.caregiver-voice-options {
+.caregiver-voice-options,
+.caregiver-choice-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.caregiver-voice-options button {
+.caregiver-voice-options button,
+.caregiver-choice-options button {
   padding: 8px 12px;
-  color: #052e2b;
-  background: #ecfdf5;
-  border: 2px solid #065f46;
-  border-radius: 6px;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 2px solid var(--caregiver-action-bg);
+  border-radius: 8px;
   font-weight: 800;
 }
 
-.caregiver-voice-options button.active {
-  color: #ffffff;
-  background: #065f46;
+.caregiver-voice-options button.active,
+.caregiver-choice-options button.active {
+  color: var(--caregiver-action-text);
+  background: var(--caregiver-action-bg);
+  border-color: var(--caregiver-action-bg);
 }
 
 .caregiver-status {
   margin: 0;
   padding: 8px 10px;
-  color: #052e2b;
-  background: #ecfdf5;
-  border: 2px solid #86efac;
-  border-radius: 6px;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 2px solid var(--caregiver-status-ok-border);
+  border-radius: 8px;
   font-weight: 800;
 }
 
 .caregiver-status.warn {
-  color: #7f1d1d;
-  background: #fff7ed;
-  border-color: #f59e0b;
+  color: var(--caregiver-status-warn-text);
+  background: var(--caregiver-status-warn-bg);
+  border-color: var(--caregiver-status-warn-border);
 }
 
 .caregiver-action {
   min-height: 48px;
   padding: 10px 14px;
-  color: #ffffff;
-  background: #065f46;
+  color: var(--caregiver-action-text);
+  background: var(--caregiver-action-bg);
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-weight: 800;
 }
 
@@ -417,7 +562,7 @@ h1 {
 }
 
 .caregiver-close {
-  background: #052e2b;
+  background: var(--caregiver-close-bg);
 }
 
 /* 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる小さな表示。
@@ -433,10 +578,10 @@ h1 {
   margin: 0;
   padding: 4px 8px;
   pointer-events: none;
-  color: #7f1d1d;
-  background: #fff7ed;
-  border: 2px solid #f59e0b;
-  border-radius: 6px;
+  color: var(--caregiver-status-warn-text);
+  background: var(--caregiver-status-warn-bg);
+  border: 2px solid var(--caregiver-status-warn-border);
+  border-radius: 8px;
   font-size: 0.75rem;
   font-weight: 800;
   text-align: right;
@@ -451,6 +596,7 @@ h1 {
   .status-stack {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     min-width: 0;
+    text-align: left;
   }
 }
 
@@ -476,14 +622,14 @@ h1 {
   }
 
   .tile-label {
-    font-size: clamp(1.28rem, 4.7vh, 2.4rem);
+    font-size: calc(var(--font-scale) * clamp(1.1rem, min(4.7vh, 20cqi), 2.4rem));
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
      見出し下の表示を狭幅では小さくする */
   .emergency-details,
   .emergency-sub {
-    font-size: clamp(1rem, 3.2vh, 1.6rem);
+    font-size: calc(var(--font-scale) * clamp(1rem, 3.2vh, 1.6rem));
   }
 }
 
@@ -504,20 +650,12 @@ h1 {
     padding: 10px 12px;
   }
 
-  .eyebrow {
-    margin-bottom: 4px;
-  }
-
   h1 {
-    font-size: clamp(1.5rem, 5.5vh, 2.4rem);
+    font-size: calc(var(--font-scale) * clamp(1.5rem, 5.5vh, 2.4rem));
   }
 
   .status-stack {
     gap: 4px;
-  }
-
-  .status-stack span {
-    padding: 4px 6px;
   }
 
   .grid-board {
@@ -532,6 +670,6 @@ h1 {
   }
 
   .tile-label {
-    font-size: clamp(1.05rem, 4vh, 1.9rem);
+    font-size: calc(var(--font-scale) * clamp(0.98rem, min(4vh, 22cqi), 1.9rem));
   }
 }
