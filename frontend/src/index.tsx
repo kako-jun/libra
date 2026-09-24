@@ -9,6 +9,19 @@ import '@fontsource/biz-udpgothic/latin-400.css'
 import '@fontsource/biz-udpgothic/latin-700.css'
 import './styles/globals.css'
 
+// Issue #5: iOS Safari はピンチ拡大を touch-action だけでは抑止できないため、
+// gesturestart(非標準だが Safari 系のみが発火する)を止める。他ブラウザには存在しないイベントで
+// 実害はないため常時登録してよい
+window.addEventListener('gesturestart', (event) => event.preventDefault())
+
+// Issue #5: Service Worker はアプリ本体をキャッシュしてオフライン動作を成り立たせる。
+// dev サーバーでは古いビルドのキャッシュに悩まされるため、本番ビルドでのみ登録する
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
+    console.error('Service Worker registration failed:', error)
+  })
+}
+
 const root = document.getElementById('app')
 
 if (!root) {

@@ -20,6 +20,13 @@ body,
   margin: 0;
 }
 
+/* Issue #5: 常設運用での誤作動防止。pull-to-refresh・オーバースクロールのバウンスを止める。
+   本人・介助者どちらの操作でも下端/上端で引っ張って再読込されると伝達が中断するため全体に効かせる */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   background: #f3fbf7;
 }
@@ -34,6 +41,15 @@ button {
   gap: 14px;
   min-height: 100vh;
   padding: 14px;
+  overflow: hidden;
+  /* Issue #5: 本人画面はダブルタップ拡大・ピンチ拡大・スクロール・テキスト選択・
+     長押しコンテキストメニューを起こさない。介助者パネル内の操作(input/button)は
+     .caregiver-panel 側で明示的に上書きして妨げない */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .message-panel {
@@ -167,7 +183,11 @@ h1 {
   border: 4px solid #065f46;
   border-radius: 8px;
   cursor: pointer;
-  touch-action: manipulation;
+  /* Issue #5: ピンチ拡大等を防ぐため、本人画面全体(.app-shell)の touch-action:none を
+     タイル個別でも維持する(以前の manipulation はダブルタップ拡大は防ぐがピンチは防げない) */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .tile:active {
@@ -273,6 +293,17 @@ h1 {
   background: #ffffff;
   border: 4px solid #065f46;
   border-radius: 10px;
+  /* Issue #5: 親(.app-shell)の touch-action:none / user-select:none を打ち消し、
+     スライダー操作・チェックボックス・文言の選択など通常の介助者操作を妨げない */
+  touch-action: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.caregiver-panel input,
+.caregiver-panel button {
+  touch-action: manipulation;
 }
 
 .caregiver-panel h2 {
