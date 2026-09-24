@@ -1,4 +1,6 @@
 // シングルスイッチ自動スキャンの状態遷移。副作用なし。時刻は常に引数で受け取る。
+// 項目数はここに保持せず、呼び出し側(App.tsx)が毎回そのときの表示メニュー配列の
+// 長さを渡す。これにより表示中メニューとスキャン状態が常に食い違わない。
 // 正本: docs/requirements.md §3
 
 export interface ScanConfig {
@@ -12,7 +14,6 @@ export interface ScanConfig {
 
 export interface ScanState {
   index: number
-  itemCount: number
   /** この時刻(ms)になったらカーソルを次へ進める */
   nextAdvanceAt: number
   /** 直前にスイッチがオンになった時刻(ms)。連打無視の基準 */
@@ -20,20 +21,37 @@ export interface ScanState {
 }
 
 /** 画面を開いた時点のスキャン状態を作る。先頭項目から、先頭待機込みで始まる。 */
-export function startScan(itemCount: number, now: number, config: ScanConfig): ScanState {
+export function startScan(now: number, config: ScanConfig): ScanState {
   return {
     index: 0,
-    itemCount: Math.max(itemCount, 0),
     nextAdvanceAt: now + Math.max(config.headHoldMs, 0),
     lastPressAt: null,
   }
 }
 
+/**
+ * 表示中メニューの項目数に合わせてカーソルを範囲内へ補正する。
+ * メニューの項目数が本人操作を経ずに変化した場合（例: 「取り消し」が
+ * 1周後に消える）に、カーソルと実際の項目のずれを防ぐ。
+ */
+export function resync(state: ScanState, itemCount: number): ScanState {
+  if (itemCount <= 0) {
+    return state.index === 0 ? state : { ...state, index: 0 }
+  }
+  if (state.index < itemCount) return state
+  return { ...state, index: itemCount - 1 }
+}
+
 /** 時間経過に応じてカーソルを進める。進める時刻に達していなければ何もしない。 */
-export function tick(state: ScanState, now: number, config: ScanConfig): ScanState {
-  if (state.itemCount <= 0) return state
+export function tick(
+  state: ScanState,
+  itemCount: number,
+  now: number,
+  config: ScanConfig,
+): ScanState {
+  if (itemCount <= 0) return state
   if (now < state.nextAdvanceAt) return state
-  const nextIndex = (state.index + 1) % state.itemCount
+  const nextIndex = (state.index + 1) % itemCount
   return {
     ...state,
     index: nextIndex,
@@ -48,8 +66,13 @@ export interface PressResult {
 }
 
 /** スイッチが「オン」になったときに呼ぶ。連打無視の対象なら activatedIndex は null。 */
-export function press(state: ScanState, now: number, config: ScanConfig): PressResult {
-  if (state.itemCount <= 0) return { state, activatedIndex: null }
+export function press(
+  state: ScanState,
+  itemCount: number,
+  now: number,
+  config: ScanConfig,
+): PressResult {
+  if (itemCount <= 0) return { state, activatedIndex: null }
   if (state.lastPressAt !== null && now - state.lastPressAt < Math.max(config.debounceMs, 0)) {
     return { state, activatedIndex: null }
   }
