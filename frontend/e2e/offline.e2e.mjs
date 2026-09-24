@@ -350,8 +350,13 @@ async function checkLettersScrollLayout(chromium, port) {
         const EPSILON = 1
         const scanning = document.querySelector('.tile.scanning')
         const h1 = document.querySelector('h1')
+        const board = document.querySelector('.grid-board')
+        // 緊急タイルは常に .grid-board 内の1番目(menus.ts の homeScreen/subScreen)
+        const emergencyTile = board?.querySelector('.tile:first-child')
         const scanningRect = scanning?.getBoundingClientRect()
         const h1Rect = h1?.getBoundingClientRect()
+        const emergencyRect = emergencyTile?.getBoundingClientRect()
+        const boardRect = board?.getBoundingClientRect()
         return {
           scrollY: window.scrollY,
           scanningLabel: scanning?.querySelector('.tile-label')?.textContent,
@@ -367,6 +372,14 @@ async function checkLettersScrollLayout(chromium, port) {
               h1Rect.left >= -EPSILON &&
               h1Rect.right <= window.innerWidth + EPSILON
             : false,
+          emergencyLabel: emergencyTile?.querySelector('.tile-label')?.textContent,
+          // PR#16 再レビュー must-A/B: 9項目以上(文字盤)のスクロールモードでも、
+          // 緊急タイルは position:sticky で .grid-board の可視範囲内に留まり続ける想定
+          emergencyInBoardViewport:
+            emergencyRect && boardRect
+              ? emergencyRect.bottom > boardRect.top + EPSILON &&
+                emergencyRect.top < boardRect.bottom - EPSILON
+              : false,
         }
       })
 
@@ -382,6 +395,16 @@ async function checkLettersScrollLayout(chromium, port) {
         )
       } else if (!info.scanningInViewport) {
         failures.push(`[letters-scroll ${name}] スキャン対象(確定)がビューポート外`)
+      }
+      if (info.emergencyLabel !== '緊急') {
+        failures.push(
+          `[letters-scroll ${name}] 1番目のタイルが緊急ではない(${info.emergencyLabel})`,
+        )
+      } else if (!info.emergencyInBoardViewport) {
+        failures.push(
+          `[letters-scroll ${name}] スキャンが下の方(確定)まで進んだ際、緊急タイルが` +
+            `grid-board の可視範囲外に出ている(sticky が効いていない)`,
+        )
       }
 
       await context.close()
@@ -503,21 +526,42 @@ async function checkLabelsFitAtXlarge(chromium, port) {
       await page.keyboard.press('Space')
       await page.waitForTimeout(300)
 
-      const info = await page.evaluate(() => {
+      const { tiles: info, board: boardInfo } = await page.evaluate(() => {
         const rectOf = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
         const board = document.querySelector('.grid-board')
         const boardRect = rectOf(board)
-        return [...document.querySelectorAll('.grid-board .tile')].map((tile) => {
-          const tileRect = rectOf(tile)
-          const label = tile.querySelector('.tile-label')
-          return {
-            label: label?.textContent,
-            tileRect,
-            labelRect: rectOf(label),
-            visible: tileRect.bottom > boardRect.top + 1 && tileRect.top < boardRect.bottom - 1,
-          }
-        })
+        return {
+          board: {
+            isFill: board?.classList.contains('grid-fill') ?? false,
+            scrollHeight: board?.scrollHeight ?? 0,
+            clientHeight: board?.clientHeight ?? 0,
+          },
+          tiles: [...document.querySelectorAll('.grid-board .tile')].map((tile) => {
+            const tileRect = rectOf(tile)
+            const label = tile.querySelector('.tile-label')
+            return {
+              label: label?.textContent,
+              tileRect,
+              labelRect: rectOf(label),
+              visible: tileRect.bottom > boardRect.top + 1 && tileRect.top < boardRect.bottom - 1,
+            }
+          }),
+        }
       })
+      // PR#16 再レビュー must-A/B: 8項目以下(この画面=不快、6項目)の画面は、文字サイズが
+      // 特大でも常に全面充填(fill)されスクロールが発生しないことを確認する。
+      // これが崩れると、巡回中に先頭(緊急)タイルが画面外へ出る恐れがある
+      if (!boardInfo.isFill) {
+        failures.push(
+          `[xlarge-fit 390x844 ${theme} discomfort] 8項目以下の画面なのに grid-fill でない(スクロールモードに落ちている)`,
+        )
+      }
+      if (boardInfo.scrollHeight > boardInfo.clientHeight + 1) {
+        failures.push(
+          `[xlarge-fit 390x844 ${theme} discomfort] 8項目以下の画面なのにスクロールが発生している ` +
+            `(scrollHeight=${boardInfo.scrollHeight} clientHeight=${boardInfo.clientHeight})`,
+        )
+      }
       for (const t of info) {
         if (!t.visible || !t.labelRect) continue
         const fits =
