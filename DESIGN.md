@@ -12,18 +12,20 @@ Theme: green-based, calm, medical-adjacent, and readable. Urgent actions may use
 
 ## 2. Color Palette & Roles
 
-| Role          | Value     | Usage                                                                                                                                                                                           |
-| ------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Background    | `#f3fbf7` | App background                                                                                                                                                                                  |
-| Primary       | `#064e3b` | Message panel                                                                                                                                                                                   |
-| Primary dark  | `#052e2b` | Text / strong borders                                                                                                                                                                           |
-| Tile border   | `#065f46` | Normal tile border                                                                                                                                                                              |
-| Calm tile     | `#dcfce7` | Slow / non-urgent actions                                                                                                                                                                       |
-| Positive tile | `#d1fae5` | Yes / okay / thanks                                                                                                                                                                             |
-| Urgent tile   | `#fee2e2` | Emergency actions                                                                                                                                                                               |
-| Urgent border | `#991b1b` | Emergency border                                                                                                                                                                                |
-| Scan outline  | `#facc15` | Current scan target                                                                                                                                                                             |
-| Urgent text   | `#fee2e2` | Text on the emergency (urgent) message-panel background — the accumulated emergency-detail list and the "latest during emergency" line, reusing the Urgent tile value for contrast on `#7f1d1d` |
+| Role          | Value     | Usage                                                        |
+| ------------- | --------- | ------------------------------------------------------------ |
+| Background    | `#f3fbf7` | App background                                               |
+| Primary       | `#064e3b` | Message panel                                                |
+| Primary dark  | `#052e2b` | Text / strong borders                                        |
+| Tile border   | `#065f46` | Normal tile border                                           |
+| Calm tile     | `#dcfce7` | Slow / non-urgent actions                                    |
+| Positive tile | `#d1fae5` | Yes / okay / thanks                                          |
+| Urgent tile   | `#fee2e2` | Emergency actions                                            |
+| Urgent border | `#991b1b` | Emergency border                                             |
+| Scan outline  | `#facc15` | Current scan target                                          |
+| Urgent text   | `#fee2e2` | Text on the emergency message-panel background[^urgent-text] |
+
+[^urgent-text]: Used for the accumulated emergency-detail list and the "latest during emergency" line. Reuses the Urgent tile value, which reads clearly on the emergency panel's `#7f1d1d` background.
 
 ## 3. Typography Rules
 
