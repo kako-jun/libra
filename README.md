@@ -14,7 +14,8 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 - **Large grid UI** — Not fixed to Esuna's 9-grid rule, but keeps the same easy-to-press grid feeling.
 - **Message display** — The selected phrase is shown in large type so the person nearby can read it.
 - **Emergency alarm** — Selecting Emergency shows a red banner with no confirmation step and sounds a Web Audio alarm (works even with speech OFF) until a caregiver clears it.
-- **Caregiver menu** — A 2-second long-press on a corner button opens scan interval / head-hold / debounce / auditory-scan / speech-mode settings and emergency clear. Settings persist to localStorage.
+- **Caregiver menu** — A 2-second long-press on a corner button opens scan interval / head-hold / debounce / auditory-scan / speech-mode / font-size / high-contrast settings and emergency clear. Settings persist to localStorage.
+- **Two design variants** — A bright/calm variant and a dark/night variant, switched with the `?design=a|b` URL query (default `a`); high contrast layers on top of either. Tiles use surface color and rounded corners instead of borders, with a thick yellow ring + slight scale-up marking the current scan target.
 - **Speech modes** — Off, vibration/tone only, short speech, and full speech.
 - **PWA-ready structure** — Same frontend/backend/release shape as Esuna.
 

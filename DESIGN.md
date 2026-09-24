@@ -10,31 +10,73 @@ The design should feel related to Esuna: simple, direct, high-contrast, and buil
 
 Theme: green-based, calm, medical-adjacent, and readable. Urgent actions may use red.
 
-## 2. Color Palette & Roles
+## 2. Color Palette & Roles (Issue #3)
 
-| Role          | Value     | Usage                                                        |
-| ------------- | --------- | ------------------------------------------------------------ |
-| Background    | `#f3fbf7` | App background                                               |
-| Primary       | `#064e3b` | Message panel                                                |
-| Primary dark  | `#052e2b` | Text / strong borders                                        |
-| Tile border   | `#065f46` | Normal tile border                                           |
-| Calm tile     | `#dcfce7` | Slow / non-urgent actions                                    |
-| Positive tile | `#d1fae5` | Yes / okay / thanks                                          |
-| Urgent tile   | `#fee2e2` | Emergency actions                                            |
-| Urgent border | `#991b1b` | Emergency border                                             |
-| Scan outline  | `#facc15` | Current scan target                                          |
-| Urgent text   | `#fee2e2` | Text on the emergency message-panel background[^urgent-text] |
+Border-first tiles were retired: tiles now carry no default border, only a background surface color, a 14px rounded corner and a soft shadow — the point is to stop every tile looking like a form field. Every color is a CSS custom property on `:root` in `frontend/src/styles/globals.css` (the source of truth); component CSS never hardcodes a color.
 
-[^urgent-text]: Used for the accumulated emergency-detail list and the "latest during emergency" line. Reuses the Urgent tile value, which reads clearly on the emergency panel's `#7f1d1d` background.
+Two design variants are switched by the `?design=a|b` URL query (default `a`) via `:root[data-design]`. This query is a development/decision-making entry point for comparing the two, not something the patient operates. Selectors are identical between variants — only token values differ.
+
+### Design A — 明るい・穏やか (bright, calm; daytime ward)
+
+| Token                | Value     | Usage                                            |
+| -------------------- | --------- | ------------------------------------------------- |
+| `--bg`               | `#eafaf1` | App background                                    |
+| `--surface`          | `#ffffff` | Neutral tile                                       |
+| `--surface-calm`     | `#dcf5e6` | Slow / non-urgent actions                          |
+| `--surface-positive` | `#c9f0d9` | Yes / okay / thanks                                |
+| `--surface-scanning` | `#fff6c8` | Non-urgent tile currently under the scan cursor    |
+| `--text`             | `#0f241d` | Body text on light surfaces                        |
+| `--text-muted`       | `#4b6358` | Tile detail text                                   |
+| `--message-bg`       | `#0f5132` | Message panel (neutral tone)                       |
+| `--message-text`     | `#f3fbf7` | Message panel text                                 |
+| `--urgent-bg`        | `#b3261e` | Emergency tile / message panel (solid fill)        |
+| `--urgent-text`      | `#ffffff` | Text on urgent fill                                |
+| `--scan-ring`        | `#facc15` | Scan-cursor outline (same value in both variants)  |
+
+### Design B — 暗い・夜間向け (dark, night ward)
+
+| Token                | Value     | Usage                                            |
+| -------------------- | --------- | ------------------------------------------------- |
+| `--bg`               | `#07140f` | App background (near-black green)                 |
+| `--surface`          | `#17362a` | Neutral tile                                       |
+| `--surface-calm`     | `#123a29` | Slow / non-urgent actions                          |
+| `--surface-positive` | `#1a4a32` | Yes / okay / thanks                                |
+| `--surface-scanning` | `#4a3d0b` | Non-urgent tile currently under the scan cursor    |
+| `--text`             | `#eafaf1` | Body text on dark surfaces                         |
+| `--text-muted`       | `#9fc4b0` | Tile detail text                                   |
+| `--message-bg`       | `#0a2318` | Message panel (neutral tone)                       |
+| `--message-text`     | `#eafaf1` | Message panel text                                 |
+| `--urgent-bg`        | `#d7263d` | Emergency tile / message panel (solid fill)        |
+| `--urgent-text`      | `#ffffff` | Text on urgent fill                                |
+
+The emergency tile and message panel are always a solid deep-red fill (`--urgent-bg`) with white text, in both variants, so emergency stays the single most attention-grabbing surface on screen regardless of design or time of day.
+
+### High contrast (caregiver setting, layers on top of either variant)
+
+`:root[data-high-contrast="true"]` adds a `3px solid currentColor` border to every tile (tiles otherwise carry none) and pushes text/background toward pure black/white:
+
+| Variant + HC | `--text`  | `--bg`    | `--message-bg` | `--message-text` |
+| ------------ | --------- | --------- | ---------------- | ------------------- |
+| A            | `#000000` | `#eafaf1` | `#003820`         | `#ffffff`           |
+| B            | `#ffffff` | `#000000` | `#000000`         | `#ffffff`           |
+
+### Font size (caregiver setting)
+
+`--font-scale` (`1` / `1.25` / `1.55` for 標準/大/特大) multiplies every `clamp()`-based font-size via `calc(var(--font-scale) * clamp(...))`, so viewport-responsive sizing is preserved at every scale. Set via `:root[data-font-size]`, stored in `localStorage` (`settings.fontSize`).
+
+### Scan cursor emphasis
+
+The current scan target gets a thick yellow outline (`--scan-ring`, `outline: 8px solid`), a surface-color shift (`--surface-scanning`) on non-urgent tiles, and a small scale-up (`transform: scale(1.03)`, disabled under `prefers-reduced-motion: reduce`) so it reads at a glance from across a room. The emergency tile keeps its solid red fill even while scanning — only the ring is added on top.
 
 ## 3. Typography Rules
 
 BIZ UDPGothic (400/700) is bundled via `@fontsource/biz-udpgothic` and imported from `index.tsx`, not loaded from a CDN — requirements.md §8 requires every communication feature to work offline, and a Google Fonts `<link>` breaks that. It is also a universal-design typeface (clear kana/kanji shapes, wide letter spacing), which matters because a generic `system-ui`/`sans-serif` stack falls back to a Chinese-glyph font (e.g. WenQuanYi) on many Linux systems and renders Japanese text with the wrong glyph shapes. `font-family` therefore puts `'BIZ UDPGothic'` first, followed only by other Japanese-capable fallbacks (`Hiragino Sans`, `Hiragino Kaku Gothic ProN`, `Yu Gothic UI`, `Yu Gothic`, `Noto Sans JP`) and finally generic `sans-serif` — never a bare `system-ui`/`-apple-system`/`Segoe UI` ahead of a Japanese-capable font. Text must fit inside tiles on mobile and tablet.
 
-- Message: very large, `clamp(2.35rem, 7vh, 5.4rem)`
-- Tile label: `clamp(1.55rem, 4.8vh, 3.4rem)`
+- Message: very large, `calc(var(--font-scale) * clamp(2.35rem, 7vh, 5.4rem))`
+- Tile label: `calc(var(--font-scale) * clamp(1.05rem, min(4.8vh, 15cqi), 3.4rem))` — the `cqi` term (each `.tile` is `container-type: inline-size`) shrinks the label with the tile's own width, not just the viewport, so a narrow tile on a small screen never overflows
 - Tile detail: smaller but bold
 - Letter spacing: `0`
+- Word breaking (Issue #3): `h1`, `.tile-label`, `.emergency-details`, `.emergency-sub` and `.status-stack span` use `word-break: auto-phrase; line-break: strict; overflow-wrap: anywhere;` so Japanese text wraps at phrase boundaries (e.g. "緊急です。" / "来てください") instead of mid-word (previously "ゆっく" / "り"), with `overflow-wrap: anywhere` as a safety net on browsers that don't yet support `auto-phrase`.
 
 ## 4. Layout Principles
 
@@ -87,17 +129,17 @@ No pans, no hanging strings, no other motif (e.g. a speech bubble, grid, or a si
 
 ## 8. Caregiver UI
 
-The caregiver panel (long-press menu) reuses the same green palette as the patient screen, but as flat status/action colors rather than tile tones:
+The caregiver panel (long-press menu) reuses the same palette as the patient screen via tokens, as flat status/action colors rather than tile tones. Values below are Design A; Design B substitutes its own `--caregiver-*` tokens (see `globals.css`) but the roles are identical:
 
-| Element                                  | Background | Border    | Text      | Meaning                                      |
-| ---------------------------------------- | ---------- | --------- | --------- | -------------------------------------------- |
-| `.caregiver-status` (normal)             | `#ecfdf5`  | `#86efac` | `#052e2b` | Wake Lock / offline-ready: OK                |
-| `.caregiver-status.warn`                 | `#fff7ed`  | `#f59e0b` | `#7f1d1d` | Wake Lock / offline-ready: needs attention   |
-| `.caregiver-action`                      | `#065f46`  | —         | `#ffffff` | Primary action button (fullscreen, close…)   |
-| `.caregiver-action:disabled`             | `#e5e7eb`  | —         | `#6b7280` | Action currently unavailable (e.g. 緊急解除) |
-| `.caregiver-close`                       | `#052e2b`  | —         | `#ffffff` | Closing action, deliberately darker          |
-| `.caregiver-voice-options button`        | `#ecfdf5`  | `#065f46` | `#052e2b` | Voice mode option, unselected                |
-| `.caregiver-voice-options button.active` | `#065f46`  | —         | `#ffffff` | Voice mode option, selected                  |
-| `.audio-status-hint`                     | `#fff7ed`  | `#f59e0b` | `#7f1d1d` | Alarm audio not yet unlocked                 |
+| Element                                     | Background (token)             | Border (token)                  | Text (token)                    | Meaning                                      |
+| -------------------------------------------- | -------------------------------- | ---------------------------------- | ---------------------------------- | --------------------------------------------- |
+| `.caregiver-status` (normal)                  | `--caregiver-status-ok-bg`         | `--caregiver-status-ok-border`         | `--text`                             | Wake Lock / offline-ready: OK                  |
+| `.caregiver-status.warn`                       | `--caregiver-status-warn-bg`       | `--caregiver-status-warn-border`       | `--caregiver-status-warn-text`         | Wake Lock / offline-ready: needs attention     |
+| `.caregiver-action`                           | `--caregiver-action-bg`            | —                                     | `--caregiver-action-text`              | Primary action button (fullscreen, close…)     |
+| `.caregiver-action:disabled`                  | `#e5e7eb` (fixed, not themed)      | —                                     | `#6b7280` (fixed, not themed)          | Action currently unavailable (e.g. 緊急解除)    |
+| `.caregiver-close`                            | `--caregiver-close-bg`             | —                                     | `--caregiver-action-text`              | Closing action, deliberately darker            |
+| `.caregiver-voice-options` / `-choice-options` `button` | `--caregiver-status-ok-bg` | `--caregiver-action-bg`               | `--text`                             | Voice mode / font size option, unselected      |
+| `...button.active`                            | `--caregiver-action-bg`            | `--caregiver-action-bg`               | `--caregiver-action-text`              | Voice mode / font size option, selected        |
+| `.audio-status-hint`                          | `--caregiver-status-warn-bg`       | `--caregiver-status-warn-border`       | `--caregiver-status-warn-text`         | Alarm audio not yet unlocked                   |
 
-The warn/OK pairing (`#ecfdf5`/`#86efac`/`#052e2b` vs `#fff7ed`/`#f59e0b`/`#7f1d1d`) is shared by Wake Lock status, offline-ready status, and the alarm-audio hint, so caregivers learn one visual pattern for "this needs your attention" across all of them.
+The warn/OK token pairing is shared by Wake Lock status, offline-ready status, and the alarm-audio hint, so caregivers learn one visual pattern for "this needs your attention" across all of them, in either design variant. The 文字サイズ (font size) picker reuses the same `.caregiver-choice-options` look as the voice-mode picker (`--caregiver-status-ok-bg`/`--caregiver-action-bg` unselected/selected pair); 高コントラスト is a plain checkbox like 聴覚スキャン.
