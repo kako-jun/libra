@@ -755,4 +755,64 @@ describe('App', () => {
     vi.advanceTimersByTime(2000)
     expect(second.container.textContent).toContain('スキャン間隔: 2.5 秒')
   })
+
+  describe('Issue #3: デザイン切替・文字サイズ・高コントラスト', () => {
+    afterEach(() => {
+      window.history.pushState({}, '', '/')
+      delete document.documentElement.dataset.design
+      delete document.documentElement.dataset.fontSize
+      delete document.documentElement.dataset.highContrast
+    })
+
+    it('?design なしでは既定の a になる', () => {
+      window.history.pushState({}, '', '/')
+      render(() => <App />)
+      expect(document.documentElement.dataset.design).toBe('a')
+    })
+
+    it('?design=b で data-design が b になる', () => {
+      window.history.pushState({}, '', '/?design=b')
+      render(() => <App />)
+      expect(document.documentElement.dataset.design).toBe('b')
+    })
+
+    it('?design=不明値 では既定の a にフォールバックする', () => {
+      window.history.pushState({}, '', '/?design=z')
+      render(() => <App />)
+      expect(document.documentElement.dataset.design).toBe('a')
+    })
+
+    it('起動直後は文字サイズ standard・高コントラスト false が data 属性に反映される', () => {
+      render(() => <App />)
+      expect(document.documentElement.dataset.fontSize).toBe('standard')
+      expect(document.documentElement.dataset.highContrast).toBe('false')
+    })
+
+    it('介助者メニューで文字サイズ「特大」を選ぶと data-font-size が xlarge になる', () => {
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const xlargeButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '特大',
+      ) as HTMLElement
+      fireEvent.click(xlargeButton)
+      expect(document.documentElement.dataset.fontSize).toBe('xlarge')
+    })
+
+    it('介助者メニューで高コントラストを ON にすると data-high-contrast が true になる', () => {
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const checkboxes = Array.from(
+        container.querySelectorAll('input[type="checkbox"]'),
+      ) as HTMLInputElement[]
+      const highContrastCheckbox = checkboxes.find(
+        (input) => input.closest('label')?.textContent === '高コントラスト',
+      ) as HTMLInputElement
+      fireEvent.click(highContrastCheckbox)
+      expect(document.documentElement.dataset.highContrast).toBe('true')
+    })
+  })
 })
