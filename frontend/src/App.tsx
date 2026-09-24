@@ -10,7 +10,11 @@ import {
   stopAlarm,
 } from './lib/alarm'
 import { initWakeLock, type WakeLockStatus } from './lib/wakeLock'
-import { initOfflineReadyWatch, type OfflineReadyStatus } from './lib/offlineReady'
+import {
+  initOfflineReadyWatch,
+  recheckOfflineReady,
+  type OfflineReadyStatus,
+} from './lib/offlineReady'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const ALARM_REPEAT_MS = 3000
@@ -492,6 +496,9 @@ export default function App() {
     longPressTimer = window.setTimeout(() => {
       setCaregiverMenuOpen(true)
       resetCaregiverIdleTimer()
+      // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
+      // 未完了ならSWの更新チェックも試みる(recheckOfflineReady内部で判定)
+      void recheckOfflineReady(setOfflineReadyStatus)
     }, 2000)
   }
   const onCaregiverButtonUp = () => {

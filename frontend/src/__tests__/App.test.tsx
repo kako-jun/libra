@@ -67,6 +67,11 @@ describe('App', () => {
         pitch = 1
         constructor(public text: string) {}
       }
+    // PR#11 3巡目 should-B: 介助者メニューを開くたびに実装(recheckOfflineReady)を呼ぶが、
+    // 個別にその呼び出し自体を検証するテスト以外では、jsdom上でのcaches/serviceWorker
+    // 未実装への実際の問い合わせ(非同期)が他のテストの検証タイミングに影響しないよう、
+    // 既定では何もしないモックにしておく
+    vi.spyOn(offlineReadyModule, 'recheckOfflineReady').mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -714,6 +719,23 @@ describe('App', () => {
 
     vi.advanceTimersByTime(HEAD_HOLD_MS) // 先頭待機終了、index1へ進む
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+  })
+
+  it('PR#11 3巡目 should-B: 介助者メニューを開くたびにオフライン準備状態を再計算する', () => {
+    const recheck = vi.spyOn(offlineReadyModule, 'recheckOfflineReady').mockResolvedValue(undefined)
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    expect(recheck).toHaveBeenCalledTimes(1)
+
+    // オーバーレイ外タップで閉じてホームへ戻り、もう一度開くと再度呼ぶ
+    const overlay = container.querySelector('.caregiver-overlay') as HTMLElement
+    fireEvent.pointerDown(overlay)
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    expect(recheck).toHaveBeenCalledTimes(2)
   })
 
   it('設定変更がリロード相当（再マウント）後も localStorage から復元される', () => {
