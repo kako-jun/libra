@@ -12,32 +12,40 @@ function getAudioContextCtor(): AudioContextCtor | undefined {
 
 let audioContext: AudioContext | null = null
 let intervalId: number | null = null
-let resumeInFlight = false
+
+/**
+ * AudioContext を(なければ)作り、onstatechange を一度だけ配線する。
+ *
+ * M-new-1: 以前は「resume 呼び出し中フラグ」で多重 resume を防いでいたが、Web Audio の
+ * 仕様では *ユーザーのアクティベーションを伴わない* resume() は reject されず pending の
+ * ままになることがある。そのフラグが立った状態で pointerdown(アクティベーション無し)の
+ * resume が pending のまま残ると、以降の pointerup/touchend/click/visibilitychange
+ * (アクティベーション有り)での resume 呼び出しがガードで丸ごと捨てられ、二度と running
+ * にならない(Safari 相当では警告音が一度も鳴らない)。resume() 自体はガードせず毎回呼び、
+ * 実際に running へ遷移した瞬間だけ onstatechange で捉える。
+ */
+function ensureAudioContext(): AudioContext | null {
+  if (audioContext) return audioContext
+  const Ctor = getAudioContextCtor()
+  if (!Ctor) return null
+  audioContext = new Ctor()
+  audioContext.onstatechange = () => {
+    // S-new-2: アラーム動作中(intervalId!==null)に running へ遷移した瞬間、
+    // 次の周期(最大 repeatMs)を待たず1回鳴らす。
+    if (audioContext?.state === 'running' && intervalId !== null) beep()
+  }
+  return audioContext
+}
 
 /** 最初のユーザー入力で呼ぶ。AudioContext は自動再生ポリシーのため resume が要る。 */
 export function resumeAlarmAudioContext(): void {
   try {
-    if (!audioContext) {
-      const Ctor = getAudioContextCtor()
-      if (!Ctor) return
-      audioContext = new Ctor()
-    }
-    // 連打で resume() を何度呼んでも、その解決時に複数回キャッチアップ鳴動しないよう
-    // 進行中は多重に .then を積まない。
-    if (audioContext.state === 'suspended' && !resumeInFlight) {
-      resumeInFlight = true
-      audioContext
-        .resume()
-        .then(() => {
-          resumeInFlight = false
-          // S-new-2: タッチで最初に緊急を選ぶと pointerdown 時点では suspended のため
-          // beep がスキップされ、最大 repeatMs(既定3秒)警告音が遅れる。resume が実際に
-          // 完了した瞬間、アラーム動作中(intervalId!==null)なら次の周期を待たず1回鳴らす。
-          if (intervalId !== null) beep()
-        })
-        .catch(() => {
-          resumeInFlight = false
-        })
+    const ctx = ensureAudioContext()
+    if (!ctx) return
+    if (ctx.state !== 'running') {
+      void ctx.resume().catch(() => {
+        // resume が reject されても、次のユーザー操作で再度呼ばれるので落とさない
+      })
     }
   } catch {
     // AudioContext が使えない環境ではアラームなしで動作を続ける
@@ -53,8 +61,9 @@ function beep(): void {
   const ctx = audioContext
   if (!ctx) return
   // 'running' 以外(suspended/interrupted/closed 等)では鳴らさない。resume を試みておき、
-  // 実際に鳴らすのは次の周期以降(resume が間に合ってから)にする。ここで待ってから鳴らすと
-  // 複数周期分の音がまとめて鳴る(キャッチアップ)ことになるため、このタイミングでは諦める。
+  // 実際に running になった瞬間は ensureAudioContext の onstatechange が1回鳴らす。
+  // ここで待ってから鳴らすと複数周期分の音がまとめて鳴る(キャッチアップ)ことになるため、
+  // このタイミングでは諦める。
   if (ctx.state !== 'running') {
     try {
       void ctx.resume().catch(() => {
