@@ -12,21 +12,21 @@ Theme: green-based, calm, medical-adjacent, and readable. Urgent actions may use
 
 ## 2. Color Palette & Roles
 
-| Role | Value | Usage |
-|---|---|---|
-| Background | `#f3fbf7` | App background |
-| Primary | `#064e3b` | Message panel |
-| Primary dark | `#052e2b` | Text / strong borders |
-| Tile border | `#065f46` | Normal tile border |
-| Calm tile | `#dcfce7` | Slow / non-urgent actions |
-| Positive tile | `#d1fae5` | Yes / okay / thanks |
-| Urgent tile | `#fee2e2` | Emergency actions |
-| Urgent border | `#991b1b` | Emergency border |
-| Scan outline | `#facc15` | Current scan target |
+| Role          | Value     | Usage                     |
+| ------------- | --------- | ------------------------- |
+| Background    | `#f3fbf7` | App background            |
+| Primary       | `#064e3b` | Message panel             |
+| Primary dark  | `#052e2b` | Text / strong borders     |
+| Tile border   | `#065f46` | Normal tile border        |
+| Calm tile     | `#dcfce7` | Slow / non-urgent actions |
+| Positive tile | `#d1fae5` | Yes / okay / thanks       |
+| Urgent tile   | `#fee2e2` | Emergency actions         |
+| Urgent border | `#991b1b` | Emergency border          |
+| Scan outline  | `#facc15` | Current scan target       |
 
 ## 3. Typography Rules
 
-Use system UI fonts. Text must fit inside tiles on mobile and tablet.
+BIZ UDPGothic (400/700) is bundled via `@fontsource/biz-udpgothic` and imported from `index.tsx`, not loaded from a CDN — requirements.md §8 requires every communication feature to work offline, and a Google Fonts `<link>` breaks that. It is also a universal-design typeface (clear kana/kanji shapes, wide letter spacing), which matters because a generic `system-ui`/`sans-serif` stack falls back to a Chinese-glyph font (e.g. WenQuanYi) on many Linux systems and renders Japanese text with the wrong glyph shapes. `font-family` therefore puts `'BIZ UDPGothic'` first, followed only by other Japanese-capable fallbacks (`Hiragino Sans`, `Hiragino Kaku Gothic ProN`, `Yu Gothic UI`, `Yu Gothic`, `Noto Sans JP`) and finally generic `sans-serif` — never a bare `system-ui`/`-apple-system`/`Segoe UI` ahead of a Japanese-capable font. Text must fit inside tiles on mobile and tablet.
 
 - Message: very large, `clamp(2.35rem, 7vh, 5.4rem)`
 - Tile label: `clamp(1.55rem, 4.8vh, 3.4rem)`

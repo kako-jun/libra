@@ -1,12 +1,11 @@
 :root {
   color: #052e2b;
   background: #f3fbf7;
+  /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
+     Linux 等で中国語フォントへ落ちうるため、日本語書体より前に置かない。 */
   font-family:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+    'BIZ UDPGothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Yu Gothic',
+    'Noto Sans JP', sans-serif;
 }
 
 * {
