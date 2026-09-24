@@ -150,17 +150,48 @@ describe('computeGridLayout', () => {
       }
     }
 
-    it('390x844で特大文字(最小セル寸法を拡大)の場合、フィットしなければスクロールへフォールバックする', () => {
-      // 特大文字時、呼び出し側は minCellWidth/Height を引き上げて渡す想定。
-      // グリッド領域が狭くフィットしない場合は fill:false になり、
-      // スクロールレイアウト側の最小タイル高で表示できる
-      const result = computeGridLayout(7, 390, 400, { minCellWidth: 170, minCellHeight: 150 })
-      if (result.fill) {
-        expect(390 / result.cols).toBeGreaterThanOrEqual(170)
-        expect(400 / result.rows).toBeGreaterThanOrEqual(150)
-      } else {
-        expect(result).toEqual({ fill: false, cols: 1, rows: 1, lastSpan: 1 })
+    // PR#16 再レビュー must-A/B(方針転換): 以前はここで、呼び出し側(App.tsx)が
+    // 文字サイズ設定に応じて minCellWidth/Height を引き上げて渡す想定で、
+    // フィットしなければスクロールへフォールバックすることを許容していた。
+    // これだと大/特大文字で8項目以下の画面までスクロール化し、巡回中に緊急タイルが
+    // 画面外へ消えることがあった。方針を転換し、最小セル寸法は文字サイズに関係なく
+    // 既定(160x96)で固定する(App.tsx は computeGridLayout をオプション無しで呼ぶ)。
+    // 文字が収まらない分はCSS側(--tile-label-font の min())で文字自体を縮めて対応する。
+    it('文字サイズ設定(呼び出し側のオプション)に関係なく、8項目以下は常に全面充填する', () => {
+      // 実機サイズ相当の格子領域×項目数1〜8の全組み合わせで、オプション無し
+      // (既定の 160x96)なら必ず fill:true になることを確認する
+      const dimsList = [
+        { width: 768, height: 850 },
+        { width: 390, height: 680 },
+        { width: 320, height: 420 },
+        { width: 844, height: 300 },
+      ]
+      for (const dims of dimsList) {
+        for (let n = 1; n <= 8; n += 1) {
+          const result = computeGridLayout(n, dims.width, dims.height)
+          expect(result.fill).toBe(true)
+        }
       }
+    })
+
+    // PR#16 再レビュー must-A/B: 「≤8項目で巡回中に緊急タイルが常にビューポート内」の
+    // 保証について。computeGridLayout 自体はスキャン位置(どのタイルが巡回中か)を
+    // 一切考慮しない純粋関数であり、cols/rows は項目数と領域サイズだけで決まる。
+    // fill:true のとき App.tsx は .grid-board に .grid-fill を付け、globals.css の
+    // .grid-board.grid-fill は overflow-y:hidden(スクロール自体が起きない)で
+    // grid-template-columns/rows を厳密に cols×rows で等分する。緊急タイルは
+    // 常に先頭(index 0、menus.ts の homeScreen/subScreen)にあるため、fill:true である
+    // 限り緊急タイルを含む全タイルが常に同時にビューポート内へ収まる(スクロール自体が
+    // 存在しないので巡回中に画面外へ出ることがあり得ない)。上のテストで
+    // 「8項目以下は常に fill:true」を保証しているため、この不変条件は論理的に導かれる。
+    // 実ブラウザでの目視相当の確認は scratchpad/rv16r.mjs と e2e/offline.e2e.mjs で行う
+    it('fill:true のときは巡回位置に関わらず全タイルが同時に描画領域内へ収まる(スクロール自体が発生しない)', () => {
+      const result = computeGridLayout(8, 768, 850)
+      expect(result.fill).toBe(true)
+      // fill モードは cols*rows で領域全体を等分するため、8項目全てに専用セルがあり
+      // (空きは1セルまで許容)、どのタイルも他のタイルより後ろへ隠れることがない
+      expect(result.cols * result.rows).toBeGreaterThanOrEqual(8)
+      expect(result.cols * result.rows - 8).toBeLessThanOrEqual(1)
     })
   })
 })

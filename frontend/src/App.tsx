@@ -69,22 +69,6 @@ const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
 
 const FONT_SIZES: Settings['fontSize'][] = ['standard', 'large', 'xlarge']
 
-// PR#16 Opus レビュー must-3: 文字サイズが大きいほど、gridLayout に渡す最小セル寸法も
-// 大きくする。これにより「収まらない列数」自体を候補から外せる(CSS側のcqb/overflow:hidden
-// は最後の保険)。値は目視調整(--font-scale 1/1.25/1.55に対応)。
-const MIN_CELL_SIZE_BY_FONT_SIZE: Record<
-  Settings['fontSize'],
-  { minCellWidth: number; minCellHeight: number }
-> = {
-  standard: { minCellWidth: 160, minCellHeight: 96 },
-  // PR#16 Opus レビュー 再検証(2回目): 大/特大は当初の値だと「かろうじて条件を満たす
-  // 2列」を選んでしまい(実測 390px幅で195px列)、8文字前後のラベルが3〜4行に折り返した。
-  // fill モードで無理に敷き詰めず、条件を満たせなければスクロールの1列(全幅)へ
-  // フォールバックさせたほうが結果的に読みやすいため、閾値を引き上げる
-  large: { minCellWidth: 230, minCellHeight: 150 },
-  xlarge: { minCellWidth: 280, minCellHeight: 190 },
-}
-
 const THEME_LABELS: Record<Settings['theme'], string> = {
   light: '明るい',
   dark: '夜間',
@@ -180,12 +164,14 @@ export default function App() {
 
   // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
   // ResizeObserver で追従するので、回転・キャレギバー設定変更後の再計算も自動で効く。
+  // PR#16 再レビュー must-A/B: 最小セル寸法は文字サイズに関係なく既定(160x96)のまま
+  // 固定する。「収まらない」問題は最小セル寸法をここで引き上げてスクロールへ逃がすのでは
+  // なく、CSS側で文字をセルに合わせて縮める(--tile-label-font の min())ことで解決する。
+  // これにより8項目以下の画面は常に全面充填(fill)され、スクロールに落ちない。
   let gridBoardEl: HTMLElement | undefined
   const [gridSize, setGridSize] = createSignal({ width: 0, height: 0 })
   const gridLayout = createMemo(() =>
-    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height, {
-      ...MIN_CELL_SIZE_BY_FONT_SIZE[settings().fontSize],
-    }),
+    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height),
   )
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))

@@ -412,13 +412,37 @@ h1 {
   height: 100%;
 }
 
+/* PR#16 再レビュー must-A/B: スクロールモード(9項目以上、現状は文字盤のみ)では
+   緊急タイルが常に先頭(1番目)にある(menus.ts の subScreen/homeScreen)。
+   巡回中に下の方の項目がスキャン対象になっても、緊急タイルだけは
+   sticky で画面内に留め続け、本人がいつでも押せる状態を保つ。
+   文字盤の2段階化(緊急を別の固定領域に出す等)は Issue #4 で扱う。現行の文字盤の
+   応急対応としてはこれで足りる */
+.grid-board:not(.grid-fill) .tile:first-child {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
 .tile {
   /* kako-jun 追加指示: 予告(.tile-preview)の文字サイズをラベルの45〜55%程度にするため、
      ラベルの clamp() 式を変数化して共有する。ブレークポイントごとの上書きはここで行い、
      .tile-label と .tile-preview の両方が追従する。
      PR#16 Opus レビュー must-3: 横幅(cqi)だけでなく高さ(cqb)でも頭打ちにする(横長タイルで
-     縦にはみ出すのを防ぐ)。container-type を size にして cqb を有効にする */
-  --tile-label-font: clamp(1.05rem, min(4.8vh, 15cqi, 20cqb), 3.4rem);
+     縦にはみ出すのを防ぐ)。container-type を size にして cqb を有効にする。
+     PR#16 再レビュー must-A/B(方針転換): 以前は文字サイズ設定に応じて gridLayout の
+     最小セル寸法自体を引き上げ、収まらなければスクロールへ逃がしていた。これだと
+     8項目以下の画面でも大/特大文字でスクロール化してしまい、緊急タイルが巡回中に
+     画面外へ消えることがあった。最小セル寸法は文字サイズに関係なく既定のまま固定し
+     (App.tsx)、代わりにここで --font-scale を「min() の中の vh 項」と「clamp の上限」
+     にだけ掛ける。「セルに収まる範囲で、文字サイズ設定が許す上限まで大きくする」という
+     意味になり、セルが小さければ自動的に文字が縮む(cqi/cqbが頭打ちする)ため、
+     どんな文字サイズ設定でも fill レイアウトを維持できる */
+  --tile-label-font: clamp(
+    1.05rem,
+    min(calc(var(--font-scale) * 4.8vh), 15cqi, 20cqb),
+    calc(var(--font-scale) * 3.4rem)
+  );
   container-type: size;
   position: relative;
   display: grid;
@@ -530,26 +554,35 @@ h1 {
 .tile-label {
   white-space: pre-line;
   text-align: center;
-  font-size: calc(var(--font-scale) * var(--tile-label-font));
+  /* PR#16 再レビュー must-A/B: --font-scale は既に --tile-label-font 自身の中で
+     (min() の vh 項と clamp の上限に)掛けてあるため、ここで二重に掛けない */
+  font-size: var(--tile-label-font);
   font-weight: 900;
   line-height: 1.15;
   letter-spacing: 0;
 }
 
-/* PR#16 Opus レビュー should-2 再修正(2回目): 最初は .tile-label 自身に padding を、
+/* PR#16 Opus レビュー should-2 再修正(2回目・破棄): 最初は .tile-label 自身に padding を、
    次に position:absolute+inset を試したが、どちらも実測(bounding rect)で問題が
    残った。padding 版は中央寄せの結果、矩形自体がアイコン/予告まで届いてしまい
    「重なっている」ままだった。inset 版は矩形をアイコン/予告の領域より内側に確実に
    収められたが、今度は矩形が確保した領域いっぱいに引き伸ばされるため、2文字の
    ラベルでも矩形の高さだけは大きいまま(「4行に見える」という別の誤検知)になった。
-   正しい直し方は、余白を .tile-label ではなく .tile(コンテナ)側に持たせること:
-   .tile の place-items:center は「パディングを除いた内側」を中央寄せの基準にするため、
-   ラベル自身は本来のサイズ(2文字なら2文字ぶん)のまま、アイコン(右)・予告(下)の分だけ
-   中央がずれて自然と避ける。アイコン・予告は絶対配置でタイルのpadding-boxを基準に
-   位置決めされる(paddingの増減の影響を受けない)ため、この余白確保だけで両立できる。 */
-.tile-nav {
-  padding-right: calc(var(--font-scale) * clamp(20px, 14cqi, 42px));
-  padding-bottom: calc(var(--font-scale) * clamp(22px, 20cqb, 48px));
+   3回目に .tile-nav(コンテナ)側へ padding を移して両方解決したかに見えたが、
+   PR#16 再レビュー should-c で発覚: .tile は container-type:size のコンテナであり、
+   --tile-label-font の cqi/cqb は「.tile 自身の content-box」を基準に計算される。
+   コンテナ(.tile-nav = .tile)に padding を足すとその content-box 自体が縮むため、
+   navigate タイルだけ cqi/cqb の基準が小さくなり、同じ画面内の非 navigate タイルより
+   ラベルが小さくなってしまっていた。
+   4回目(現在の実装): 余白は .tile-nav(コンテナ)ではなく .tile-nav .tile-label
+   (ラベル自身)の max-width/margin に持たせる。こうすればコンテナの content-box は
+   変わらず cqi/cqb の基準は全タイルで揃ったまま、ラベルの矩形だけがアイコン(右)・
+   予告(下)の分だけ狭まり・中央からずれて避ける(margin はコンテナの
+   place-items:center の中央位置を非対称にずらす効果を持つ) */
+.tile-nav .tile-label {
+  max-width: calc(100% - var(--font-scale) * clamp(20px, 14cqi, 42px));
+  margin-right: calc(var(--font-scale) * clamp(20px, 14cqi, 42px));
+  margin-bottom: calc(var(--font-scale) * clamp(22px, 20cqb, 48px));
 }
 
 .tile-detail {
@@ -586,8 +619,11 @@ h1 {
   color: var(--text-muted);
   /* kako-jun 追加指示: ラベルの45〜55%程度(ここでは50%)、最小でも0.85rem相当にする。
      --tile-label-font(.tile で定義、ブレークポイントごとに上書き)を参照するので、
-     画面幅が変わってもラベルとの比率を保ったまま追従する */
-  font-size: calc(var(--font-scale) * max(0.85rem, 0.5 * var(--tile-label-font)));
+     画面幅が変わってもラベルとの比率を保ったまま追従する。
+     PR#16 再レビュー must-A/B: --tile-label-font には既に --font-scale が内包されて
+     いるため、比率(0.5倍)側には掛けない。最小値の0.85rem側にだけ掛けて、文字サイズ
+     設定が大きい時は最小値も一緒に持ち上がるようにする */
+  font-size: max(calc(var(--font-scale) * 0.85rem), 0.5 * var(--tile-label-font));
   font-weight: 700;
   line-height: 1.1;
   text-align: center;
@@ -769,7 +805,11 @@ h1 {
   .tile {
     min-height: 112px;
     padding: 18px 8px 10px;
-    --tile-label-font: clamp(1.1rem, min(4.7vh, 20cqi, 22cqb), 2.4rem);
+    --tile-label-font: clamp(
+      1.1rem,
+      min(calc(var(--font-scale) * 4.7vh), 20cqi, 22cqb),
+      calc(var(--font-scale) * 2.4rem)
+    );
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
@@ -811,6 +851,10 @@ h1 {
   .tile {
     min-height: 84px;
     padding: 14px 6px 8px;
-    --tile-label-font: clamp(0.98rem, min(4vh, 22cqi, 24cqb), 1.9rem);
+    --tile-label-font: clamp(
+      0.98rem,
+      min(calc(var(--font-scale) * 4vh), 22cqi, 24cqb),
+      calc(var(--font-scale) * 1.9rem)
+    );
   }
 }
