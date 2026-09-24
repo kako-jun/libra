@@ -499,12 +499,17 @@ h1 {
 /* kako-jun 回答(question): 緊急タイルは色以外でも区別できるよう、両テーマとも
    内側に白系の輪郭を付ける(色覚特性への配慮)。::before を使い、スキャン中の
    ::after(黄色リング)と重ならず共存する */
+/* PR#16 再レビュー nit-d: スキャン中にこのタイル自身が対象になると、スキャンリング
+   (.tile.scanning::after)側の白系アウトラインと重なって区別しにくくなっていた。
+   常設の輪郭を細く・より透明にして、スキャンリングの太い白枠とは明確に見分けられる
+   ようにする(常設=補助的な色覚配慮、スキャン中=最優先の強調、という役割の違いが
+   見た目にも出るようにする) */
 .tile-urgent::before {
   content: '';
   position: absolute;
   inset: 3px;
-  border: 2px solid var(--urgent-text);
-  opacity: 0.85;
+  border: 1px solid var(--urgent-text);
+  opacity: 0.5;
   pointer-events: none;
 }
 
