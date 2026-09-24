@@ -22,6 +22,8 @@
 // - letters-scroll: 横向き小画面(844x390/667x375/320x568)で文字盤のスキャン対象が下段に
 //   来ても、document自体はスクロールせず(window.scrollY===0)、メッセージパネル(h1)と
 //   スキャン対象タイルの両方がビューポート内にあることを確認する
+// - no-overlap(4巡目 nit): 固定配置の「介助」ボタン・「警告音停止中」表示が、ホーム・
+//   文字盤のタイル領域と重なっていないことを844x390/390x844/1024x768で確認する
 
 import http from 'node:http'
 import fs from 'node:fs'
@@ -388,6 +390,76 @@ async function checkLettersScrollLayout(chromium, port) {
   return failures
 }
 
+/**
+ * PR#11 4巡目 nit: 固定配置の「介助」ボタンと「警告音停止中」表示が、タイル領域
+ * (grid-board)の右下と重なっていないことを確認する。overflow:auto でスクロール
+ * アウトしている(実際には描画されていない)タイルは対象外にする(grid-board 自身の
+ * クリップ矩形と交差しないタイルは無視する)。
+ */
+async function checkNoOverlapWithFixedControls(chromium, port) {
+  const base = `http://localhost:${port}/`
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+  const viewports = [
+    ['844x390', 844, 390],
+    ['390x844', 390, 844],
+    ['1024x768', 1024, 768],
+  ]
+
+  function rectsOverlap(a, b) {
+    return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+  }
+
+  async function checkScreen(page, name, screenLabel) {
+    const info = await page.evaluate(() => {
+      const board = document.querySelector('.grid-board')
+      const button = document.querySelector('.caregiver-button')
+      const hint = document.querySelector('.audio-status-hint')
+      const rectOf = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
+      return {
+        board: rectOf(board),
+        button: rectOf(button),
+        hint: rectOf(hint),
+        tiles: [...document.querySelectorAll('.grid-board .tile')].map((t) => rectOf(t)),
+      }
+    })
+    for (const tile of info.tiles) {
+      if (info.board && !rectsOverlap(tile, info.board)) continue // スクロールアウトしている
+      if (info.button && rectsOverlap(tile, info.button)) {
+        failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助」ボタンと重なっている`)
+      }
+      if (info.hint && rectsOverlap(tile, info.hint)) {
+        failures.push(`[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`)
+      }
+    }
+  }
+
+  try {
+    for (const [name, width, height] of viewports) {
+      const context = await browser.newContext({ viewport: { width, height } })
+      const page = await context.newPage()
+      await page.goto(base)
+      await page.waitForTimeout(300)
+      await checkScreen(page, name, 'home')
+
+      // home: index5 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
+      await page.waitForTimeout(3000 + 4 * 1500 + 150)
+      await page.keyboard.press('Space')
+      await page.waitForTimeout(300)
+      await checkScreen(page, name, 'letters')
+
+      await context.close()
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+
+  return failures
+}
+
 async function main() {
   if (!fs.existsSync(DIST_DIR)) {
     console.error(`dist/ が無い。先に \`npm run build\` を実行すること: ${DIST_DIR}`)
@@ -428,6 +500,16 @@ async function main() {
     scrollFailures.forEach((f) => console.error(f))
   }
   allFailures.push(...scrollFailures)
+  port += 1
+
+  console.log(`--- checking: no-overlap (port ${port}) ---`)
+  const overlapFailures = await checkNoOverlapWithFixedControls(chromium, port)
+  if (overlapFailures.length === 0) {
+    console.log('[no-overlap] OK')
+  } else {
+    overlapFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...overlapFailures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)

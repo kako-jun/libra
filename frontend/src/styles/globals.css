@@ -56,7 +56,12 @@ button {
      フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
   height: 100vh;
   height: 100dvh;
-  padding: 14px;
+  /* PR#11 4巡目 nit: 右下に固定表示される「介助」ボタン(bottom:10px, 高さ約56px)と、
+     その上の「警告音停止中」表示(bottom:74px, 高さ約40px)が、タイル領域(grid-board)の
+     右下と重なっていた。grid-board の内側の padding では、視覚上の箱の大きさそのものは
+     変わらず(overflow-y:auto によるスクロール量だけが変わる)重なりを防げないため、
+     app-shell 側の padding-bottom でタイル領域自体をこの高さ分だけ手前で切り上げる */
+  padding: 14px 14px 130px;
   overflow: hidden;
   /* Issue #5: 本人画面はダブルタップ拡大・ピンチ拡大・スクロール・テキスト選択・
      長押しコンテキストメニューを起こさない。介助者パネル内の操作(input/button)は
@@ -452,7 +457,7 @@ h1 {
 @media (max-width: 720px) {
   .app-shell {
     gap: 10px;
-    padding: 10px;
+    padding: 10px 10px 130px;
   }
 
   .message-panel {
@@ -491,7 +496,7 @@ h1 {
 @media (max-width: 480px), (max-height: 500px) {
   .app-shell {
     gap: 8px;
-    padding: 8px;
+    padding: 8px 8px 130px;
   }
 
   .message-panel {
