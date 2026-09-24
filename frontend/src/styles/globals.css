@@ -301,28 +301,21 @@ button {
   color: var(--text);
 }
 
-/* PR#16 Opus レビュー 再検証(破棄): h1(と緊急詳細/副表示)は既に 7vh ベースで十分大きいから
-   として --font-scale を h1 から除外していたが、PR#16 再レビュー should-b で
-   「主役のメッセージが最大」という序列がむしろ崩れる(特大時、タイルラベルより
-   h1 の方が小さくなることがあった)と指摘された。
-   --font-scale を戻しつつ、以前はみ出しの原因だった「7vh に無条件で掛ける」方式は
-   避け、タイルの --tile-label-font と同じパターン(min() の中でだけ vh 側に掛け、
-   上限にも掛ける)にする。上限はメッセージ欄の幅基準(cqi、.message-panel に
-   container-type:inline-size を設定済み)にすることで、幅の狭い画面では自動的に
-   頭打ちになり、40dvh の上限 + align-content:start (はみ出しは下方向のみ)で
-   必ず収まる */
+/* PR#16 3巡目 must-1(should-b を撤回): h1 に --font-scale を効かせる should-b を
+   2巡目で入れたが、3巡目の再レビューで「見出しの拡大→メッセージ欄が伸びる→格子が
+   縮む→列数反転→タイルの文字が逆に縮む」という連鎖が発覚した(標準時でも見出しが
+   23〜29%縮小する新規バグ、文字サイズを上げるとタイルの文字が逆に小さくなる新規
+   バグの根本原因)。メッセージ欄の高さ(≒格子の面積)が文字サイズ設定に左右されては
+   ならない、という判断で should-b 自体を撤回する。
+   h1(と緊急詳細/副表示)は --font-scale の対象外に戻し、以前の実測値
+   (1024x768で53.8px・768x1024で71.7px・390x844で38.4px程度)に戻す。
+   文字サイズ設定は選択肢(タイル)の文字だけに効く(docs/user-guide.md に明記)。
+   40dvh の上限だけは cqi で抑える(幅の狭い画面での安全網。通常時は 7vh 側が先に
+   効くため、実質的な挙動は以前の「7vh のみ」の式と変わらない) */
 h1 {
   margin: 0;
   max-width: 16ch;
-  /* PR#16 再レビュー should-b 再検証: 初版(vh項7・cqi上限14・倍率上限5.4rem、タイルと
-     同じ比率)は大/特大で40dvhの上限を最大75px超える組み合わせがあった(768x1024 特大
-     高コントラスト等、720状態監査 scratchpad/rv16r.mjs で検出)。vh項・cqi上限・倍率
-     上限をいずれも切り詰め、40dvh一杯まで育つ手前で頭打ちにする */
-  font-size: clamp(
-    2.35rem,
-    min(calc(var(--font-scale) * 5vh), 10cqi),
-    calc(var(--font-scale) * 4.2rem)
-  );
+  font-size: clamp(2.35rem, min(7vh, 14cqi), 5.4rem);
   line-height: 1.05;
   letter-spacing: 0;
 }
@@ -854,12 +847,8 @@ h1 {
   }
 
   h1 {
-    /* should-b 再検証(狭幅ブレークポイント側も同様に切り詰める。上の基本ルールと同じ理由) */
-    font-size: clamp(
-      1.5rem,
-      min(calc(var(--font-scale) * 4vh), 12cqi),
-      calc(var(--font-scale) * 1.9rem)
-    );
+    /* PR#16 3巡目 must-1(should-b 撤回。上の基本ルールと同じ理由) */
+    font-size: clamp(1.5rem, min(5.5vh, 16cqi), 2.4rem);
   }
 
   /* 狭い画面ではメッセージ列の幅を大きく削らないよう、右上の警告音停止中表示を
