@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="libra">
+  <rect width="512" height="512" fill="#f3fbf7" />
+  <rect x="88" y="112" width="336" height="256" rx="40" fill="#064e3b" />
+  <circle cx="146" cy="392" r="26" fill="#064e3b" />
+  <g fill="#f3fbf7">
+    <rect x="128" y="152" width="112" height="80" rx="14" />
+    <rect x="272" y="152" width="112" height="80" rx="14" />
+    <rect x="128" y="248" width="112" height="80" rx="14" />
+    <rect x="272" y="248" width="112" height="80" rx="14" />
+  </g>
+</svg>
