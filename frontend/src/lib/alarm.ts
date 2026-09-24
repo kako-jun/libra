@@ -30,6 +30,17 @@ export function resumeAlarmAudioContext(): void {
 function beep(): void {
   const ctx = audioContext
   if (!ctx) return
+  // 'running' 以外(suspended/interrupted/closed 等)では鳴らさない。resume を試みておき、
+  // 実際に鳴らすのは次の周期以降(resume が間に合ってから)にする。ここで待ってから鳴らすと
+  // 複数周期分の音がまとめて鳴る(キャッチアップ)ことになるため、このタイミングでは諦める。
+  if (ctx.state !== 'running') {
+    try {
+      void ctx.resume()
+    } catch {
+      // resume できない環境でもアラーム自体は落とさない
+    }
+    return
+  }
   try {
     const oscillator = ctx.createOscillator()
     const gain = ctx.createGain()
@@ -61,4 +72,21 @@ export function stopAlarm(): void {
     window.clearInterval(intervalId)
     intervalId = null
   }
+}
+
+/**
+ * タブが非表示→表示に戻ったタイミングでも AudioContext の resume を試みる。
+ * モバイルでバックグラウンド化すると AudioContext が suspended/interrupted に
+ * なることがあり、フォアグラウンド復帰時に鳴り始めないままになるのを防ぐ。
+ * App.tsx の onMount から呼び、返り値の解除関数を onCleanup に渡す。
+ */
+export function initAlarmVisibilityResume(): () => void {
+  if (typeof document === 'undefined') return () => {}
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      resumeAlarmAudioContext()
+    }
+  }
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  return () => document.removeEventListener('visibilitychange', onVisibilityChange)
 }
