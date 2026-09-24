@@ -2,10 +2,17 @@ import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-j
 import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } from './lib/menus'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { loadSettings, saveSettings, type Settings } from './lib/settings'
-import { resumeAlarmAudioContext, startAlarm, stopAlarm } from './lib/alarm'
+import {
+  initAlarmVisibilityResume,
+  resumeAlarmAudioContext,
+  startAlarm,
+  stopAlarm,
+} from './lib/alarm'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const ALARM_REPEAT_MS = 3000
+/** 介助者メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
+const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
 
 const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
   off: 'OFF',
@@ -43,9 +50,11 @@ export default function App() {
 
   const [screen, setScreen] = createSignal<ScreenId>('home')
   const [emergencyActive, setEmergencyActive] = createSignal(false)
+  // 緊急の詳細（苦しい/痛い等）は積み上げ式。緊急の再選択では消さない(S1)
+  const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>([])
   const [message, setMessage] = createSignal(DEFAULT_MESSAGE)
   const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
-  const [messageHistory, setMessageHistory] = createSignal<string[]>([])
+  const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>([])
   // 緊急中に選ばれた伝達（はい等）は見出しを上書きせず、この副表示にのみ出す
   const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(null)
   const [showUndo, setShowUndo] = createSignal(false)
@@ -76,18 +85,27 @@ export default function App() {
   const showMessage = (text: string, tone: Tone = 'neutral') => {
     setMessage(text)
     setMessageTone(tone)
-    setMessageHistory((items) => [text, ...items].slice(0, 5))
+    setMessageHistory((items) => [{ text, tone }, ...items].slice(0, 5))
     document.documentElement.dataset.messageTone = tone
     navigator.vibrate?.(tone === 'urgent' ? [60, 40, 60] : 35)
     announce(text)
   }
 
-  // M1: 画面遷移のたびに連打無視(lastPressAt)をリセットすると、遷移直後の連打で
-  // 遷移先の先頭項目(通常は緊急)が誤って実行されてしまう。前の画面での lastPressAt を
-  // 引き継ぎ、連打無視が画面をまたいで一貫して働くようにする。
+  // home 以外へ遷移するときは「取り消し」の1周猶予を終わらせる(nit: 積み残した猶予が
+  // 後で home に戻った際に誤って復活しないように)。home への遷移(伝達完了の帰着点)では
+  // 呼び出し元が設定した showUndo/undoLapsRemaining をそのまま尊重する。
   const goTo = (next: ScreenId) => {
+    if (next !== 'home' && (showUndo() || undoLapsRemaining > 0)) {
+      setShowUndo(false)
+      undoLapsRemaining = 0
+    }
     setScreen(next)
     setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
+    // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常は緊急)も読む
+    if (settings().auditoryScan) {
+      const first = buildMenu(next, { showUndo: showUndo(), emergencyActive: emergencyActive() })[0]
+      if (first) announceScanItem(first.label)
+    }
   }
 
   // 通常の伝達完了。緊急中は見出し(緊急表示)を上書きせず、副表示にだけ出す
@@ -114,17 +132,40 @@ export default function App() {
     })
   }
 
+  // M3(a): 介助者メニュー内の操作が60秒ないと自動で閉じ、スキャンを再開する。
+  // パネル内での操作(pointerdown)のたびに resetCaregiverIdleTimer を呼んで先延ばしする。
+  let caregiverIdleTimer: number | undefined
+
+  const resetCaregiverIdleTimer = () => {
+    if (caregiverIdleTimer !== undefined) window.clearTimeout(caregiverIdleTimer)
+    caregiverIdleTimer = window.setTimeout(() => {
+      closeCaregiverMenu()
+    }, CAREGIVER_MENU_IDLE_TIMEOUT_MS)
+  }
+
+  const clearCaregiverIdleTimer = () => {
+    if (caregiverIdleTimer !== undefined) {
+      window.clearTimeout(caregiverIdleTimer)
+      caregiverIdleTimer = undefined
+    }
+  }
+
   const clearEmergency = () => {
     setEmergencyActive(false)
+    setEmergencyDetails([])
     setEmergencySubMessage(null)
     stopAlarm()
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
+    // S2: 解除後に緊急中分の古い取り消しが復活しないようにする
+    setShowUndo(false)
+    undoLapsRemaining = 0
   }
 
   const closeCaregiverMenu = () => {
     setCaregiverMenuOpen(false)
+    clearCaregiverIdleTimer()
     goTo('home')
   }
 
@@ -132,14 +173,27 @@ export default function App() {
     const action = item.action
     switch (action.type) {
       case 'emergency': {
+        // S1: 緊急の再選択は詳細を消さずアラーム再開のみ。初回選択時だけ見出しを立てる
+        const alreadyActive = emergencyActive()
         setEmergencyActive(true)
-        showMessage('緊急です。来てください', 'urgent')
+        // S2: 緊急発生時は取り消しの猶予を必ず終わらせる
+        setShowUndo(false)
+        undoLapsRemaining = 0
+        if (!alreadyActive) {
+          setEmergencyDetails([])
+          showMessage('緊急です。来てください', 'urgent')
+        }
         startAlarm(ALARM_REPEAT_MS)
         goTo('urgentDetail')
         return
       }
       case 'emergencyDetail': {
-        showMessage(`緊急です。来てください — ${action.label}`, 'urgent')
+        // S1: 見出しは変えず、詳細を積み上げ式(重複なし)で見出し下に表示する
+        setEmergencyDetails((details) =>
+          details.includes(action.label) ? details : [...details, action.label],
+        )
+        navigator.vibrate?.([60, 40, 60])
+        announce(`緊急です。来てください。${action.label}`, action.label)
         setShowUndo(false)
         goTo('home')
         return
@@ -148,11 +202,11 @@ export default function App() {
         // menus.ts の buildHomeMenu が緊急中は取り消しをメニューに含めないが、
         // 数字キー等での直接実行に備えてここでも二重に防ぐ
         if (emergencyActive()) return
-        const previous = messageHistory()[1] ?? DEFAULT_MESSAGE
+        const previous = messageHistory()[1] ?? { text: DEFAULT_MESSAGE, tone: 'neutral' as Tone }
         setMessageHistory((items) => items.slice(1))
-        setMessage(previous)
-        setMessageTone('neutral')
-        document.documentElement.dataset.messageTone = 'neutral'
+        setMessage(previous.text)
+        setMessageTone(previous.tone)
+        document.documentElement.dataset.messageTone = previous.tone
         setShowUndo(false)
         goTo('home')
         return
@@ -250,17 +304,38 @@ export default function App() {
   // 本人のスイッチ入力: 画面タップ / 任意キー / Bluetooth シャッター(キー入力として届く)
   onMount(() => {
     const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target?.closest('[data-caregiver-control]')) return
+      // M2: タッチでは pointerdown にユーザーアクティベーションが伴わないことがあるため、
+      // 介助者ボタン除外より前に resume を試みる(緊急の警告音を取りこぼさないため)
       resumeAlarmAudioContext()
-      if (caregiverMenuOpen()) return
+      const target = event.target as HTMLElement | null
+
+      if (caregiverMenuOpen()) {
+        // M3(b): パネル内のタップは通常の介助者操作。パネル外(オーバーレイ背景)へのタップは
+        // メニューを閉じてスキャンをホーム先頭から再開する。この押下自体では項目を実行しない
+        if (target?.closest('.caregiver-panel')) {
+          resetCaregiverIdleTimer()
+          return
+        }
+        closeCaregiverMenu()
+        return
+      }
+
+      if (target?.closest('[data-caregiver-control]')) return
       handleSwitchOn(Date.now())
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
       resumeAlarmAudioContext()
-      if (caregiverMenuOpen()) return
+
+      if (caregiverMenuOpen()) {
+        // M3(b): 介助者はタッチで操作する想定。メニュー表示中の keydown は閉じて
+        // ホーム先頭から再開する(その押下では項目を実行しない)
+        event.preventDefault()
+        closeCaregiverMenu()
+        return
+      }
+
       if (showDevNumbers && /^[1-9]$/.test(event.key)) {
         // 開発補助(?dev限定): 数字キーで先頭9項目を直接実行する。スイッチ扱いより先に処理し二重実行しない
         event.preventDefault()
@@ -271,11 +346,31 @@ export default function App() {
       handleSwitchOn(Date.now())
     }
 
+    // M2: タッチ端末では pointerdown だけでは AudioContext の resume が保証されないため、
+    // pointerup/touchend/click(capture) でも試す。介助者ボタンを含め常に呼んでよい。
+    const onUserActivation = () => resumeAlarmAudioContext()
+
+    // 右クリック等でコンテキストメニューを出さない(介助者ボタンの誤操作対策 S3含む)
+    const onContextMenu = (event: Event) => event.preventDefault()
+
     window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('pointerup', onUserActivation, true)
+    window.addEventListener('touchend', onUserActivation, true)
+    window.addEventListener('click', onUserActivation, true)
+    window.addEventListener('contextmenu', onContextMenu)
+    const stopVisibilityResume = initAlarmVisibilityResume()
+
     onCleanup(() => {
       window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('pointerup', onUserActivation, true)
+      window.removeEventListener('touchend', onUserActivation, true)
+      window.removeEventListener('click', onUserActivation, true)
+      window.removeEventListener('contextmenu', onContextMenu)
+      stopVisibilityResume()
+      clearCaregiverIdleTimer()
+      stopAlarm()
     })
   })
 
@@ -283,6 +378,7 @@ export default function App() {
   const onCaregiverButtonDown = () => {
     longPressTimer = window.setTimeout(() => {
       setCaregiverMenuOpen(true)
+      resetCaregiverIdleTimer()
     }, 2000)
   }
   const onCaregiverButtonUp = () => {
@@ -291,6 +387,9 @@ export default function App() {
       longPressTimer = undefined
     }
   }
+  onCleanup(() => {
+    if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
+  })
 
   return (
     <main class="app-shell">
@@ -298,6 +397,11 @@ export default function App() {
         <div>
           <p class="eyebrow">bedside communication</p>
           <h1>{message()}</h1>
+          <Show when={emergencyActive() && emergencyDetails().length > 0}>
+            <ul class="emergency-details">
+              <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
+            </ul>
+          </Show>
           <Show when={emergencyActive() && emergencySubMessage()}>
             <p class="emergency-sub">最新: {emergencySubMessage()}</p>
           </Show>
@@ -347,6 +451,7 @@ export default function App() {
         onPointerUp={onCaregiverButtonUp}
         onPointerLeave={onCaregiverButtonUp}
         onPointerCancel={onCaregiverButtonUp}
+        onContextMenu={(event) => event.preventDefault()}
         aria-label="介助者メニュー（2秒長押し）"
       >
         介助

@@ -6,12 +6,16 @@ import App from '../App'
 const HEAD_HOLD_MS = 3000
 const INTERVAL_MS = 1500
 
+// createOscillator が呼ばれる = 実際に警告音を鳴らそうとした回数(S6用)
+let oscillatorStartCount = 0
+
 class MockAudioContext {
   state: 'running' | 'suspended' = 'running'
   currentTime = 0
   destination = {}
   resume = vi.fn().mockResolvedValue(undefined)
   createOscillator() {
+    oscillatorStartCount += 1
     return {
       type: '',
       frequency: { setValueAtTime: vi.fn() },
@@ -46,6 +50,7 @@ describe('App', () => {
     vi.useFakeTimers()
     vi.setSystemTime(0)
     window.localStorage.clear()
+    oscillatorStartCount = 0
     ;(window as unknown as { AudioContext?: unknown }).AudioContext = MockAudioContext
     ;(navigator as unknown as { vibrate?: unknown }).vibrate = vi.fn()
     ;(window as unknown as { speechSynthesis?: unknown }).speechSynthesis = {
@@ -187,20 +192,78 @@ describe('App', () => {
     expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
   })
 
-  it('介助者メニュー中はキー・クリックがスイッチとして効かず、スキャンも進まない', () => {
+  it('介助者メニュー中はパネル内の操作ではスイッチとして効かず、メニューは開いたまま', () => {
     const { container } = render(() => <App />)
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
     vi.advanceTimersByTime(2000) // メニュー開く
     const before = h1Text(container)
 
-    fireEvent.keyDown(window, { key: ' ' })
-    const board = container.querySelector('.grid-board') as HTMLElement
-    fireEvent.pointerDown(board)
-    vi.advanceTimersByTime(10000) // スキャンが進むはずの時間
+    const panel = container.querySelector('.caregiver-panel') as HTMLElement
+    fireEvent.pointerDown(panel)
+    vi.advanceTimersByTime(10000) // スキャンが進むはずの時間(メニュー中は止まっている)
 
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
     expect(h1Text(container)).toBe(before)
     expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('M3(b): 介助者メニュー中の keydown はメニューを閉じてホーム先頭から再開する(項目は実行しない)', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // メニュー開く
+
+    fireEvent.keyDown(window, { key: ' ' })
+
+    expect(container.querySelector('.caregiver-overlay')).toBeNull()
+    // その keydown 自体では項目(緊急)は実行されない
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    // ホーム先頭から再開している(先頭待機中なのでまだ緊急のまま)
+    expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('M3(b): 介助者メニューのパネル外(オーバーレイ背景)へのタップはメニューを閉じてホーム先頭から再開する', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // メニュー開く
+
+    const overlay = container.querySelector('.caregiver-overlay') as HTMLElement
+    fireEvent.pointerDown(overlay)
+
+    expect(container.querySelector('.caregiver-overlay')).toBeNull()
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('M3(a): 介助者メニュー内の操作が60秒ないと自動で閉じ、スキャンが再開する', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // メニュー開く
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
+
+    vi.advanceTimersByTime(60000) // 放置60秒
+    expect(container.querySelector('.caregiver-overlay')).toBeNull()
+
+    // 閉じた後はホーム先頭待機を経てスキャンが進む
+    vi.advanceTimersByTime(HEAD_HOLD_MS)
+    expect(scanningLabel(container)).toBe('はい')
+  })
+
+  it('M3(a): パネル内操作があれば60秒の無操作タイマーが延長される', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // メニュー開く
+
+    vi.advanceTimersByTime(50000)
+    const panel = container.querySelector('.caregiver-panel') as HTMLElement
+    fireEvent.pointerDown(panel) // 操作でタイマーが延長される
+
+    vi.advanceTimersByTime(50000) // 合計100秒経過だが最後の操作から50秒しか経っていない
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
   })
 
   it('介助者メニューの緊急解除ボタンで緊急表示が消える', () => {
@@ -237,6 +300,133 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // 連打: 遷移先の先頭(緊急)を誤って実行してはいけない
     expect(h1Text(container)).toBe('はい')
     expect(h1Text(container)).not.toBe('緊急です。来てください')
+  })
+
+  it('S4: 聴覚スキャンON時、画面遷移直後にも先頭項目(通常は緊急)を読む', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // メニューが開く
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
+    fireEvent.click(checkbox) // 聴覚スキャンON
+    const closeButton = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === '閉じる',
+    ) as HTMLElement
+    fireEvent.click(closeButton) // home へ戻る(この goTo は検証対象外)
+
+    const speak = (window as unknown as { speechSynthesis: { speak: ReturnType<typeof vi.fn> } })
+      .speechSynthesis.speak as ReturnType<typeof vi.fn>
+    speak.mockClear()
+
+    // home: 0緊急,1はい,2いいえ,3不快→,... index3まで進めて不快へ遷移する
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2)
+    expect(scanningLabel(container)).toBe('不快 →')
+    fireEvent.keyDown(window, { key: ' ' }) // discomfort へ遷移(goTo)
+
+    expect(speak).toHaveBeenCalled()
+    const lastUtterance = speak.mock.calls[speak.mock.calls.length - 1][0] as { text: string }
+    expect(lastUtterance.text).toBe('緊急')
+  })
+
+  it('S1: 緊急詳細は積み上げ式で表示され、緊急の再選択でも消えない', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail
+    expect(scanningLabel(container)).toBe('緊急')
+
+    // urgentDetail: 0緊急,1戻る,2苦しい,3痛い,...
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=戻る
+    vi.advanceTimersByTime(INTERVAL_MS) // index2=苦しい
+    expect(scanningLabel(container)).toBe('苦しい')
+    fireEvent.keyDown(window, { key: ' ' }) // 苦しい選択 → home
+    expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+
+    // 緊急を再選択しても詳細は消えない(home index0はまだ先頭待機中)
+    vi.advanceTimersByTime(600) // 連打無視(500ms)を超えて次の押下を有効にする
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+
+    // 別の詳細(痛い)を追加すると積み上がる
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // urgentDetail index1=戻る
+    vi.advanceTimersByTime(INTERVAL_MS) // index2=苦しい
+    vi.advanceTimersByTime(INTERVAL_MS) // index3=痛い
+    expect(scanningLabel(container)).toBe('痛い')
+    fireEvent.keyDown(window, { key: ' ' })
+    const detailsText = container.querySelector('.emergency-details')?.textContent
+    expect(detailsText).toContain('苦しい')
+    expect(detailsText).toContain('痛い')
+  })
+
+  it('S2: 緊急発生時に取り消しの猶予を終わらせ、解除後も取り消しが復活しない', () => {
+    const { container } = render(() => <App />)
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+    fireEvent.keyDown(window, { key: ' ' }) // はい → home、取り消し表示
+    expect(tileLabels(container)).toContain('取り消し')
+
+    vi.advanceTimersByTime(600) // 連打無視を超えて次の押下を有効にする(先頭待機中なのでindex0のまま)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急を選択
+    expect(h1Text(container)).toBe('緊急です。来てください')
+
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // 介助者メニューが開く
+    const clearButton = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('緊急解除'),
+    ) as HTMLElement
+    fireEvent.click(clearButton)
+    const closeButton = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === '閉じる',
+    ) as HTMLElement
+    fireEvent.click(closeButton)
+
+    expect(tileLabels(container)).not.toContain('取り消し')
+  })
+
+  it('S6: voiceMode=off でも緊急選択で警告音(oscillator)が鳴る', () => {
+    render(() => <App />)
+    expect(oscillatorStartCount).toBe(0)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急選択(音声モードは既定でOFF)
+    expect(oscillatorStartCount).toBeGreaterThan(0)
+  })
+
+  it('S6: 緊急解除でアラームが止まる(以後 oscillator が増えない)', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急選択
+    vi.advanceTimersByTime(3000) // アラーム周期を1回進める
+    const countBeforeClear = oscillatorStartCount
+    expect(countBeforeClear).toBeGreaterThan(0)
+
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    const clearButton = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('緊急解除'),
+    ) as HTMLElement
+    fireEvent.click(clearButton)
+
+    vi.advanceTimersByTime(10000) // アラーム周期を何度も進める
+    expect(oscillatorStartCount).toBe(countBeforeClear)
+  })
+
+  it('nit: 取り消しで戻したメッセージのトーン(緊急以外)も復元される', () => {
+    const { container } = render(() => <App />)
+    // 「はい」(positive) を表示させてから「いいえ」(neutral)を選ぶと、取り消しで
+    // 「はい」のトーン(positive)まで復元されるべき
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+    fireEvent.keyDown(window, { key: ' ' }) // はい(positive) → home
+    expect(document.documentElement.dataset.messageTone).toBe('positive')
+
+    // home(取り消しあり): 0緊急,1取り消し,2はい,3いいえ,...
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // index3=いいえ
+    expect(scanningLabel(container)).toBe('いいえ')
+    fireEvent.keyDown(window, { key: ' ' }) // いいえ(neutral) → home
+    expect(document.documentElement.dataset.messageTone).toBe('neutral')
+
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
+    expect(scanningLabel(container)).toBe('取り消し')
+    fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 「はい」に戻る
+    expect(h1Text(container)).toBe('はい')
+    expect(document.documentElement.dataset.messageTone).toBe('positive')
   })
 
   it('設定変更がリロード相当（再マウント）後も localStorage から復元される', () => {
