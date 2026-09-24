@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
+import * as alarmModule from '../lib/alarm'
 
 // requirements.md 既定値: intervalMs=1500, headHoldMultiplier=2(=headHoldMs 3000), debounceMs=500
 const HEAD_HOLD_MS = 3000
@@ -462,6 +463,28 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 「はい」に戻る
     expect(h1Text(container)).toBe('はい')
     expect(document.documentElement.dataset.messageTone).toBe('positive')
+  })
+
+  it('nit: AudioContextがrunningでない間は警告音停止中の表示が出て、runningになると消える', () => {
+    // alarm.ts はモジュール内に audioContext をキャッシュし他テストとも共有されるため、
+    // getAlarmAudioStatus 自体を spy して状態を確定的に制御する
+    const statusSpy = vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
+    const { container } = render(() => <App />)
+    expect(container.querySelector('.audio-status-hint')).not.toBeNull()
+
+    statusSpy.mockReturnValue('running')
+    vi.advanceTimersByTime(500) // ポーリング反映
+    expect(container.querySelector('.audio-status-hint')).toBeNull()
+  })
+
+  it('nit: not-running のままではヒントが出続ける', () => {
+    const statusSpy = vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
+    const { container } = render(() => <App />)
+    expect(container.querySelector('.audio-status-hint')).not.toBeNull()
+
+    vi.advanceTimersByTime(2000) // 何度ポーリングしても not-running のままならヒントは残る
+    expect(container.querySelector('.audio-status-hint')).not.toBeNull()
+    expect(statusSpy).toHaveBeenCalled()
   })
 
   it('設定変更がリロード相当（再マウント）後も localStorage から復元される', () => {

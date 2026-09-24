@@ -317,6 +317,25 @@ h1 {
   background: #052e2b;
 }
 
+/* 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる小さな表示。
+   本人向けではないため介助者ボタンと同じ隅に置き、スイッチ入力からは除外する。 */
+.audio-status-hint {
+  position: fixed;
+  right: 10px;
+  bottom: 74px;
+  z-index: 20;
+  max-width: 220px;
+  margin: 0;
+  padding: 4px 8px;
+  color: #7f1d1d;
+  background: #fff7ed;
+  border: 2px solid #f59e0b;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-align: right;
+}
+
 @media (orientation: portrait) {
   .message-panel {
     min-height: 148px;

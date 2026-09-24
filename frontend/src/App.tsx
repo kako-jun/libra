@@ -3,6 +3,7 @@ import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } fro
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { loadSettings, saveSettings, type Settings } from './lib/settings'
 import {
+  getAlarmAudioStatus,
   initAlarmVisibilityResume,
   resumeAlarmAudioContext,
   startAlarm,
@@ -62,6 +63,8 @@ export default function App() {
 
   const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
   const [letterText, setLetterText] = createSignal('')
+  // 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる表示の元
+  const [alarmAudioRunning, setAlarmAudioRunning] = createSignal(false)
 
   // 表示中メニューはここでしか作らない。スキャン状態・レンダリングの双方が
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
@@ -268,6 +271,15 @@ export default function App() {
     activateIndex(result.activatedIndex)
   }
 
+  // 警告音が鳴らない状態(AudioContext が running でない)を介助者に知らせるための定期確認。
+  // ミリ秒単位の精度は不要なので、スキャンループとは別に緩い間隔でポーリングする。
+  onMount(() => {
+    const checkAlarmAudioStatus = () => setAlarmAudioRunning(getAlarmAudioStatus() === 'running')
+    checkAlarmAudioStatus()
+    const id = window.setInterval(checkAlarmAudioStatus, 500)
+    onCleanup(() => window.clearInterval(id))
+  })
+
   // スキャンの進行ループ。setTimeout を自己再スケジュールし、次に進めるべき時刻に合わせる。
   // 毎回 currentMenu() から項目数を取り、表示中メニューとスキャン状態を同じ配列から導出する。
   onMount(() => {
@@ -447,6 +459,12 @@ export default function App() {
           )}
         </For>
       </section>
+
+      <Show when={!alarmAudioRunning()}>
+        <p class="audio-status-hint" data-caregiver-control>
+          警告音停止中：画面をタップしてください
+        </p>
+      </Show>
 
       <button
         type="button"
