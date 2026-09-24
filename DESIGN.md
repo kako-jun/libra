@@ -72,3 +72,15 @@ Source of truth: `docs/requirements.md`.
 - Do not mix urgent actions with deep setup flows.
 - Do not rely on small icons or dense text.
 - Do not make the app dependent on backend availability for core communication.
+
+## 7. Icon
+
+Decided at planning time (2026-05-07): an abstract balance-scale (libra = the zodiac Libra) motif, green-based. `frontend/public/icon.svg` is the source; PWA icons and the favicon are generated from it.
+
+The motif is exactly three shapes, filled (not stroked), all in Primary `#064e3b` (a slightly different shade such as Tile border `#065f46` may be used for the circle alone, but a single flat color is also fine):
+
+1. An upward-pointing equilateral-ish triangle (the fulcrum/base), apex up.
+2. A circle centered on the triangle's apex (the pivot).
+3. A horizontal bar passing through that circle, perfectly level (never tilted) and symmetric left/right. Its thickness is at least 1/10 of its length so it survives a 16–32px favicon without collapsing into a hairline.
+
+No pans, no hanging strings, no other motif (e.g. a speech bubble or grid) — do not swap this for a different icon concept without an explicit decision, since this was chosen deliberately over the app's own tile-grid visual language. All shapes stay within the maskable safe zone (the centered 80% circle of the 512×512 canvas) so launchers that crop to a circle/squircle never cut into the scale.
