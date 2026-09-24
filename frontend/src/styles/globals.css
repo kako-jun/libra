@@ -1,12 +1,11 @@
 :root {
   color: #052e2b;
   background: #f3fbf7;
+  /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
+     Linux 等で中国語フォントへ落ちうるため、日本語書体より前に置かない。 */
   font-family:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+    'BIZ UDPGothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Yu Gothic',
+    'Noto Sans JP', sans-serif;
 }
 
 * {
@@ -77,6 +76,39 @@ h1 {
   letter-spacing: 0;
 }
 
+/* 見出し(h1)の6割程度の大きさ。緊急の赤背景(#7f1d1d)上で読める配色にする
+   (DESIGN.md §2 の Urgent tile 色を文字色として再利用)。
+   横並び+折り返し(S-new-3)にし、詳細が積み上がっても縦に伸びすぎないようにする。 */
+.emergency-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em 0.8em;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #fee2e2;
+  font-size: clamp(1.4rem, 4.2vh, 3.2rem);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.emergency-details li {
+  white-space: nowrap;
+}
+
+/* 「・」で区切って一続きの文として読みやすくする(先頭項目には付けない) */
+.emergency-details li:not(:first-child)::before {
+  content: '・';
+  margin-right: 0.2em;
+}
+
+.emergency-sub {
+  margin: 8px 0 0;
+  color: #fee2e2;
+  font-size: clamp(1.4rem, 4.2vh, 3.2rem);
+  font-weight: 800;
+}
+
 .status-stack {
   display: grid;
   align-content: center;
@@ -97,25 +129,20 @@ h1 {
 
 .letter-strip {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr;
   gap: 10px;
   align-items: center;
 }
 
-.letter-strip output,
-.letter-strip button,
-.history-row button {
+.letter-strip output {
   min-height: 54px;
   padding: 10px 14px;
+  overflow: hidden;
   color: #052e2b;
   background: #ffffff;
   border: 3px solid #065f46;
   border-radius: 6px;
   font-weight: 800;
-}
-
-.letter-strip output {
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -162,21 +189,17 @@ h1 {
   border-color: #047857;
 }
 
-.tile.disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
 .tile.scanning {
   outline: 8px solid #facc15;
   outline-offset: -12px;
+  background: #fefce8;
 }
 
 .tile-number {
   position: absolute;
   top: 8px;
   left: 10px;
-  display: grid;
+  display: none;
   place-items: center;
   width: 30px;
   height: 30px;
@@ -185,6 +208,11 @@ h1 {
   border-radius: 50%;
   font-size: 0.9rem;
   font-weight: 900;
+}
+
+/* 開発補助: URL に ?dev を付けたときだけ番号バッジを表示する。既定は非表示（requirements.md §5） */
+.show-numbers .tile-number {
+  display: grid;
 }
 
 .tile-label {
@@ -203,41 +231,126 @@ h1 {
   text-align: center;
 }
 
-.history-row {
-  display: flex;
-  gap: 10px;
-  min-height: 54px;
-  overflow-x: auto;
+.caregiver-button {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  z-index: 20;
+  min-width: 56px;
+  min-height: 56px;
+  padding: 8px 12px;
+  color: #f7fee7;
+  background: #052e2b;
+  border: 2px solid #065f46;
+  border-radius: 8px;
+  font-weight: 800;
+  opacity: 0.85;
+  /* S3: 長押し中にスクロール/選択/callout メニューが割り込まないようにする */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
-.history-row:empty {
-  display: none;
+.caregiver-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(5 46 43 / 70%);
 }
 
-.history-row button {
-  flex: 0 0 auto;
-}
-
-.large-text .tile-label {
-  font-size: clamp(1.9rem, 5.5vh, 4rem);
-}
-
-.high-contrast,
-.high-contrast .app-shell {
-  background: #000000;
-}
-
-.high-contrast .tile,
-.high-contrast .letter-strip output,
-.high-contrast .letter-strip button,
-.high-contrast .history-row button {
-  color: #000000;
+.caregiver-panel {
+  display: grid;
+  gap: 14px;
+  width: min(480px, 100%);
+  max-height: 90vh;
+  padding: 20px;
+  overflow-y: auto;
+  color: #052e2b;
   background: #ffffff;
-  border-color: #ffffff;
+  border: 4px solid #065f46;
+  border-radius: 10px;
 }
 
-.high-contrast .message-panel {
-  border-color: #ffffff;
+.caregiver-panel h2 {
+  margin: 0;
+}
+
+.caregiver-field {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.caregiver-checkbox {
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: center;
+  gap: 10px;
+}
+
+.caregiver-voice-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.caregiver-voice-options button {
+  padding: 8px 12px;
+  color: #052e2b;
+  background: #ecfdf5;
+  border: 2px solid #065f46;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.caregiver-voice-options button.active {
+  color: #ffffff;
+  background: #065f46;
+}
+
+.caregiver-action {
+  min-height: 48px;
+  padding: 10px 14px;
+  color: #ffffff;
+  background: #065f46;
+  border: none;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.caregiver-action:disabled {
+  color: #6b7280;
+  background: #e5e7eb;
+}
+
+.caregiver-close {
+  background: #052e2b;
+}
+
+/* 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる小さな表示。
+   本人向けではないため介助者ボタンと同じ隅に置くが、data-caregiver-controlは付けない
+   (S-new-4)。pointer-events:noneでタップを素通しし、下のタイルへの本人のスイッチ入力
+   (resumeも走る)を妨げない。 */
+.audio-status-hint {
+  position: fixed;
+  right: 10px;
+  bottom: 74px;
+  z-index: 20;
+  max-width: 220px;
+  margin: 0;
+  padding: 4px 8px;
+  pointer-events: none;
+  color: #7f1d1d;
+  background: #fff7ed;
+  border: 2px solid #f59e0b;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-align: right;
 }
 
 @media (orientation: portrait) {
@@ -277,11 +390,59 @@ h1 {
     font-size: clamp(1.28rem, 4.7vh, 2.4rem);
   }
 
-  .letter-strip {
-    grid-template-columns: 1fr 1fr;
+  /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
+     見出し下の表示を狭幅では小さくする */
+  .emergency-details,
+  .emergency-sub {
+    font-size: clamp(1rem, 3.2vh, 1.6rem);
+  }
+}
+
+/* S-new-3/S-new-5/S-new-7: 携帯電話幅(例 390x844)や、幅は入っても縦方向の余裕が無い画面
+   (例 max-height:500px)でも、不快画面(8項目)のようにタイル数が多い画面が
+   ビューポート内に収まるよう、見出しの文字サイズと余白をさらに詰める。
+   幅・高さいずれかの条件を満たせば適用する(OR)。max-height は 700px だと横向き
+   タブレット(1024x600, 1180x700等)にも効いてタイルが小さくなってしまうため、
+   500px まで下げてスマホ縦向きのみを狙う(S-new-7)。 */
+@media (max-width: 480px), (max-height: 500px) {
+  .app-shell {
+    gap: 8px;
+    padding: 8px;
   }
 
-  .letter-strip output {
-    grid-column: 1 / -1;
+  .message-panel {
+    min-height: 0;
+    padding: 10px 12px;
+  }
+
+  .eyebrow {
+    margin-bottom: 4px;
+  }
+
+  h1 {
+    font-size: clamp(1.5rem, 5.5vh, 2.4rem);
+  }
+
+  .status-stack {
+    gap: 4px;
+  }
+
+  .status-stack span {
+    padding: 4px 6px;
+  }
+
+  .grid-board {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-auto-rows: minmax(84px, 1fr);
+    gap: 6px;
+  }
+
+  .tile {
+    min-height: 84px;
+    padding: 14px 6px 8px;
+  }
+
+  .tile-label {
+    font-size: clamp(1.05rem, 4vh, 1.9rem);
   }
 }
