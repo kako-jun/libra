@@ -2,24 +2,26 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Issue #5: 常設運用でダブルタップ/ピンチ拡大が起きないよう、本人のタップをズームに
+         奪われないようにする。介助者パネル内の range/checkbox/button 操作は妨げない
+         (globals.css の touch-action 上書きで確保する) -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no"
+    />
     <title>libra - ベッドサイドコミュニケーション</title>
     <meta
       name="description"
       content="病棟ベッドサイド向けの超軽量コミュニケーション補助アプリ。緊急の用件やゆっくりした意思表示を、押しやすい格子状UIで伝えます。"
     />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icon-192.png" />
+    <link rel="apple-touch-icon" href="/pwa-icon-192.png" />
     <meta name="theme-color" content="#064e3b" />
   </head>
   <body>
     <div id="app"></div>
     <script src="/src/index.tsx" type="module"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function (e) {
-          console.error('Service Worker registration failed:', e)
-        })
-      }
-    </script>
   </body>
 </html>

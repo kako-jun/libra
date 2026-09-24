@@ -72,3 +72,32 @@ Source of truth: `docs/requirements.md`.
 - Do not mix urgent actions with deep setup flows.
 - Do not rely on small icons or dense text.
 - Do not make the app dependent on backend availability for core communication.
+
+## 7. Icon
+
+Decided at planning time (2026-05-07, corrected 2026-09-24): an abstract balance-scale (libra = the zodiac Libra) motif, single-color green (`#064e3b`) on the app background (`#f3fbf7`). `frontend/public/icon.svg` is the source; PWA icons and the favicon are generated from it.
+
+The motif is exactly these shapes, all in `#064e3b`:
+
+1. Two equal-sized, upward-pointing (roughly equilateral) triangles side by side, bases at the same height. **Outline only — never filled.** The stroke is thick enough to survive a 16–32px favicon (≈28–36px at the 512×512 canvas scale) with rounded joins/caps.
+2. A filled circle sitting on each triangle's apex (one per triangle — two circles total).
+3. A single horizontal bar that only connects the two circles — it runs from the right edge of the left circle to the left edge of the right circle, ending flush with (or barely overlapping) each circle. It never pierces through either circle, and it stays perfectly level (never tilted).
+
+No pans, no hanging strings, no other motif (e.g. a speech bubble, grid, or a single triangle+circle+bar) — do not swap this for a different icon concept without an explicit decision, since this was chosen deliberately over the app's own tile-grid visual language. All shapes stay within the maskable safe zone (the centered 80% circle of the 512×512 canvas) so launchers that crop to a circle/squircle never cut into the scale.
+
+## 8. Caregiver UI
+
+The caregiver panel (long-press menu) reuses the same green palette as the patient screen, but as flat status/action colors rather than tile tones:
+
+| Element                                  | Background | Border    | Text      | Meaning                                      |
+| ---------------------------------------- | ---------- | --------- | --------- | -------------------------------------------- |
+| `.caregiver-status` (normal)             | `#ecfdf5`  | `#86efac` | `#052e2b` | Wake Lock / offline-ready: OK                |
+| `.caregiver-status.warn`                 | `#fff7ed`  | `#f59e0b` | `#7f1d1d` | Wake Lock / offline-ready: needs attention   |
+| `.caregiver-action`                      | `#065f46`  | —         | `#ffffff` | Primary action button (fullscreen, close…)   |
+| `.caregiver-action:disabled`             | `#e5e7eb`  | —         | `#6b7280` | Action currently unavailable (e.g. 緊急解除) |
+| `.caregiver-close`                       | `#052e2b`  | —         | `#ffffff` | Closing action, deliberately darker          |
+| `.caregiver-voice-options button`        | `#ecfdf5`  | `#065f46` | `#052e2b` | Voice mode option, unselected                |
+| `.caregiver-voice-options button.active` | `#065f46`  | —         | `#ffffff` | Voice mode option, selected                  |
+| `.audio-status-hint`                     | `#fff7ed`  | `#f59e0b` | `#7f1d1d` | Alarm audio not yet unlocked                 |
+
+The warn/OK pairing (`#ecfdf5`/`#86efac`/`#052e2b` vs `#fff7ed`/`#f59e0b`/`#7f1d1d`) is shared by Wake Lock status, offline-ready status, and the alarm-audio hint, so caregivers learn one visual pattern for "this needs your attention" across all of them.

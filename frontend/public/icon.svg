@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="libra">
+  <rect width="512" height="512" fill="#f3fbf7" />
+  <!-- 天秤(libra=天秤座)を単純化したモチーフ(DESIGN.md Icon 節参照):
+       同じ大きさの正三角形を2つ左右に並べ(輪郭線のみ、塗らない)、それぞれの頂点に丸を乗せ、
+       その2つの丸だけを水平の横棒でつなぐ(丸を貫通させない)。皿・吊り紐は描かない。
+       左右対称・横棒は傾けず水平のまま、favicon サイズ(16-32px)でも判別できる太さにする -->
+  <g fill="none" stroke="#064e3b" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M160 200 L230 340 L90 340 Z" />
+    <path d="M352 200 L422 340 L282 340 Z" />
+  </g>
+  <g fill="#064e3b">
+    <!-- 横棒(2つの丸をつなぐだけ。丸の外側へははみ出さない) -->
+    <rect x="194" y="184" width="124" height="32" rx="16" />
+    <!-- 左右の頂点の丸 -->
+    <circle cx="160" cy="200" r="34" />
+    <circle cx="352" cy="200" r="34" />
+  </g>
+</svg>

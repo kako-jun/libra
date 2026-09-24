@@ -5,8 +5,9 @@
   "lang": "ja",
   "theme_color": "#064e3b",
   "background_color": "#f3fbf7",
-  "display": "standalone",
-  "orientation": "portrait",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
   "scope": "/",
   "start_url": "/",
   "icons": [

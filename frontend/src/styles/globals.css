@@ -20,6 +20,13 @@ body,
   margin: 0;
 }
 
+/* Issue #5: 常設運用での誤作動防止。pull-to-refresh・オーバースクロールのバウンスを止める。
+   本人・介助者どちらの操作でも下端/上端で引っ張って再読込されると伝達が中断するため全体に効かせる */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   background: #f3fbf7;
 }
@@ -30,13 +37,44 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  /* PR#11 3巡目 question: 4トラック目(末尾のauto)は使う要素が無い(死んでいる)ので削除。
+     文字盤以外の画面では .letter-strip が DOM に存在せず子要素が2個(message-panel,
+     grid-board)だけになり、明示指定が無いと grid-board が既定の auto-placement で
+     2番目のトラック(auto、内容量ぴったりの高さ)に置かれてしまい、3番目の 1fr トラックが
+     誰にも使われず下に空白が残る(タイルが余白を埋めて大きくならない)。.message-panel/
+     .letter-strip/.grid-board に明示的に grid-row を固定し、letter-strip の有無に関わらず
+     grid-board が常に 1fr トラックを使うようにする */
+  grid-template-rows: auto auto 1fr;
   gap: 14px;
-  min-height: 100vh;
-  padding: 14px;
+  /* PR#11 再レビュー must-C: 従来は min-height:100vh だったため、内容がビューポートより
+     高くなると .app-shell 自身が育ってしまい、overflow:hidden が実際には何も切り取らず
+     document(html/body)側がスクロールしていた。その結果 scrollIntoView が document を
+     スクロールし、緊急表示を含むメッセージパネルが画面外に出てしまう不具合があった
+     (実機 Playwright 検証: 844x390 で h1 top -32px、320x568 で -266px)。
+     height を固定してビューポートちょうどの高さに収め、overflow:hidden を実際に効かせる。
+     縦方向にブラウザ UI が出入りする環境向けに 100dvh を優先し、非対応環境は 100vh に
+     フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
+  height: 100vh;
+  height: 100dvh;
+  /* PR#11 4巡目 nit: 右下に固定表示される「介助」ボタン(bottom:10px, 高さ約56px)と、
+     その上の「警告音停止中」表示(bottom:74px, 高さ約40px)が、タイル領域(grid-board)の
+     右下と重なっていた。grid-board の内側の padding では、視覚上の箱の大きさそのものは
+     変わらず(overflow-y:auto によるスクロール量だけが変わる)重なりを防げないため、
+     app-shell 側の padding-bottom でタイル領域自体をこの高さ分だけ手前で切り上げる */
+  padding: 14px 14px 130px;
+  overflow: hidden;
+  /* Issue #5: 本人画面はダブルタップ拡大・ピンチ拡大・スクロール・テキスト選択・
+     長押しコンテキストメニューを起こさない。介助者パネル内の操作(input/button)は
+     .caregiver-panel 側で明示的に上書きして妨げない */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .message-panel {
+  grid-row: 1;
   display: flex;
   align-items: stretch;
   justify-content: space-between;
@@ -128,6 +166,7 @@ h1 {
 }
 
 .letter-strip {
+  grid-row: 2;
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
@@ -148,11 +187,28 @@ h1 {
 }
 
 .grid-board {
+  /* PR#11 3巡目 question: letter-strip が無い画面(ほとんどの画面)でも常に3番目の
+     1fr トラックを使う。.letter-strip が DOM に無いときの auto-placement 任せにしない */
+  grid-row: 3;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   grid-auto-rows: minmax(126px, 1fr);
   gap: 12px;
   min-height: 0;
+  /* PR#11 must-4: orientation:any(縦横両対応)のため、横向き小画面(例 844x390)では
+     文字盤等の項目数が多い画面で下段のタイルがビューポート外に出ることがある。
+     本人のタッチでは touch-action:none によりスクロールできないが、App.tsx がスキャン対象の
+     変化ごとに scrollIntoView するプログラム的スクロールは、この要素自身が
+     overflow-y:auto であれば妨げられない(親の overflow:hidden は無関係) */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* PR#11 再レビュー must-D: overflow-y:auto にした時点でこの要素はスクロールコンテナに
+     なり、子(.tile)へ touch-action の値を伝える起点が変わる。祖先(.app-shell)の
+     touch-action:none だけでは、この要素自身が明示していないとタイル上のスワイプで
+     パン(スクロール)ジェスチャが有効になってしまう(実機検証で pointercancel が発生)。
+     scrollIntoView 等のプログラム的スクロールは touch-action の影響を受けないため、
+     ここを none にしてもスキャン追従の自動スクロールは機能する */
+  touch-action: none;
 }
 
 .tile {
@@ -167,7 +223,13 @@ h1 {
   border: 4px solid #065f46;
   border-radius: 8px;
   cursor: pointer;
-  touch-action: manipulation;
+  /* PR#11 再レビュー must-D: 前回(nit-4)はここでの touch-action:none を「.app-shell の
+     指定で足りる重複」として削除したが、.grid-board が overflow-y:auto でスクロール
+     コンテナになった今は、このタイル自身にも明示しないとスワイプでパンが有効になる。
+     nit-4 の判断は撤回し、.grid-board 側の指定と合わせて再度 none を明示する */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .tile:active {
@@ -273,6 +335,17 @@ h1 {
   background: #ffffff;
   border: 4px solid #065f46;
   border-radius: 10px;
+  /* Issue #5: 親(.app-shell)の touch-action:none / user-select:none を打ち消し、
+     スライダー操作・チェックボックス・文言の選択など通常の介助者操作を妨げない */
+  touch-action: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.caregiver-panel input,
+.caregiver-panel button {
+  touch-action: manipulation;
 }
 
 .caregiver-panel h2 {
@@ -310,6 +383,22 @@ h1 {
 .caregiver-voice-options button.active {
   color: #ffffff;
   background: #065f46;
+}
+
+.caregiver-status {
+  margin: 0;
+  padding: 8px 10px;
+  color: #052e2b;
+  background: #ecfdf5;
+  border: 2px solid #86efac;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.caregiver-status.warn {
+  color: #7f1d1d;
+  background: #fff7ed;
+  border-color: #f59e0b;
 }
 
 .caregiver-action {
@@ -368,7 +457,7 @@ h1 {
 @media (max-width: 720px) {
   .app-shell {
     gap: 10px;
-    padding: 10px;
+    padding: 10px 10px 130px;
   }
 
   .message-panel {
@@ -407,7 +496,7 @@ h1 {
 @media (max-width: 480px), (max-height: 500px) {
   .app-shell {
     gap: 8px;
-    padding: 8px;
+    padding: 8px 8px 130px;
   }
 
   .message-panel {

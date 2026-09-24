@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import * as alarmModule from '../lib/alarm'
+import * as wakeLockModule from '../lib/wakeLock'
+import * as offlineReadyModule from '../lib/offlineReady'
 
 // requirements.md 既定値: intervalMs=1500, headHoldMultiplier=2(=headHoldMs 3000), debounceMs=500
 const HEAD_HOLD_MS = 3000
@@ -65,6 +67,11 @@ describe('App', () => {
         pitch = 1
         constructor(public text: string) {}
       }
+    // PR#11 3巡目 should-B: 介助者メニューを開くたびに実装(recheckOfflineReady)を呼ぶが、
+    // 個別にその呼び出し自体を検証するテスト以外では、jsdom上でのcaches/serviceWorker
+    // 未実装への実際の問い合わせ(非同期)が他のテストの検証タイミングに影響しないよう、
+    // 既定では何もしないモックにしておく
+    vi.spyOn(offlineReadyModule, 'recheckOfflineReady').mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -570,6 +577,165 @@ describe('App', () => {
     // このタップがハンドラの除外対象(data-caregiver-control)に当たらないことを確認する
     fireEvent.pointerDown(hint) // カーソルは index0(緊急、先頭待機中)
     expect(container.querySelector('h1')?.textContent).toBe('緊急です。来てください')
+  })
+
+  it('Issue #5: 介助者メニューに Wake Lock 取得中の状態が表示される', () => {
+    vi.spyOn(wakeLockModule, 'initWakeLock').mockImplementation((notify) => {
+      notify?.('active')
+      return () => {}
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // メニュー開く
+
+    const status = container.querySelector('.caregiver-status') as HTMLElement
+    expect(status.textContent).toBe('画面スリープ防止: 有効')
+    expect(status.classList.contains('warn')).toBe(false)
+  })
+
+  it('Issue #5: Wake Lock が非対応/失敗のときは端末の自動ロック解除を促す表示になる', () => {
+    vi.spyOn(wakeLockModule, 'initWakeLock').mockImplementation((notify) => {
+      notify?.('unsupported')
+      return () => {}
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const status = container.querySelector('.caregiver-status') as HTMLElement
+    expect(status.textContent).toBe('画面スリープ防止: 無効 — 端末の自動ロックを切ってください')
+    expect(status.classList.contains('warn')).toBe(true)
+  })
+
+  it('Issue #5: requestFullscreen 非対応環境では「全画面にする」ボタンを出さない', () => {
+    const original = document.documentElement.requestFullscreen
+    // @ts-expect-error テストのため非対応を模す
+    delete document.documentElement.requestFullscreen
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const fullscreenButton = Array.from(container.querySelectorAll('.caregiver-action')).find(
+      (el) => el.textContent?.includes('全画面'),
+    )
+    expect(fullscreenButton).toBeUndefined()
+    document.documentElement.requestFullscreen = original
+  })
+
+  it('Issue #5: 「全画面にする」ボタンで requestFullscreen が呼ばれる', () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined)
+    document.documentElement.requestFullscreen = requestFullscreen
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const fullscreenButton = Array.from(container.querySelectorAll('.caregiver-action')).find(
+      (el) => el.textContent?.includes('全画面'),
+    ) as HTMLElement
+    fireEvent.click(fullscreenButton)
+    expect(requestFullscreen).toHaveBeenCalled()
+  })
+
+  it('PR#11 should-1: 介助者メニューにオフライン準備完了の状態が表示される', () => {
+    vi.spyOn(offlineReadyModule, 'initOfflineReadyWatch').mockImplementation((notify) => {
+      notify?.('ready')
+      return () => {}
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const statuses = Array.from(container.querySelectorAll('.caregiver-status'))
+    const offlineStatus = statuses.find((el) => el.textContent?.includes('オフライン準備'))
+    expect(offlineStatus?.textContent).toBe('オフライン準備: 完了')
+    expect(offlineStatus?.classList.contains('warn')).toBe(false)
+  })
+
+  it('PR#11 should-1: オフライン未準備のときは警告表示になる', () => {
+    vi.spyOn(offlineReadyModule, 'initOfflineReadyWatch').mockImplementation((notify) => {
+      notify?.('not-ready')
+      return () => {}
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const statuses = Array.from(container.querySelectorAll('.caregiver-status'))
+    const offlineStatus = statuses.find((el) => el.textContent?.includes('オフライン準備'))
+    expect(offlineStatus?.textContent).toBe('オフライン準備: 未完了')
+    expect(offlineStatus?.classList.contains('warn')).toBe(true)
+  })
+
+  it('nit-3: すでに Fullscreen API で全画面のときは「全画面にする」ボタンを出さない', () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined)
+    document.documentElement.requestFullscreen = requestFullscreen
+    Object.defineProperty(document, 'fullscreenElement', {
+      value: document.documentElement,
+      configurable: true,
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const fullscreenButton = Array.from(container.querySelectorAll('.caregiver-action')).find(
+      (el) => el.textContent?.includes('全画面'),
+    )
+    expect(fullscreenButton).toBeUndefined()
+    Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true })
+  })
+
+  it('nit-3: display-mode:fullscreen で起動済み(PWA)のときも「全画面にする」ボタンを出さない', () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined)
+    document.documentElement.requestFullscreen = requestFullscreen
+    const matchMedia = vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })
+    ;(window as unknown as { matchMedia: typeof window.matchMedia }).matchMedia = matchMedia
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const fullscreenButton = Array.from(container.querySelectorAll('.caregiver-action')).find(
+      (el) => el.textContent?.includes('全画面'),
+    )
+    expect(fullscreenButton).toBeUndefined()
+  })
+
+  it('PR#11 must-4: スキャン対象が変わるたびに scrollIntoView が呼ばれる', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    render(() => <App />)
+    scrollIntoView.mockClear()
+
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // 先頭待機終了、index1へ進む
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+  })
+
+  it('PR#11 3巡目 should-B: 介助者メニューを開くたびにオフライン準備状態を再計算する', () => {
+    const recheck = vi.spyOn(offlineReadyModule, 'recheckOfflineReady').mockResolvedValue(undefined)
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    expect(recheck).toHaveBeenCalledTimes(1)
+
+    // オーバーレイ外タップで閉じてホームへ戻り、もう一度開くと再度呼ぶ
+    const overlay = container.querySelector('.caregiver-overlay') as HTMLElement
+    fireEvent.pointerDown(overlay)
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    expect(recheck).toHaveBeenCalledTimes(2)
   })
 
   it('設定変更がリロード相当（再マウント）後も localStorage から復元される', () => {

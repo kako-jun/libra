@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } from './lib/menus'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { loadSettings, saveSettings, type Settings } from './lib/settings'
@@ -9,6 +9,12 @@ import {
   startAlarm,
   stopAlarm,
 } from './lib/alarm'
+import { initWakeLock, type WakeLockStatus } from './lib/wakeLock'
+import {
+  initOfflineReadyWatch,
+  recheckOfflineReady,
+  type OfflineReadyStatus,
+} from './lib/offlineReady'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const ALARM_REPEAT_MS = 3000
@@ -23,6 +29,22 @@ const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
 }
 
 const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
+
+// Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者メニューに表示する文言。
+// 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
+const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
+  active: '画面スリープ防止: 有効',
+  unsupported: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
+  error: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
+  released: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
+}
+
+// PR #11 レビュー対応(should-1): オフラインで動く準備(Service Worker がこのページを
+// 制御しているか)を Wake Lock と同じ扱いで介助者メニューに表示する。
+const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
+  ready: 'オフライン準備: 完了',
+  'not-ready': 'オフライン準備: 未完了',
+}
 
 function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
   window.speechSynthesis?.cancel()
@@ -65,6 +87,22 @@ export default function App() {
   const [letterText, setLetterText] = createSignal('')
   // 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる表示の元
   const [alarmAudioRunning, setAlarmAudioRunning] = createSignal(false)
+  // Issue #5: 画面スリープ防止の状態。介助者メニューに表示する
+  const [wakeLockStatus, setWakeLockStatus] = createSignal<WakeLockStatus>('unsupported')
+  const fullscreenSupported =
+    typeof document !== 'undefined' &&
+    typeof document.documentElement.requestFullscreen === 'function'
+  const [isFullscreen, setIsFullscreen] = createSignal(
+    typeof document !== 'undefined' && Boolean(document.fullscreenElement),
+  )
+  // nit-3: ホーム画面から起動した PWA が既に display-mode:fullscreen で立ち上がっている場合、
+  // Fullscreen API の document.fullscreenElement は null のままなので isFullscreen() だけでは
+  // 判定できない。matchMedia でも確認し、どちらか一方でも全画面なら「全画面にする」を隠す
+  const [isDisplayModeFullscreen, setIsDisplayModeFullscreen] = createSignal(
+    typeof window !== 'undefined' && window.matchMedia?.('(display-mode: fullscreen)').matches,
+  )
+  // Issue #5 / PR#11 should-1: オフラインで動く準備(SWがこのページを制御しているか)
+  const [offlineReadyStatus, setOfflineReadyStatus] = createSignal<OfflineReadyStatus>('not-ready')
 
   // 表示中メニューはここでしか作らない。スキャン状態・レンダリングの双方が
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
@@ -73,6 +111,21 @@ export default function App() {
   )
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
+
+  // PR#11 must-4: orientation:any(縦横両対応)のため、横向き小画面(例 844x390)では
+  // 文字盤等の項目数が多い画面で下段のタイルがビューポート外に出ることがある。
+  // touch-action:none で本人のスクロール操作自体は塞いでいるため、代わりにスキャン対象が
+  // 変わるたびプログラム的に scrollIntoView して必ず画面内に入れる。scanState() 自体は
+  // 毎tickで新しいオブジェクトになるため、index の値だけを createMemo で取り出して
+  // 実際に index が変わったときだけ effect が走るようにする(不要な scrollIntoView 呼び出しを防ぐ)
+  const scanIndex = createMemo(() => scanState().index)
+  createEffect(() => {
+    scanIndex()
+    screen() // 画面遷移直後、遷移前と同じ index(例: どちらも先頭)でも再度スクロールする
+    if (typeof document === 'undefined') return
+    const el = document.querySelector('.tile.scanning')
+    el?.scrollIntoView?.({ block: 'nearest' })
+  })
 
   // S-new-1 / S-new-6 / nit: 伝達の読み上げ(announce。showMessage経由に限らず、緊急詳細や
   // 緊急中の伝達も含む)を行った直後は、次の1回のスキャン読み上げ(通常は goTo 直後の
@@ -185,6 +238,14 @@ export default function App() {
     goTo('home')
   }
 
+  // Issue #5: 全画面化。誤操作防止(ダブルタップ拡大等)の効果を確実にするため、
+  // 常設運用では全画面での起動を推奨する。非対応環境ではボタン自体を出さない
+  const enterFullscreen = () => {
+    void document.documentElement.requestFullscreen?.().catch(() => {
+      // ユーザー操作起因でない・非対応等で失敗しても、通常表示のまま使い続けられる
+    })
+  }
+
   const runAction = (item: ReturnType<typeof currentMenu>[number]) => {
     const action = item.action
     switch (action.type) {
@@ -286,6 +347,37 @@ export default function App() {
     checkAlarmAudioStatus()
     const id = window.setInterval(checkAlarmAudioStatus, 500)
     onCleanup(() => window.clearInterval(id))
+  })
+
+  // Issue #5: 画面スリープ防止。起動時に取得し、タブが再表示されたときに再取得する。
+  // PR#11 must-2: 可視のまま error/released になった場合の再取得(スイッチ入力毎・
+  // 30秒間隔タイマー)も initWakeLock 内でまとめて行う
+  onMount(() => {
+    const stopWakeLock = initWakeLock(setWakeLockStatus)
+    onCleanup(stopWakeLock)
+  })
+
+  // PR#11 should-1: オフラインで動く準備(SWの制御下にあるか)を介助者メニューに表示する
+  onMount(() => {
+    const stopOfflineReadyWatch = initOfflineReadyWatch(setOfflineReadyStatus)
+    onCleanup(stopOfflineReadyWatch)
+  })
+
+  // nit-3: display-mode(ホーム画面追加で起動した際の全画面表示)の変化を追従する
+  onMount(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const query = window.matchMedia('(display-mode: fullscreen)')
+    const onChange = () => setIsDisplayModeFullscreen(query.matches)
+    query.addEventListener('change', onChange)
+    onCleanup(() => query.removeEventListener('change', onChange))
+  })
+
+  // Issue #5: 全画面状態の表示・介助者メニューからの解除操作にも追従させる
+  onMount(() => {
+    if (typeof document === 'undefined') return
+    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    onCleanup(() => document.removeEventListener('fullscreenchange', onFullscreenChange))
   })
 
   // スキャンの進行ループ。setTimeout を自己再スケジュールし、次に進めるべき時刻に合わせる。
@@ -404,6 +496,9 @@ export default function App() {
     longPressTimer = window.setTimeout(() => {
       setCaregiverMenuOpen(true)
       resetCaregiverIdleTimer()
+      // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
+      // 未完了ならSWの更新チェックも試みる(recheckOfflineReady内部で判定)
+      void recheckOfflineReady(setOfflineReadyStatus)
     }, 2000)
   }
   const onCaregiverButtonUp = () => {
@@ -501,6 +596,20 @@ export default function App() {
             >
               緊急解除{emergencyActive() ? '' : '（緊急なし）'}
             </button>
+
+            <p class="caregiver-status" classList={{ warn: wakeLockStatus() !== 'active' }}>
+              {WAKE_LOCK_LABELS[wakeLockStatus()]}
+            </p>
+
+            <p class="caregiver-status" classList={{ warn: offlineReadyStatus() !== 'ready' }}>
+              {OFFLINE_READY_LABELS[offlineReadyStatus()]}
+            </p>
+
+            <Show when={fullscreenSupported && !isFullscreen() && !isDisplayModeFullscreen()}>
+              <button type="button" class="caregiver-action" onClick={enterFullscreen}>
+                全画面にする
+              </button>
+            </Show>
 
             <label class="caregiver-field">
               <span>スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒</span>

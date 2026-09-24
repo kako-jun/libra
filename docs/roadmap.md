@@ -18,7 +18,7 @@
 - [ ] 画面デザインの立て直し
 - [ ] 文字盤: 清音46字 + ー、2段階スキャン
 - [ ] Bluetooth シャッターボタン実機確認
-- [ ] PWA アイコンを Libra 専用化
+- [x] PWA アイコンを Libra 専用化
 
 ## Phase 2: Caregiver Mode
 
