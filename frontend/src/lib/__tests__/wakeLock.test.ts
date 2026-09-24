@@ -162,7 +162,7 @@ describe('wakeLock', () => {
       const sentinel = new MockSentinel()
       setWakeLockApi({ request: vi.fn().mockResolvedValue(sentinel) })
       const notify = vi.fn()
-      mod.initWakeLock(notify)
+      const stop = mod.initWakeLock(notify)
       await Promise.resolve()
       await Promise.resolve()
       notify.mockClear()
@@ -171,6 +171,138 @@ describe('wakeLock', () => {
 
       expect(notify).toHaveBeenCalledWith('released')
       expect(mod.getWakeLockStatus()).toBe('released')
+      stop()
+    })
+
+    describe('PR#11 レビュー対応: 可視のまま released/error になった後の再取得', () => {
+      it('released になった後、次のスイッチ入力(pointerdown)で active に戻る', async () => {
+        const sentinel1 = new MockSentinel()
+        const sentinel2 = new MockSentinel()
+        const request = vi.fn().mockResolvedValueOnce(sentinel1).mockResolvedValueOnce(sentinel2)
+        setWakeLockApi({ request })
+        const stop = mod.initWakeLock()
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(mod.getWakeLockStatus()).toBe('active')
+
+        sentinel1.emitRelease()
+        expect(mod.getWakeLockStatus()).toBe('released')
+
+        window.dispatchEvent(new Event('pointerdown'))
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(request).toHaveBeenCalledTimes(2)
+        expect(mod.getWakeLockStatus()).toBe('active')
+        stop()
+      })
+
+      it('error になった後、次のスイッチ入力(keydown)で active に戻る', async () => {
+        const sentinel = new MockSentinel()
+        const request = vi
+          .fn()
+          .mockRejectedValueOnce(new Error('denied'))
+          .mockResolvedValueOnce(sentinel)
+        setWakeLockApi({ request })
+        const stop = mod.initWakeLock()
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(mod.getWakeLockStatus()).toBe('error')
+
+        window.dispatchEvent(new Event('keydown'))
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(request).toHaveBeenCalledTimes(2)
+        expect(mod.getWakeLockStatus()).toBe('active')
+        stop()
+      })
+
+      it('30秒間隔のタイマーでも再試行する(入力が無い場合の保険)', async () => {
+        vi.useFakeTimers()
+        const sentinel1 = new MockSentinel()
+        const sentinel2 = new MockSentinel()
+        const request = vi.fn().mockResolvedValueOnce(sentinel1).mockResolvedValueOnce(sentinel2)
+        setWakeLockApi({ request })
+        const stop = mod.initWakeLock()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(mod.getWakeLockStatus()).toBe('active')
+
+        sentinel1.emitRelease()
+        expect(mod.getWakeLockStatus()).toBe('released')
+
+        await vi.advanceTimersByTimeAsync(30000)
+
+        expect(request).toHaveBeenCalledTimes(2)
+        expect(mod.getWakeLockStatus()).toBe('active')
+        stop()
+        vi.useRealTimers()
+      })
+
+      it('active のままなら入力があっても再取得しない', async () => {
+        const sentinel = new MockSentinel()
+        const request = vi.fn().mockResolvedValue(sentinel)
+        setWakeLockApi({ request })
+        const stop = mod.initWakeLock()
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(request).toHaveBeenCalledTimes(1)
+
+        window.dispatchEvent(new Event('pointerdown'))
+        await Promise.resolve()
+
+        expect(request).toHaveBeenCalledTimes(1)
+        stop()
+      })
+    })
+
+    describe('nit-1: 並行 request() で sentinel が1つだけになる', () => {
+      it('解決前に複数回呼んでも api.request は1回だけ呼ばれ、共有した Promise が解決する', async () => {
+        let resolveRequest: (sentinel: MockSentinel) => void = () => {}
+        const request = vi.fn().mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              resolveRequest = resolve
+            }),
+        )
+        setWakeLockApi({ request })
+
+        const p1 = mod.requestWakeLock()
+        const p2 = mod.requestWakeLock()
+        const p3 = mod.requestWakeLock()
+        expect(request).toHaveBeenCalledTimes(1)
+
+        const sentinel = new MockSentinel()
+        resolveRequest(sentinel)
+        await Promise.all([p1, p2, p3])
+
+        expect(mod.getWakeLockStatus()).toBe('active')
+      })
+    })
+
+    describe('cleanup 後に完了した request は使わず即 release する', () => {
+      it('stop() を呼んだ後に解決した取得は release され、active にはならない', async () => {
+        let resolveRequest: (sentinel: MockSentinel) => void = () => {}
+        const request = vi.fn().mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              resolveRequest = resolve
+            }),
+        )
+        setWakeLockApi({ request })
+
+        const stop = mod.initWakeLock()
+        // 初回取得が進行中のまま stop() する(cleanup が先に走るケース)
+        stop()
+
+        const sentinel = new MockSentinel()
+        resolveRequest(sentinel)
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(sentinel.release).toHaveBeenCalled()
+        expect(mod.getWakeLockStatus()).not.toBe('active')
+      })
     })
   })
 })
