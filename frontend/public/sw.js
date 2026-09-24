@@ -40,13 +40,22 @@ self.addEventListener('fetch', (event) => {
   // /api/ 配下は将来バックエンド通信を追加してもキャッシュしない(常にネットワークのみ)
   if (url.pathname.startsWith('/api/')) return
 
+  // Cache.match() は既定でレスポンスの Vary ヘッダを見て突き合わせる。開発/配信サーバーが
+  // 静的アセットに Vary: Origin 等を付けることがあり、precache 時のリクエストと実際の
+  // 参照(script/link 読み込み)のリクエストで Vary 対象ヘッダの値が食い違うと、実在するのに
+  // キャッシュミスして 503 になる。precache されたファイルは元々 Vary で振り分ける必要が
+  // 無いため、常に ignoreVary で見る
+  const matchOptions = { ignoreVary: true }
+
   // ナビゲーション(URL直入力・リロード等)はキャッシュ済みの index.html に必ずフォールバックする。
   // SPA なので実ファイルが無いパスでもこれで起動できる
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(async () => {
         const cache = await caches.open(CACHE_NAME)
-        const fallback = (await cache.match('/index.html')) ?? (await cache.match(request))
+        const fallback =
+          (await cache.match('/index.html', matchOptions)) ??
+          (await cache.match(request, matchOptions))
         return fallback ?? Response.error()
       }),
     )
@@ -57,7 +66,7 @@ self.addEventListener('fetch', (event) => {
   // 更新する。オフライン時はキャッシュが無いと 503 を返す(precache 済みなら通常発生しない)
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
-      const cached = await cache.match(request)
+      const cached = await cache.match(request, matchOptions)
       const network = fetch(request)
         .then((response) => {
           if (response.ok) cache.put(request, response.clone())
