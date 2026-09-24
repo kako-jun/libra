@@ -328,6 +328,41 @@ describe('App', () => {
     expect(lastUtterance.text).toBe('緊急')
   })
 
+  it('S-new-1: 聴覚スキャンON時、伝達の読み上げが画面遷移直後の先頭読み上げに打ち切られない', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // メニューが開く
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
+    fireEvent.click(checkbox) // 聴覚スキャンON
+    const fullVoiceButton = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === '全部読む',
+    ) as HTMLElement
+    fireEvent.click(fullVoiceButton) // 音声モードを全部読むに(伝達自体も読み上げさせる)
+    const closeButton = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === '閉じる',
+    ) as HTMLElement
+    fireEvent.click(closeButton) // home へ戻る(この goTo は検証対象外)
+
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい(カーソル移動の読み上げも入る)
+
+    const speak = (window as unknown as { speechSynthesis: { speak: ReturnType<typeof vi.fn> } })
+      .speechSynthesis.speak as ReturnType<typeof vi.fn>
+    const cancel = (window as unknown as { speechSynthesis: { cancel: ReturnType<typeof vi.fn> } })
+      .speechSynthesis.cancel as ReturnType<typeof vi.fn>
+    const calls: string[] = []
+    speak.mockImplementation((utterance: { text: string }) => calls.push(`speak:${utterance.text}`))
+    cancel.mockImplementation(() => calls.push('cancel'))
+
+    fireEvent.keyDown(window, { key: ' ' }) // はい選択(announce) → home先頭(緊急)へ遷移(goTo)
+
+    // announce('はい') が cancel してから speak し、goTo直後の先頭読み上げ(緊急)は
+    // それを打ち切らずに(cancel を挟まず)後ろに積まれる
+    const yesIndex = calls.indexOf('speak:はい')
+    expect(yesIndex).toBeGreaterThanOrEqual(0)
+    expect(calls[yesIndex + 1]).toBe('speak:緊急')
+  })
+
   it('S1: 緊急詳細は積み上げ式で表示され、緊急の再選択でも消えない', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail

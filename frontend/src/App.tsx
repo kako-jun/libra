@@ -73,9 +73,13 @@ export default function App() {
 
   const announce = (text: string, shortText = text) => speak(settings().voiceMode, text, shortText)
 
-  const announceScanItem = (label: string) => {
+  // S-new-1: 通常のカーソル移動の読み上げは直前の発話を打ち切ってよい(interrupt省略時=true)。
+  // 画面遷移直後の先頭読み上げ(goToから)は、伝達内容の読み上げの直後に呼ばれるため、
+  // interrupt:false でその発話を打ち切らず後ろに積む。
+  const announceScanItem = (label: string, options: { interrupt?: boolean } = {}) => {
     if (!settings().auditoryScan) return
-    window.speechSynthesis?.cancel()
+    const interrupt = options.interrupt ?? true
+    if (interrupt) window.speechSynthesis?.cancel()
     const utterance = new SpeechSynthesisUtterance(label.replace(/\n/g, ' '))
     utterance.lang = 'ja-JP'
     utterance.rate = 1.0
@@ -101,10 +105,11 @@ export default function App() {
     }
     setScreen(next)
     setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
-    // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常は緊急)も読む
+    // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常は緊急)も読む。
+    // S-new-1: 直前の伝達読み上げ(announce)を打ち切らないよう、cancelせず後ろに積む
     if (settings().auditoryScan) {
       const first = buildMenu(next, { showUndo: showUndo(), emergencyActive: emergencyActive() })[0]
-      if (first) announceScanItem(first.label)
+      if (first) announceScanItem(first.label, { interrupt: false })
     }
   }
 
