@@ -18,6 +18,23 @@ describe('startScan', () => {
     const state = startScan(1000, { ...config, headHoldMs: -500 })
     expect(state.nextAdvanceAt).toBe(1000)
   })
+
+  it('M1: 引数を省略すると lastPressAt は null になる(初回起動時)', () => {
+    const state = startScan(1000, config)
+    expect(state.lastPressAt).toBeNull()
+  })
+
+  it('M1: 3引数目に前の画面での lastPressAt を渡すと引き継がれる(連打無視が画面遷移でリセットされない)', () => {
+    const state = startScan(1000, config, 700)
+    expect(state.lastPressAt).toBe(700)
+  })
+
+  it('M1: 引き継いだ lastPressAt は連打無視の判定にそのまま使われる', () => {
+    const state = startScan(1000, config, 700)
+    // 直前の押下(700ms)から300ms(debounceMs=500未満)しか経っていないので無視される
+    const result = press(state, 3, 1000, config)
+    expect(result.activatedIndex).toBeNull()
+  })
 })
 
 describe('tick', () => {

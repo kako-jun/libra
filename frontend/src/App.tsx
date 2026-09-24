@@ -82,9 +82,12 @@ export default function App() {
     announce(text)
   }
 
+  // M1: 画面遷移のたびに連打無視(lastPressAt)をリセットすると、遷移直後の連打で
+  // 遷移先の先頭項目(通常は緊急)が誤って実行されてしまう。前の画面での lastPressAt を
+  // 引き継ぎ、連打無視が画面をまたいで一貫して働くようにする。
   const goTo = (next: ScreenId) => {
     setScreen(next)
-    setScanState(startScan(Date.now(), scanConfig()))
+    setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
   }
 
   // 通常の伝達完了。緊急中は見出し(緊急表示)を上書きせず、副表示にだけ出す

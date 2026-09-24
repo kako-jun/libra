@@ -227,6 +227,18 @@ describe('App', () => {
     expect(h1Text(container)).toBe('緊急です。来てください')
   })
 
+  it('M1: 押下→画面遷移→連打無視区間内の2回目は遷移先の先頭を誤って実行しない', () => {
+    const { container } = render(() => <App />)
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+    fireEvent.keyDown(window, { key: ' ' }) // はい選択 → home先頭(緊急)へ遷移
+    expect(h1Text(container)).toBe('はい')
+
+    vi.advanceTimersByTime(100) // debounceMs(500)未満
+    fireEvent.keyDown(window, { key: ' ' }) // 連打: 遷移先の先頭(緊急)を誤って実行してはいけない
+    expect(h1Text(container)).toBe('はい')
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+  })
+
   it('設定変更がリロード相当（再マウント）後も localStorage から復元される', () => {
     const first = render(() => <App />)
     const button = first.container.querySelector('.caregiver-button') as HTMLElement

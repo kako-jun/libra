@@ -20,12 +20,21 @@ export interface ScanState {
   lastPressAt: number | null
 }
 
-/** 画面を開いた時点のスキャン状態を作る。先頭項目から、先頭待機込みで始まる。 */
-export function startScan(now: number, config: ScanConfig): ScanState {
+/**
+ * 画面を開いた時点のスキャン状態を作る。先頭項目から、先頭待機込みで始まる。
+ * lastPressAt は前の画面での直前の押下時刻を渡すと引き継がれる（省略時は null）。
+ * 引き継がないと、画面遷移のたびに連打無視がリセットされ、遷移直後の連打で
+ * 遷移先の先頭項目（緊急）が誤って実行されてしまう。
+ */
+export function startScan(
+  now: number,
+  config: ScanConfig,
+  previousLastPressAt: number | null = null,
+): ScanState {
   return {
     index: 0,
     nextAdvanceAt: now + Math.max(config.headHoldMs, 0),
-    lastPressAt: null,
+    lastPressAt: previousLastPressAt,
   }
 }
 
