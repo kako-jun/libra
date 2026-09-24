@@ -370,6 +370,72 @@ describe('App', () => {
     expect(calls[calls.length - 1]).toBe('speak:取り消し')
   })
 
+  // 聴覚スキャンON + 音声モード全部読む にして介助者メニューを閉じるところまでの共通セットアップ
+  function enableAuditoryScanAndFullVoice(container: HTMLElement) {
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
+    fireEvent.click(checkbox)
+    const fullVoiceButton = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === '全部読む',
+    ) as HTMLElement
+    fireEvent.click(fullVoiceButton)
+    const closeButton = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === '閉じる',
+    ) as HTMLElement
+    fireEvent.click(closeButton) // home へ戻る(この goTo は検証対象外)
+  }
+
+  function captureSpeechCalls(): string[] {
+    const speak = (window as unknown as { speechSynthesis: { speak: ReturnType<typeof vi.fn> } })
+      .speechSynthesis.speak as ReturnType<typeof vi.fn>
+    const cancel = (window as unknown as { speechSynthesis: { cancel: ReturnType<typeof vi.fn> } })
+      .speechSynthesis.cancel as ReturnType<typeof vi.fn>
+    const calls: string[] = []
+    speak.mockImplementation((utterance: { text: string }) => calls.push(`speak:${utterance.text}`))
+    cancel.mockImplementation(() => calls.push('cancel'))
+    return calls
+  }
+
+  it('S-new-6: 緊急詳細の読み上げが遷移直後の先頭読み上げで打ち切られない', () => {
+    const { container } = render(() => <App />)
+    enableAuditoryScanAndFullVoice(container)
+
+    fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail
+
+    // urgentDetail: 0緊急,1戻る,2苦しい
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=戻る
+    vi.advanceTimersByTime(INTERVAL_MS) // index2=苦しい
+
+    const calls = captureSpeechCalls()
+    fireEvent.keyDown(window, { key: ' ' }) // 苦しい選択(announce) → home先頭(緊急)へ遷移(goTo)
+
+    const detailIndex = calls.findIndex((c) => c === 'speak:緊急です。来てください。苦しい')
+    expect(detailIndex).toBeGreaterThanOrEqual(0)
+    // cancel を挟まずに後ろへ積まれる
+    expect(calls[detailIndex + 1]).toBe('speak:緊急')
+  })
+
+  it('S-new-6: 緊急中の伝達(はい等)の読み上げも遷移直後の先頭読み上げで打ち切られない', () => {
+    const { container } = render(() => <App />)
+    enableAuditoryScanAndFullVoice(container)
+
+    fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // urgentDetail index1=戻る
+    fireEvent.keyDown(window, { key: ' ' }) // home へ戻る(緊急は継続)
+
+    // home(緊急中、取り消し無し): 0緊急,1はい,2いいえ,...
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=はい
+
+    const calls = captureSpeechCalls()
+    fireEvent.keyDown(window, { key: ' ' }) // はい選択(emergencyActive分岐のannounce) → home先頭(緊急)へ
+
+    const yesIndex = calls.indexOf('speak:はい')
+    expect(yesIndex).toBeGreaterThanOrEqual(0)
+    expect(calls[yesIndex + 1]).toBe('speak:緊急')
+  })
+
   it('S1: 緊急詳細は積み上げ式で表示され、緊急の再選択でも消えない', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail

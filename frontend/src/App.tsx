@@ -74,12 +74,17 @@ export default function App() {
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
 
-  const announce = (text: string, shortText = text) => speak(settings().voiceMode, text, shortText)
-
-  // S-new-1 / nit: showMessage(伝達メッセージ)を読み上げた直後は、次の1回のスキャン読み上げ
-  // (通常は goTo 直後の遷移先の先頭読み上げ)をcancelせず後ろに積む。素通しは1回だけで、
-  // それより先のスキャン読み上げ(通常のカーソル移動)は従来どおり cancel する。
+  // S-new-1 / S-new-6 / nit: 伝達の読み上げ(announce。showMessage経由に限らず、緊急詳細や
+  // 緊急中の伝達も含む)を行った直後は、次の1回のスキャン読み上げ(通常は goTo 直後の
+  // 遷移先の先頭読み上げ)をcancelせず後ろに積む。素通しは1回だけで、それより先の
+  // スキャン読み上げ(通常のカーソル移動)は従来どおり cancel する。聴覚スキャンOFFの
+  // ときは announceScanItem が呼ばれず消費されないまま残ってしまうため、立てない。
   let messageAnnounceGrace = false
+
+  const announce = (text: string, shortText = text) => {
+    speak(settings().voiceMode, text, shortText)
+    if (settings().auditoryScan) messageAnnounceGrace = true
+  }
 
   const announceScanItem = (label: string) => {
     if (!settings().auditoryScan) return
@@ -99,7 +104,6 @@ export default function App() {
     document.documentElement.dataset.messageTone = tone
     navigator.vibrate?.(tone === 'urgent' ? [60, 40, 60] : 35)
     announce(text)
-    messageAnnounceGrace = true
   }
 
   // home 以外へ遷移するときは「取り消し」の1周猶予を終わらせる(nit: 積み残した猶予が
