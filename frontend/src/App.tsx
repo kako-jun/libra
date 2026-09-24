@@ -9,6 +9,7 @@ import {
   startAlarm,
   stopAlarm,
 } from './lib/alarm'
+import { initWakeLock, type WakeLockStatus } from './lib/wakeLock'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const ALARM_REPEAT_MS = 3000
@@ -23,6 +24,15 @@ const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
 }
 
 const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
+
+// Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者メニューに表示する文言。
+// 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
+const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
+  active: '画面スリープ防止: 有効',
+  unsupported: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
+  error: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
+  released: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
+}
 
 function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
   window.speechSynthesis?.cancel()
@@ -65,6 +75,14 @@ export default function App() {
   const [letterText, setLetterText] = createSignal('')
   // 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる表示の元
   const [alarmAudioRunning, setAlarmAudioRunning] = createSignal(false)
+  // Issue #5: 画面スリープ防止の状態。介助者メニューに表示する
+  const [wakeLockStatus, setWakeLockStatus] = createSignal<WakeLockStatus>('unsupported')
+  const fullscreenSupported =
+    typeof document !== 'undefined' &&
+    typeof document.documentElement.requestFullscreen === 'function'
+  const [isFullscreen, setIsFullscreen] = createSignal(
+    typeof document !== 'undefined' && Boolean(document.fullscreenElement),
+  )
 
   // 表示中メニューはここでしか作らない。スキャン状態・レンダリングの双方が
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
@@ -185,6 +203,14 @@ export default function App() {
     goTo('home')
   }
 
+  // Issue #5: 全画面化。誤操作防止(ダブルタップ拡大等)の効果を確実にするため、
+  // 常設運用では全画面での起動を推奨する。非対応環境ではボタン自体を出さない
+  const enterFullscreen = () => {
+    void document.documentElement.requestFullscreen?.().catch(() => {
+      // ユーザー操作起因でない・非対応等で失敗しても、通常表示のまま使い続けられる
+    })
+  }
+
   const runAction = (item: ReturnType<typeof currentMenu>[number]) => {
     const action = item.action
     switch (action.type) {
@@ -286,6 +312,20 @@ export default function App() {
     checkAlarmAudioStatus()
     const id = window.setInterval(checkAlarmAudioStatus, 500)
     onCleanup(() => window.clearInterval(id))
+  })
+
+  // Issue #5: 画面スリープ防止。起動時に取得し、タブが再表示されたときに再取得する
+  onMount(() => {
+    const stopWakeLock = initWakeLock(setWakeLockStatus)
+    onCleanup(stopWakeLock)
+  })
+
+  // Issue #5: 全画面状態の表示・介助者メニューからの解除操作にも追従させる
+  onMount(() => {
+    if (typeof document === 'undefined') return
+    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    onCleanup(() => document.removeEventListener('fullscreenchange', onFullscreenChange))
   })
 
   // スキャンの進行ループ。setTimeout を自己再スケジュールし、次に進めるべき時刻に合わせる。
@@ -501,6 +541,21 @@ export default function App() {
             >
               緊急解除{emergencyActive() ? '' : '（緊急なし）'}
             </button>
+
+            <p class="caregiver-status" classList={{ warn: wakeLockStatus() !== 'active' }}>
+              {WAKE_LOCK_LABELS[wakeLockStatus()]}
+            </p>
+
+            <Show when={fullscreenSupported}>
+              <button
+                type="button"
+                class="caregiver-action"
+                onClick={enterFullscreen}
+                disabled={isFullscreen()}
+              >
+                全画面にする{isFullscreen() ? '（全画面中）' : ''}
+              </button>
+            </Show>
 
             <label class="caregiver-field">
               <span>スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒</span>

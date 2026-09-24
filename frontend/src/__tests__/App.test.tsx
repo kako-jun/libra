@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import * as alarmModule from '../lib/alarm'
+import * as wakeLockModule from '../lib/wakeLock'
 
 // requirements.md 既定値: intervalMs=1500, headHoldMultiplier=2(=headHoldMs 3000), debounceMs=500
 const HEAD_HOLD_MS = 3000
@@ -570,6 +571,67 @@ describe('App', () => {
     // このタップがハンドラの除外対象(data-caregiver-control)に当たらないことを確認する
     fireEvent.pointerDown(hint) // カーソルは index0(緊急、先頭待機中)
     expect(container.querySelector('h1')?.textContent).toBe('緊急です。来てください')
+  })
+
+  it('Issue #5: 介助者メニューに Wake Lock 取得中の状態が表示される', () => {
+    vi.spyOn(wakeLockModule, 'initWakeLock').mockImplementation((notify) => {
+      notify?.('active')
+      return () => {}
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000) // メニュー開く
+
+    const status = container.querySelector('.caregiver-status') as HTMLElement
+    expect(status.textContent).toBe('画面スリープ防止: 有効')
+    expect(status.classList.contains('warn')).toBe(false)
+  })
+
+  it('Issue #5: Wake Lock が非対応/失敗のときは端末の自動ロック解除を促す表示になる', () => {
+    vi.spyOn(wakeLockModule, 'initWakeLock').mockImplementation((notify) => {
+      notify?.('unsupported')
+      return () => {}
+    })
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const status = container.querySelector('.caregiver-status') as HTMLElement
+    expect(status.textContent).toBe('画面スリープ防止: 無効 — 端末の自動ロックを切ってください')
+    expect(status.classList.contains('warn')).toBe(true)
+  })
+
+  it('Issue #5: requestFullscreen 非対応環境では「全画面にする」ボタンを出さない', () => {
+    const original = document.documentElement.requestFullscreen
+    // @ts-expect-error テストのため非対応を模す
+    delete document.documentElement.requestFullscreen
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const fullscreenButton = Array.from(container.querySelectorAll('.caregiver-action')).find(
+      (el) => el.textContent?.includes('全画面'),
+    )
+    expect(fullscreenButton).toBeUndefined()
+    document.documentElement.requestFullscreen = original
+  })
+
+  it('Issue #5: 「全画面にする」ボタンで requestFullscreen が呼ばれる', () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined)
+    document.documentElement.requestFullscreen = requestFullscreen
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+
+    const fullscreenButton = Array.from(container.querySelectorAll('.caregiver-action')).find(
+      (el) => el.textContent?.includes('全画面'),
+    ) as HTMLElement
+    fireEvent.click(fullscreenButton)
+    expect(requestFullscreen).toHaveBeenCalled()
   })
 
   it('設定変更がリロード相当（再マウント）後も localStorage から復元される', () => {

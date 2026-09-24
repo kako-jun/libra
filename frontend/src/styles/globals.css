@@ -312,6 +312,22 @@ h1 {
   background: #065f46;
 }
 
+.caregiver-status {
+  margin: 0;
+  padding: 8px 10px;
+  color: #052e2b;
+  background: #ecfdf5;
+  border: 2px solid #86efac;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.caregiver-status.warn {
+  color: #7f1d1d;
+  background: #fff7ed;
+  border-color: #f59e0b;
+}
+
 .caregiver-action {
   min-height: 48px;
   padding: 10px 14px;
