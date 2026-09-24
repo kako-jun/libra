@@ -37,7 +37,14 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  /* PR#11 3巡目 question: 4トラック目(末尾のauto)は使う要素が無い(死んでいる)ので削除。
+     文字盤以外の画面では .letter-strip が DOM に存在せず子要素が2個(message-panel,
+     grid-board)だけになり、明示指定が無いと grid-board が既定の auto-placement で
+     2番目のトラック(auto、内容量ぴったりの高さ)に置かれてしまい、3番目の 1fr トラックが
+     誰にも使われず下に空白が残る(タイルが余白を埋めて大きくならない)。.message-panel/
+     .letter-strip/.grid-board に明示的に grid-row を固定し、letter-strip の有無に関わらず
+     grid-board が常に 1fr トラックを使うようにする */
+  grid-template-rows: auto auto 1fr;
   gap: 14px;
   /* PR#11 再レビュー must-C: 従来は min-height:100vh だったため、内容がビューポートより
      高くなると .app-shell 自身が育ってしまい、overflow:hidden が実際には何も切り取らず
@@ -62,6 +69,7 @@ button {
 }
 
 .message-panel {
+  grid-row: 1;
   display: flex;
   align-items: stretch;
   justify-content: space-between;
@@ -153,6 +161,7 @@ h1 {
 }
 
 .letter-strip {
+  grid-row: 2;
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
@@ -173,6 +182,9 @@ h1 {
 }
 
 .grid-board {
+  /* PR#11 3巡目 question: letter-strip が無い画面(ほとんどの画面)でも常に3番目の
+     1fr トラックを使う。.letter-strip が DOM に無いときの auto-placement 任せにしない */
+  grid-row: 3;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   grid-auto-rows: minmax(126px, 1fr);
