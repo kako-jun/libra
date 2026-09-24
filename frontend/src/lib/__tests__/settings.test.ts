@@ -9,6 +9,8 @@ describe('normalizeSettings', () => {
       debounceMs: 1000,
       auditoryScan: true,
       voiceMode: 'short',
+      fontSize: 'large',
+      highContrast: true,
     }
     expect(normalizeSettings(input)).toEqual(input)
   })
@@ -78,6 +80,28 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ auditoryScan: 'true' }).auditoryScan).toBe(
       DEFAULT_SETTINGS.auditoryScan,
     )
+  })
+
+  it('fontSize が既知の値(large)ならそのまま通過する', () => {
+    expect(normalizeSettings({ fontSize: 'large' }).fontSize).toBe('large')
+  })
+
+  it('fontSize が既知の値(xlarge)ならそのまま通過する', () => {
+    expect(normalizeSettings({ fontSize: 'xlarge' }).fontSize).toBe('xlarge')
+  })
+
+  it('fontSize が未知の値なら既定値にフォールバックする', () => {
+    expect(normalizeSettings({ fontSize: 'huge' }).fontSize).toBe(DEFAULT_SETTINGS.fontSize)
+  })
+
+  it('highContrast が boolean 以外なら既定値にフォールバックする', () => {
+    expect(normalizeSettings({ highContrast: 'true' }).highContrast).toBe(
+      DEFAULT_SETTINGS.highContrast,
+    )
+  })
+
+  it('highContrast が true ならそのまま通過する', () => {
+    expect(normalizeSettings({ highContrast: true }).highContrast).toBe(true)
   })
 
   it('voiceMode が未知の値なら既定値にフォールバックする', () => {
