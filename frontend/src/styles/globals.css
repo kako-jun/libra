@@ -854,11 +854,9 @@ h1 {
   .tile {
     min-height: 112px;
     padding: 18px 8px 10px;
-    --tile-label-font: clamp(
-      1.1rem,
-      min(calc(var(--font-scale) * 4.7vh), 20cqi, 22cqb),
-      calc(var(--font-scale) * 2.4rem)
-    );
+    /* PR#16 4巡目 should-a: --tile-label-font のcqi/cqb係数はブレークポイントごとに
+       ばらつかせず、.tile の基本ルール(15cqi/20cqb)を全画面幅で使う(揃える方が
+       単純、と判断)。ここでは padding/min-height などレイアウト値だけ上書きする */
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
@@ -903,10 +901,7 @@ h1 {
   .tile {
     min-height: 84px;
     padding: 14px 6px 8px;
-    --tile-label-font: clamp(
-      0.98rem,
-      min(calc(var(--font-scale) * 4vh), 22cqi, 24cqb),
-      calc(var(--font-scale) * 1.9rem)
-    );
+    /* PR#16 4巡目 should-a: 上のブレークポイントと同じ理由で --tile-label-font の
+       係数は上書きしない(.tile の基本ルールをそのまま使う) */
   }
 }
