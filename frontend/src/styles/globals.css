@@ -381,13 +381,19 @@ h1 {
      1fr トラックを使う。.letter-strip が DOM に無いときの auto-placement 任せにしない */
   grid-row: 3;
   display: grid;
-  /* PR#16 Opus レビュー 再検証: このスクロールモード(.grid-fill が付かない画面、または
-     fill 候補が無く fallback した画面)の最小タイル寸法が固定pxのままだと、大きな文字
-     サイズ設定では列数が減らず、ラベルが3行以上に折り返したりアイコン/予告と重なったり
-     した(実測: 320x568/390x844/768x1024/844x390/1024x768 の複数箇所)。--font-scale を
-     掛けて、文字サイズ設定に応じて最小タイル寸法自体を大きくする */
-  grid-template-columns: repeat(auto-fit, minmax(calc(var(--font-scale) * 220px), 1fr));
-  grid-auto-rows: minmax(calc(var(--font-scale) * 126px), 1fr);
+  /* PR#16 Opus レビュー 再検証(破棄): 当初はここに --font-scale を掛け、文字サイズ
+     設定に応じて最小タイル幅自体を大きくしていた。
+     PR#16 3巡目 must-2 再検証: 列の幅(=列数)が文字サイズ設定で変わると、
+     fill モードで起きたのと同じ「列数反転→タイルの文字が逆に縮む」連鎖がここでも
+     起きうる(実測: 1280x720 文字盤で標準→大でラベルが27.5px→25.5pxに縮んだ)。
+     列数(auto-fitの折返し基準)は文字サイズ設定に関係なく固定し、文字自体は
+     --tile-label-font 側(cqi/cqbで頭打ち)で伸縮させる、他の画面と同じ方針に揃える */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* PR#16 3巡目 should-a: sticky 緊急タイルの高さぶん、他のタイルの scroll-margin-top
+     に使う(下の .tile 側の宣言参照)。grid-auto-rows の minmax 下限と同じ値にしておけば、
+     緊急タイル(先頭行)もほぼ同じ高さのため近似として十分機能する */
+  --scroll-row-min: calc(var(--font-scale) * 126px);
+  grid-auto-rows: minmax(var(--scroll-row-min), 1fr);
   gap: 0;
   min-height: 0;
   /* PR#11 must-4: orientation:any(縦横両対応)のため、横向き小画面(例 844x390)では
@@ -431,6 +437,23 @@ h1 {
   position: sticky;
   top: 0;
   z-index: 2;
+}
+
+/* PR#16 3巡目 should-a: 上の sticky 緊急タイル(z-index:2)が、巡回でスクロールして
+   来たスキャン対象タイルの上端に重なって隠してしまっていた(.tile.scanning の
+   既定 z-index:1 は sticky より低いまま)。スクロールモードでは常にスキャン対象を
+   sticky より前面にする(緊急タイル自身が対象の時は :first-child 側がそのまま
+   勝つので特に問題ない)。この規則は上の sticky 規則と詳細度が同じ(クラス4つ)なので
+   ソース順で後にある(=このルール)が勝つ */
+.grid-board:not(.grid-fill) .tile.scanning {
+  z-index: 3;
+}
+
+/* PR#16 3巡目 should-a: scrollIntoView({block:'nearest'}) は要素の scroll-margin を
+   考慮するため、sticky 緊急タイルの高さぶんだけ上に余白を持たせることで、スキャン対象
+   タイルの上端が sticky タイルの下に隠れたまま「ぎりぎり見えている」扱いになるのを防ぐ */
+.grid-board:not(.grid-fill) .tile {
+  scroll-margin-top: var(--scroll-row-min, 0px);
 }
 
 .tile {
@@ -812,8 +835,10 @@ h1 {
   }
 
   .grid-board {
-    grid-template-columns: repeat(auto-fit, minmax(calc(var(--font-scale) * 175px), 1fr));
-    grid-auto-rows: minmax(calc(var(--font-scale) * 112px), 1fr);
+    /* PR#16 3巡目 must-2 再検証(上の基本ルールと同じ理由): 列幅は固定 */
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    --scroll-row-min: calc(var(--font-scale) * 112px);
+    grid-auto-rows: minmax(var(--scroll-row-min), 1fr);
   }
 
   .tile {
@@ -859,8 +884,10 @@ h1 {
   }
 
   .grid-board {
-    grid-template-columns: repeat(auto-fit, minmax(calc(var(--font-scale) * 170px), 1fr));
-    grid-auto-rows: minmax(calc(var(--font-scale) * 84px), 1fr);
+    /* PR#16 3巡目 must-2 再検証(上の基本ルールと同じ理由): 列幅は固定 */
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    --scroll-row-min: calc(var(--font-scale) * 84px);
+    grid-auto-rows: minmax(var(--scroll-row-min), 1fr);
   }
 
   .tile {
