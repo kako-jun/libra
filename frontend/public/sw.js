@@ -9,22 +9,30 @@
 // 両方を埋め込む)。
 const CACHE_NAME = 'libra-__CACHE_VERSION__'
 const PRECACHE_URLS = __PRECACHE_URLS__
+// PR#11 3巡目 must-E: install の作業場所を本名(CACHE_NAME)とは別の一時名にする。
+// 万が一(ビルド事情等で)新旧のSWでCACHE_NAMEが同じ文字列になってしまっても、install
+// 失敗時に稼働中の本名キャッシュを削除してしまう事故を防ぐための保険(下の install
+// ハンドラのコメント参照。本質的な対策は generate-precache-manifest.mjs 側で
+// CACHE_NAME 自体をSWのロジック変更でも変わるようにすること)。
+const INSTALLING_CACHE_NAME = `${CACHE_NAME}-installing`
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(CACHE_NAME)
       try {
+        const installingCache = await caches.open(INSTALLING_CACHE_NAME)
         // まず全URLを取得して全件 response.ok を確認してから、まとめて cache.put する。
         // 1件でも取得失敗(reject)/非ok(4xx/5xx)があれば、この時点で cache.put を1件も
         // 行わずに throw して install 自体を失敗させる。install が失敗すればこの新しい
         // SWは有効化されず、既存の(直前まで正常だった)SWがそのまま動き続けるため、
         // 壊れた版に丸ごと入れ替わって白画面固定になることを防げる(PR#11 再レビュー must-B。
         // 以前は個々の fetch の成否を見ずに cache.put していたため、5xx/404 応答がそのまま
-        // precache に入り、しかも旧キャッシュは activate 時に削除済みで復旧手段が無かった)
+        // precache に入り、しかも旧キャッシュは activate 時に削除済みで復旧手段が無かった)。
+        // should-A: 個々の fetch には60秒のタイムアウト(AbortController)を付け、繋がって
+        // いるのに極端に遅い接続(lie-fi)で install が無期限に固まらないようにする
         const fetched = await Promise.all(
           PRECACHE_URLS.map(async (url) => {
-            const response = await fetch(url, { cache: 'reload' })
+            const response = await fetchWithAbortTimeout(url, { cache: 'reload' }, 60000)
             if (!response.ok) {
               throw new Error(`precache fetch failed: ${url} responded ${response.status}`)
             }
@@ -48,12 +56,25 @@ self.addEventListener('install', (event) => {
                   headers: response.headers,
                 })
               : response
-            await cache.put(url, toStore)
+            await installingCache.put(url, toStore)
           }),
         )
+        // 全件成功した。ここでようやく本名(CACHE_NAME)へコピーする(rename相当)。
+        // 一時名のまま作業していたので、ここまでの間 CACHE_NAME という名前のキャッシュには
+        // 一切触っていない(既存の稼働中キャッシュがまだあれば無傷のまま)
+        const finalCache = await caches.open(CACHE_NAME)
+        const installedRequests = await installingCache.keys()
+        await Promise.all(
+          installedRequests.map(async (request) => {
+            const response = await installingCache.match(request)
+            if (response) await finalCache.put(request, response)
+          }),
+        )
+        await caches.delete(INSTALLING_CACHE_NAME)
       } catch (error) {
-        // 途中まで cache.put していても、この版は不完全なので使わせない
-        await caches.delete(CACHE_NAME)
+        // 失敗時は一時名だけを消す。CACHE_NAME(稼働中かもしれない既存キャッシュ)には
+        // 一度も書き込んでいないので、ここで消す必要も触る必要も無い
+        await caches.delete(INSTALLING_CACHE_NAME)
         throw error
       }
       await self.skipWaiting()
@@ -62,6 +83,10 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
+  // 稼働中の CACHE_NAME 以外(前の版・クラッシュ等で残った "-installing" の残骸を含む)を
+  // すべて削除する。activate はこの SW の install が成功して初めて呼ばれるため、この時点で
+  // 自分自身の INSTALLING_CACHE_NAME は install ハンドラ内で既に削除済みであり、
+  // ここで削除対象になるとしても「元から不要な残骸」だけ(誤って稼働中のものを消すことはない)
   event.waitUntil(
     caches
       .keys()
@@ -70,6 +95,16 @@ self.addEventListener('activate', (event) => {
       ),
   )
   self.clients.claim()
+})
+
+// PR#11 3巡目 nit: ページ側(frontend/src/lib/offlineReady.ts)が「オフライン準備が
+// できているか」を確認する際、このSWが実際に使っている Cache 名を知る必要がある。
+// キャッシュ名のプレフィックス一致等の推測では、INSTALLING_CACHE_NAME(同じプレフィックスを
+// 持つ一時キャッシュ)と取り違える恐れがあるため、postMessage で直接教える
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'GET_CACHE_NAME') {
+    event.source?.postMessage({ type: 'CACHE_NAME', name: CACHE_NAME })
+  }
 })
 
 /** ms 経過したら reject するタイムアウト付き fetch。lie-fi(繋がっているのに極端に遅い)対策。 */
@@ -87,6 +122,13 @@ function fetchWithTimeout(request, timeoutMs) {
       },
     )
   })
+}
+
+/** ms 経過したら AbortController で中断するタイムアウト付き fetch(install 用)。 */
+function fetchWithAbortTimeout(url, options, timeoutMs) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer))
 }
 
 self.addEventListener('fetch', (event) => {

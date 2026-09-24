@@ -13,10 +13,12 @@
 // 各モードについて、オフライン化した状態での reload とディープリンクへの直接アクセスが
 // 両方とも(白画面や net::ERR_FAILED にならず)アプリのシェルまで表示できることを確認する。
 //
-// 加えて2つの追加検証(PR#11 再レビュー must-B/must-C):
+// 加えて2つの追加検証(PR#11 再レビュー must-B/must-C、3巡目 must-E):
 // - install-5xx: install 時に precache 対象の1件(manifest.webmanifest)が5xxを返す場合、
 //   その版のSWは有効化されず、既存の(直前まで正常だった)SWとキャッシュがそのまま残って
-//   動き続けることを確認する
+//   動き続けることを確認する。加えて sw.js の CACHE_NAME を v1 と全く同じ文字列に書き換えた
+//   "collision" フェーズ(must-Eが本来防ぐ「新旧で同じCACHE_NAMEになる」状況そのもの)でも
+//   install失敗が稼働中の同名キャッシュを消さないことを確認する
 // - letters-scroll: 横向き小画面(844x390/667x375/320x568)で文字盤のスキャン対象が下段に
 //   来ても、document自体はスクロールせず(window.scrollY===0)、メッセージパネル(h1)と
 //   スキャン対象タイルの両方がビューポート内にあることを確認する
@@ -151,13 +153,16 @@ async function checkMode(chromium, mode, port) {
  *   1件が失敗する状況を模す)
  */
 function startInstallFailureServer(distDir, port) {
-  const state = { phase: 'v1' }
+  // state.phase: 'v1'(正常) / 'v2'(sw.jsのCACHE_NAMEを別名に書き換え+manifestを500) /
+  // 'v3-collision'(sw.jsのCACHE_NAMEをstate.collisionNameに書き換え+manifestを500。
+  // must-Eが本来防ぐ「新旧で同じCACHE_NAMEになってしまう」状況そのものを再現する)
+  const state = { phase: 'v1', collisionName: undefined }
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost')
     let pathname = decodeURIComponent(url.pathname)
     if (pathname.endsWith('/')) pathname += 'index.html'
 
-    if (state.phase === 'v2' && pathname === '/manifest.webmanifest') {
+    if (state.phase !== 'v1' && pathname === '/manifest.webmanifest') {
       res.writeHead(500)
       res.end('injected failure')
       return
@@ -170,11 +175,12 @@ function startInstallFailureServer(distDir, port) {
       return
     }
 
-    if (pathname === '/sw.js' && state.phase === 'v2') {
+    if (pathname === '/sw.js' && state.phase !== 'v1') {
+      const newName = state.phase === 'v3-collision' ? state.collisionName : 'libra-e2e-v2-broken'
       const source = fs.readFileSync(filePath, 'utf-8')
       const rewritten = source.replace(
         /const CACHE_NAME = '[^']*'/,
-        "const CACHE_NAME = 'libra-e2e-v2-broken'",
+        `const CACHE_NAME = '${newName}'`,
       )
       res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-cache' })
       res.end(rewritten)
@@ -248,6 +254,46 @@ async function checkInstallFailureKeepsOldVersion(chromium, port) {
     } catch (error) {
       failures.push(
         `[${label}] install失敗後のオフラインreloadが失敗: ${error.message.split('\n')[0]}`,
+      )
+    }
+    await context.setOffline(false)
+
+    // v3-collision: must-Eが本来防ぐべき状況そのもの(新旧で同じCACHE_NAMEになる)を
+    // 直接再現する。sw.jsのCACHE_NAMEをv1のものと完全に同じ文字列に書き換えつつ
+    // installを失敗させ、それでも稼働中のv1キャッシュ(同名)が消えず内容も無事なことを
+    // 確認する(install が本名ではなく一時名("-installing")で作業するため、失敗時に
+    // caches.delete()するのは一時名だけであり、同名であっても本名を巻き込まない)
+    state.phase = 'v3-collision'
+    state.collisionName = v1CacheName
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.ready
+      await registration.update()
+    })
+    await page.waitForTimeout(1500)
+
+    const cacheNamesAfterCollision = await page.evaluate(() => caches.keys())
+    if (!cacheNamesAfterCollision.includes(v1CacheName)) {
+      failures.push(`[${label}] collision: v1のキャッシュ(${v1CacheName})が消えている`)
+    }
+    const v1StillHasIndex = await page.evaluate(async (name) => {
+      const cache = await caches.open(name)
+      return (await cache.match('/')) !== undefined
+    }, v1CacheName)
+    if (!v1StillHasIndex) {
+      failures.push(`[${label}] collision: 同名キャッシュの内容(/)が消えている`)
+    }
+
+    await context.setOffline(true)
+    try {
+      await page.reload({ timeout: 10000 })
+      await page.waitForTimeout(400)
+      const h1 = await page.locator('h1').first().textContent()
+      if (!h1 || !h1.trim()) {
+        failures.push(`[${label}] collision: install失敗後もv1でオフライン起動できるはず`)
+      }
+    } catch (error) {
+      failures.push(
+        `[${label}] collision: install失敗後のオフラインreloadが失敗: ${error.message.split('\n')[0]}`,
       )
     }
   } finally {

@@ -55,15 +55,26 @@ export function collectPrecacheUrls(distDir) {
 }
 
 /**
- * precache 対象ファイルの内容から短いバージョン文字列を作る。ファイル内容が変わらない
- * ビルド(日付だけ違う等)では同じ値になり、内容が変わったビルドでは必ず違う値になるため、
- * ビルド日付ベースだった従来の CACHE_NAME より正確にキャッシュの世代を分けられる。
+ * precache 対象ファイルの内容と sw.js 自身のテンプレート本文(置換前のロジック部分)から
+ * 短いバージョン文字列を作る。ファイル内容が変わらないビルド(日付だけ違う等)では同じ値に
+ * なり、内容が変わったビルドでは必ず違う値になるため、ビルド日付ベースだった従来の
+ * CACHE_NAME より正確にキャッシュの世代を分けられる。
+ *
+ * PR#11 3巡目 must-E: 以前は precache 対象ファイル(index.html/JS/CSS等)の内容だけを
+ * 見ていたため、アセットは一切変えず SW 自身のフェッチ/キャッシュ戦略だけを直したデプロイ
+ * (このファイルの過去の改修そのものが正にそれだった)では新旧で同じ CACHE_NAME になって
+ * しまい、install 失敗時の `caches.delete(CACHE_NAME)` が稼働中の(旧SWが使っている)
+ * キャッシュを消してしまう事故があった。sw.js のプレースホルダ置換前の本文
+ * (`__CACHE_VERSION__`/`__PRECACHE_URLS__` を含む、ロジック部分そのもの)もハッシュに含め、
+ * ロジックだけの変更でも CACHE_NAME が変わるようにする。
  * @param {string} distDir
  * @param {string[]} urls precache 対象の URL 一覧(`/` は index.html を指す)
  * @returns {string} 16進12文字のハッシュ
  */
 export function computeCacheVersion(distDir, urls) {
   const hash = createHash('sha256')
+  // sw.js はこの時点ではまだプレースホルダ未置換(このファイルの後段で置換される前)
+  hash.update(readFileSync(join(distDir, 'sw.js')))
   for (const url of [...urls].sort()) {
     const relPath = url === '/' ? '/index.html' : url
     hash.update(relPath)

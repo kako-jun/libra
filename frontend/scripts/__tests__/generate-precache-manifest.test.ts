@@ -100,25 +100,46 @@ describe('collectPrecacheUrls', () => {
 
 describe('computeCacheVersion', () => {
   it('内容が同じなら同じハッシュになる', () => {
-    const dirA = makeDistLike({ 'index.html': '<html>a</html>', 'assets/x.js': '1' })
+    const dirA = makeDistLike({
+      'index.html': '<html>a</html>',
+      'assets/x.js': '1',
+      'sw.js': 'const CACHE_NAME=1',
+    })
     const urlsA = collectPrecacheUrls(dirA)
     const versionA = computeCacheVersion(dirA, urlsA)
     rmSync(dirA, { recursive: true, force: true })
 
-    const dirB = makeDistLike({ 'index.html': '<html>a</html>', 'assets/x.js': '1' })
+    const dirB = makeDistLike({
+      'index.html': '<html>a</html>',
+      'assets/x.js': '1',
+      'sw.js': 'const CACHE_NAME=1',
+    })
     const urlsB = collectPrecacheUrls(dirB)
     const versionB = computeCacheVersion(dirB, urlsB)
 
     expect(versionA).toBe(versionB)
   })
 
-  it('ファイルの内容が変わればハッシュも変わる', () => {
-    const dir1 = makeDistLike({ 'index.html': '<html>a</html>' })
+  it('precache対象ファイルの内容が変わればハッシュも変わる', () => {
+    const dir1 = makeDistLike({ 'index.html': '<html>a</html>', 'sw.js': 'x' })
     const urls1 = collectPrecacheUrls(dir1)
     const version1 = computeCacheVersion(dir1, urls1)
     rmSync(dir1, { recursive: true, force: true })
 
-    const dir2 = makeDistLike({ 'index.html': '<html>b</html>' })
+    const dir2 = makeDistLike({ 'index.html': '<html>b</html>', 'sw.js': 'x' })
+    const urls2 = collectPrecacheUrls(dir2)
+    const version2 = computeCacheVersion(dir2, urls2)
+
+    expect(version1).not.toBe(version2)
+  })
+
+  it('PR#11 3巡目 must-E: sw.js自身の内容(ロジック)が変わればハッシュも変わる(precache対象ファイルが同じでも)', () => {
+    const dir1 = makeDistLike({ 'index.html': '<html>a</html>', 'sw.js': 'const X = 1' })
+    const urls1 = collectPrecacheUrls(dir1)
+    const version1 = computeCacheVersion(dir1, urls1)
+    rmSync(dir1, { recursive: true, force: true })
+
+    const dir2 = makeDistLike({ 'index.html': '<html>a</html>', 'sw.js': 'const X = 2' })
     const urls2 = collectPrecacheUrls(dir2)
     const version2 = computeCacheVersion(dir2, urls2)
 
@@ -126,7 +147,7 @@ describe('computeCacheVersion', () => {
   })
 
   it('12文字の16進文字列を返す', () => {
-    const dir = makeDistLike({ 'index.html': '<html></html>' })
+    const dir = makeDistLike({ 'index.html': '<html></html>', 'sw.js': 'x' })
     const urls = collectPrecacheUrls(dir)
     const version = computeCacheVersion(dir, urls)
     expect(version).toMatch(/^[0-9a-f]{12}$/)
