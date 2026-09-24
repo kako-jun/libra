@@ -1,13 +1,21 @@
 // タイル格子の列数・行数を、項目数と格子領域の実測サイズから算出する。副作用なし。
 // 正本: docs/grid-layout.md, DESIGN.md §4
 //
-// 方針(kako-jun レビュー 2026-09-24、PR#16 Opus レビュー 2026-09-25 で改訂):
-// 1. 最小セル寸法(文字サイズに応じて呼び出し側が渡す)を下回る候補は採らない
+// 方針(kako-jun レビュー 2026-09-24、PR#16 Opus レビュー 2026-09-25、3巡目 2026-09-26 で改訂):
+// 1. 最小セル寸法(既定 160×84、文字サイズ設定に関係なく固定)を下回る候補は採らない
 //    (これが無いと、例えば7項目で「7列×1行」のような極端に細い帯が選ばれてしまう)
 // 2. 空きセル数が最小(0か1のみ許可、span は最大2まで)になる候補を優先する
-// 3. セルの縦横比の評価は |log(cellAspect)| にする(2倍と0.5倍を対称に同じ悪さとして
-//    扱える)。0.4〜2.5 の範囲内の候補を優先し、範囲内が無い場合のみ全候補から
-//    |log(cellAspect)| 最小を採用する
+// 3. PR#16 3巡目 must-2: セルの評価を |log(cellAspect)|(縦横比が正方形に近いかどうか)
+//    から「タイルのラベル文字が実際に何pxまで大きくなれるか」に変更する。
+//    globals.css の --tile-label-font は横幅由来(cqi、係数0.15 ≒ 15cqi)と
+//    高さ由来(cqb、係数0.20 ≒ 20cqb)の小さい方で頭打ちになるので、
+//    score = min(0.15*cellWidth, 0.20*cellHeight) がそのままCSS側の実際の
+//    頭打ち値(px)に一致する。これを最大化する候補を選ぶ(縦横比が多少いびつでも、
+//    ラベル文字が大きく読めるほうを優先する)。旧方式(縦横比を正方形に寄せる)は、
+//    「正方形に近いが小さいセルを選び、面積で選べば大きくできたはずの文字を逆に
+//    縮める」ことがあった(3巡目で発覚: 文字サイズ設定を上げるとメッセージ欄が
+//    伸びて格子が縮み、旧方式が選ぶ列数が反転してタイル文字が逆に縮む新規バグの
+//    一因)
 // 4. 条件を満たす候補が1つも無い場合(最小セル寸法が厳しすぎる等)は fill しない。
 //    呼び出し側は従来どおり auto-fit/minmax のスクロールレイアウトにフォールバックする
 
@@ -40,16 +48,18 @@ export const GRID_FILL_MAX_ITEMS = 8
 export const DEFAULT_MIN_CELL_WIDTH = 160
 export const DEFAULT_MIN_CELL_HEIGHT = 84
 
-const ASPECT_MIN = 0.4
-const ASPECT_MAX = 2.5
+/** globals.css の --tile-label-font が横幅(cqi)・高さ(cqb)それぞれに掛ける係数と
+ *  一致させる(15cqi/20cqb ≒ 0.15*cellWidth/0.20*cellHeight)。ここを変えたら
+ *  globals.css 側の対応する係数も合わせて変える必要がある */
+const LABEL_WIDTH_FACTOR = 0.15
+const LABEL_HEIGHT_FACTOR = 0.2
 
 interface Candidate {
   cols: number
   rows: number
   emptyCells: number
   lastSpan: number
-  cellAspect: number
-  logAspect: number
+  labelScore: number
 }
 
 export interface GridLayoutOptions {
@@ -85,14 +95,13 @@ export function computeGridLayout(
     // 最小セル寸法を下回る候補(細い帯になる)は採らない
     if (cellWidth < minCellWidth || cellHeight < minCellHeight) continue
     const lastSpan = emptyCells + 1
-    const cellAspect = cellHeight === 0 ? Infinity : cellWidth / cellHeight
+    const labelScore = Math.min(LABEL_WIDTH_FACTOR * cellWidth, LABEL_HEIGHT_FACTOR * cellHeight)
     candidates.push({
       cols,
       rows,
       emptyCells,
       lastSpan,
-      cellAspect,
-      logAspect: Math.log(cellAspect),
+      labelScore,
     })
   }
 
@@ -102,16 +111,12 @@ export function computeGridLayout(
     return { fill: false, cols: 1, rows: 1, lastSpan: 1 }
   }
 
-  const inRange = candidates.filter(
-    (c) => c.cellAspect >= ASPECT_MIN && c.cellAspect <= ASPECT_MAX,
-  )
-  const pool = inRange.length > 0 ? inRange : candidates
-
-  pool.sort((a, b) => {
+  candidates.sort((a, b) => {
     if (a.emptyCells !== b.emptyCells) return a.emptyCells - b.emptyCells
-    return Math.abs(a.logAspect) - Math.abs(b.logAspect)
+    // labelScore は大きいほど良い(ラベル文字が大きく描ける)候補なので降順に並べる
+    return b.labelScore - a.labelScore
   })
 
-  const best = pool[0]
+  const best = candidates[0]
   return { fill: true, cols: best.cols, rows: best.rows, lastSpan: best.lastSpan }
 }

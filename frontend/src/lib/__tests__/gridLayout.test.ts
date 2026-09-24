@@ -50,13 +50,18 @@ describe('computeGridLayout', () => {
   })
 
   describe('縦長(portrait 500x1000, aspect 0.5, 既定の最小セル寸法)', () => {
+    // PR#16 3巡目 must-2: 評価関数を |log(cellAspect)|(正方形に近いか)から
+    // score=min(0.15*cellWidth, 0.20*cellHeight)(ラベル文字が何pxまで大きくなれるか)の
+    // 最大化に変更。n=7 は空きセル数が0になる候補が cols=1(1列7行、全幅の縦積み)しか
+    // 無く、空きセル最小優先(維持する制約)によりそちらが選ばれるため 2列×4行(span2)
+    // から 1列×7行 に変わる(1列でも幅は500pxとcqi上限に対し十分あり、細い帯ではない)
     const expected: Record<number, { cols: number; rows: number; lastSpan: number }> = {
       2: { cols: 1, rows: 2, lastSpan: 1 },
       3: { cols: 1, rows: 3, lastSpan: 1 },
       4: { cols: 1, rows: 4, lastSpan: 1 },
       5: { cols: 1, rows: 5, lastSpan: 1 },
       6: { cols: 2, rows: 3, lastSpan: 1 },
-      7: { cols: 2, rows: 4, lastSpan: 2 },
+      7: { cols: 1, rows: 7, lastSpan: 1 },
       8: { cols: 2, rows: 4, lastSpan: 1 },
     }
     for (const [n, want] of Object.entries(expected)) {
@@ -68,15 +73,16 @@ describe('computeGridLayout', () => {
   })
 
   describe('正方形(square 600x600, aspect 1.0, 既定の最小セル寸法)', () => {
-    // PR#16 Opus レビュー: n=7 が「7列×1行」の細い縦帯(幅600/7≈86px)になっていたのを
-    // 最小セル幅(既定120px)で除外し、|log(cellAspect)| 評価で 2列×4行(span2) に修正
+    // PR#16 3巡目 must-2: 上のportraitと同じ理由で、空きセル数0を実現できる列数が
+    // 1列しか無い n(3,5,7)は、スコア(ラベル文字の大きさ)ではなく空きセル数0が優先され
+    // 1列の縦積みになる(600px幅は十分広く、細い帯ではない)
     const expected: Record<number, { cols: number; rows: number; lastSpan: number }> = {
       2: { cols: 1, rows: 2, lastSpan: 1 },
-      3: { cols: 2, rows: 2, lastSpan: 2 },
+      3: { cols: 1, rows: 3, lastSpan: 1 },
       4: { cols: 2, rows: 2, lastSpan: 1 },
-      5: { cols: 2, rows: 3, lastSpan: 2 },
+      5: { cols: 1, rows: 5, lastSpan: 1 },
       6: { cols: 2, rows: 3, lastSpan: 1 },
-      7: { cols: 2, rows: 4, lastSpan: 2 },
+      7: { cols: 1, rows: 7, lastSpan: 1 },
       8: { cols: 2, rows: 4, lastSpan: 1 },
     }
     for (const [n, want] of Object.entries(expected)) {
@@ -117,13 +123,14 @@ describe('computeGridLayout', () => {
     })
 
     it('minCellWidth/minCellHeight を大きくすると、それに応じて列数が絞られる', () => {
-      // 8項目、実測領域は 768x600。最小セル寸法が既定(160x84)なら4列×2行が入るはずだが、
-      // 最小幅を200pxまで引き上げると4列(セル幅192px)は入らなくなり、列数が減る
-      const withDefault = computeGridLayout(8, 768, 600)
-      expect(withDefault.cols).toBe(4)
-      const withLargerMin = computeGridLayout(8, 768, 600, { minCellWidth: 200 })
-      expect(withLargerMin.cols).toBeLessThan(4)
-      expect(768 / withLargerMin.cols).toBeGreaterThanOrEqual(200)
+      // 8項目、実測領域は 1200x900。最小セル寸法が既定(160x84)なら2列×4行(セル幅600px)
+      // が選ばれるが、最小幅を650pxまで引き上げると2列(セル幅600px)は入らなくなり、
+      // 1列(全幅、セル幅1200px)まで列数が減る
+      const withDefault = computeGridLayout(8, 1200, 900)
+      expect(withDefault.cols).toBe(2)
+      const withLargerMin = computeGridLayout(8, 1200, 900, { minCellWidth: 650 })
+      expect(withLargerMin.cols).toBeLessThan(2)
+      expect(1200 / withLargerMin.cols).toBeGreaterThanOrEqual(650)
     })
   })
 
@@ -137,13 +144,17 @@ describe('computeGridLayout', () => {
       '390x844(グリッド領域 390x680相当)': { width: 390, height: 680 },
       '320x568(グリッド領域 320x420相当)': { width: 320, height: 420 },
     }
+    // PR#16 3巡目 must-2: 「cols/rows が n と一致しない」という以前の判定基準は、旧
+    // |log(aspect)| 評価の時代に「N列×1行/1列×N行の細い帯」を弾くための代理指標
+    // だった。新しい評価(ラベル文字が最大になる候補を選ぶ)では、空きセル数0を
+    // 実現できる列数の候補が1列(全幅)しか無い n(例: 7)で意図的に1列を選ぶことがある。
+    // 全幅の1列は「セルが小さすぎて読みにくい細い帯」とは別物(むしろ幅は最大)なので、
+    // 実際に守るべき不変条件である最小セル寸法(160x84)の充足だけを確認する
     for (const [label, dims] of Object.entries(realDims)) {
       for (const n of [6, 7, 8]) {
-        it(`${label} で n=${n} は細い帯(1列または1行)にならない`, () => {
+        it(`${label} で n=${n} は既定の最小セル寸法(160x84)を満たしたまま全面充填する`, () => {
           const result = computeGridLayout(n, dims.width, dims.height)
           expect(result.fill).toBe(true)
-          expect(result.cols).not.toBe(n)
-          expect(result.rows).not.toBe(n)
           expect(dims.width / result.cols).toBeGreaterThanOrEqual(DEFAULT_MIN_CELL_WIDTH)
           expect(dims.height / result.rows).toBeGreaterThanOrEqual(DEFAULT_MIN_CELL_HEIGHT)
         })
