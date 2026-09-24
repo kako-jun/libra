@@ -29,14 +29,28 @@ self.addEventListener('install', (event) => {
         // 以前は個々の fetch の成否を見ずに cache.put していたため、5xx/404 応答がそのまま
         // precache に入り、しかも旧キャッシュは activate 時に削除済みで復旧手段が無かった)。
         // should-A: 個々の fetch には60秒のタイムアウト(AbortController)を付け、繋がって
-        // いるのに極端に遅い接続(lie-fi)で install が無期限に固まらないようにする
+        // いるのに極端に遅い接続(lie-fi)で install が無期限に固まらないようにする。
+        // should-2(a): 全URLで1つの AbortController を共有し、1件目が失敗(タイムアウト
+        // 含む)した時点で残り全部の fetch を abort する。どの1件が失敗しても install は
+        // どうせ失敗する(all-or-nothing)ため、既に失敗が確定した後に他のURLの取得を続けて
+        // 通信量を無駄にしない(不安定な回線で5分おきに再試行するたび、最大 precache 総量
+        // 〈約2.7MB〉を律儀に取得し切ってから失敗していた)
+        const abortController = new AbortController()
         const fetched = await Promise.all(
           PRECACHE_URLS.map(async (url) => {
-            const response = await fetchWithAbortTimeout(url, { cache: 'reload' }, 60000)
-            if (!response.ok) {
-              throw new Error(`precache fetch failed: ${url} responded ${response.status}`)
+            const timer = setTimeout(() => abortController.abort(), 60000)
+            try {
+              const response = await fetch(url, { cache: 'reload', signal: abortController.signal })
+              if (!response.ok) {
+                throw new Error(`precache fetch failed: ${url} responded ${response.status}`)
+              }
+              return { url, response }
+            } catch (error) {
+              abortController.abort() // このURLの失敗確定。他のURLの取得も打ち切る
+              throw error
+            } finally {
+              clearTimeout(timer)
             }
-            return { url, response }
           }),
         )
         await Promise.all(
@@ -122,13 +136,6 @@ function fetchWithTimeout(request, timeoutMs) {
       },
     )
   })
-}
-
-/** ms 経過したら AbortController で中断するタイムアウト付き fetch(install 用)。 */
-function fetchWithAbortTimeout(url, options, timeoutMs) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer))
 }
 
 self.addEventListener('fetch', (event) => {
