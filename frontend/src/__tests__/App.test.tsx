@@ -329,7 +329,7 @@ describe('App', () => {
     expect(lastUtterance.text).toBe('緊急')
   })
 
-  it('S-new-1: 聴覚スキャンON時、伝達の読み上げが画面遷移直後の先頭読み上げに打ち切られない', () => {
+  it('S-new-1/nit: 伝達の読み上げは画面遷移直後の読み上げ1回だけ打ち切られず、その次のカーソル移動は通常どおりcancelされる', () => {
     const { container } = render(() => <App />)
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
@@ -362,6 +362,12 @@ describe('App', () => {
     const yesIndex = calls.indexOf('speak:はい')
     expect(yesIndex).toBeGreaterThanOrEqual(0)
     expect(calls[yesIndex + 1]).toBe('speak:緊急')
+
+    // nit: 素通しは1回だけ。その次の通常のカーソル移動の読み上げは従来どおり cancel される
+    // (この時点の home は伝達直後の1周なので index1=取り消し)
+    vi.advanceTimersByTime(HEAD_HOLD_MS)
+    expect(calls[calls.length - 2]).toBe('cancel')
+    expect(calls[calls.length - 1]).toBe('speak:取り消し')
   })
 
   it('S1: 緊急詳細は積み上げ式で表示され、緊急の再選択でも消えない', () => {

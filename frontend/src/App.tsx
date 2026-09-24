@@ -76,12 +76,15 @@ export default function App() {
 
   const announce = (text: string, shortText = text) => speak(settings().voiceMode, text, shortText)
 
-  // S-new-1: 通常のカーソル移動の読み上げは直前の発話を打ち切ってよい(interrupt省略時=true)。
-  // 画面遷移直後の先頭読み上げ(goToから)は、伝達内容の読み上げの直後に呼ばれるため、
-  // interrupt:false でその発話を打ち切らず後ろに積む。
-  const announceScanItem = (label: string, options: { interrupt?: boolean } = {}) => {
+  // S-new-1 / nit: showMessage(伝達メッセージ)を読み上げた直後は、次の1回のスキャン読み上げ
+  // (通常は goTo 直後の遷移先の先頭読み上げ)をcancelせず後ろに積む。素通しは1回だけで、
+  // それより先のスキャン読み上げ(通常のカーソル移動)は従来どおり cancel する。
+  let messageAnnounceGrace = false
+
+  const announceScanItem = (label: string) => {
     if (!settings().auditoryScan) return
-    const interrupt = options.interrupt ?? true
+    const interrupt = !messageAnnounceGrace
+    messageAnnounceGrace = false
     if (interrupt) window.speechSynthesis?.cancel()
     const utterance = new SpeechSynthesisUtterance(label.replace(/\n/g, ' '))
     utterance.lang = 'ja-JP'
@@ -96,6 +99,7 @@ export default function App() {
     document.documentElement.dataset.messageTone = tone
     navigator.vibrate?.(tone === 'urgent' ? [60, 40, 60] : 35)
     announce(text)
+    messageAnnounceGrace = true
   }
 
   // home 以外へ遷移するときは「取り消し」の1周猶予を終わらせる(nit: 積み残した猶予が
@@ -109,10 +113,10 @@ export default function App() {
     setScreen(next)
     setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
     // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常は緊急)も読む。
-    // S-new-1: 直前の伝達読み上げ(announce)を打ち切らないよう、cancelせず後ろに積む
+    // 直前の伝達読み上げが済んでいれば messageAnnounceGrace により cancel されない(S-new-1)
     if (settings().auditoryScan) {
       const first = buildMenu(next, { showUndo: showUndo(), emergencyActive: emergencyActive() })[0]
-      if (first) announceScanItem(first.label, { interrupt: false })
+      if (first) announceScanItem(first.label)
     }
   }
 
