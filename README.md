@@ -30,6 +30,8 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 | Letter board                                          | Prototype (simplified entry; full 2-stage kana keyboard is planned)  |
 | Speech mode                                           | Working                                                              |
 | Caregiver menu (long-press settings)                  | Working                                                              |
+| Offline (Service Worker precache)                     | Working                                                              |
+| Screen Wake Lock                                      | Working                                                              |
 | Custom phrase editing                                 | Planned                                                              |
 | External switch pairing                               | Planned (keyboard-event bridge only; native pairing not implemented) |
 
