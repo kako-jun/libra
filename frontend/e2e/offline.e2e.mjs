@@ -586,6 +586,124 @@ async function checkLabelsFitAtXlarge(chromium, port) {
   return failures
 }
 
+/**
+ * PR#16 3巡目 must-3: 文字サイズ設定(標準/大/特大)を上げたときに、タイルのラベル文字が
+ * 逆に縮むことがないか(単調性: 標準 ≤ 大 ≤ 特大)を、6画面サイズ × 6画面で確認する。
+ * 「見出しの拡大→メッセージ欄が伸びる→格子が縮む→列数反転→タイルの文字が逆に縮む」
+ * という連鎖(3巡目で発覚した新規must)の再発を防ぐための回帰チェック。
+ * ?dev の数字キー直接ジャンプ(App.tsx: showDevNumbers時のみ有効)で画面へ移動する。
+ */
+async function checkFontSizeMonotonicity(chromium, port) {
+  const base = `http://localhost:${port}/?dev`
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+
+  // ホーム(緊急/はい/いいえ/不快/快要望/文字盤)から数字キーで各画面へ直接ジャンプする。
+  // インデックスは menus.ts の並び(先頭は常に緊急)に対応する
+  const VPS = [
+    [320, 568],
+    [390, 844],
+    [844, 390],
+    [768, 1024],
+    [1024, 768],
+    [1280, 720],
+  ]
+  const FONTS = ['standard', 'large', 'xlarge']
+  const SCREENS = [
+    ['home', []],
+    ['discomfort', ['4']],
+    ['discomfortOther', ['4', '8']],
+    ['moodRequest', ['5']],
+    ['urgentDetail', ['1']],
+    ['letters', ['6']],
+  ]
+
+  try {
+    for (const [vw, vh] of VPS) {
+      for (const [screenName, keys] of SCREENS) {
+        let prevSize = null
+        let prevFont = ''
+        for (const font of FONTS) {
+          const context = await browser.newContext({ viewport: { width: vw, height: vh } })
+          const page = await context.newPage()
+          await page.addInitScript(
+            (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
+            { fontSize: font, intervalMs: 5000 },
+          )
+          await page.goto(base)
+          await page.waitForTimeout(200)
+          for (const key of keys) {
+            await page.keyboard.press(key)
+            await page.waitForTimeout(80)
+          }
+          await page.waitForTimeout(150)
+          // BIZ UDPGothic(日本語, 数百KB〜1.7MB)の読み込み前はフォールバックフォントで
+          // 描画され、行送り・折返しが変わってラベル/見出しの高さが一時的にずれることが
+          // ある。document.fonts.ready を待たないと、この読み込みタイミングのブレだけで
+          // 誤って「文字サイズを上げたら縮んだ」と判定してしまう(実際のUIロジックの
+          // バグではない)
+          await page.evaluate(() => document.fonts.ready)
+          // .audio-status-hint(警告音停止中表示)は AudioContext が resume 完了する
+          // (最大500msごとのポーリングで検知)までの間だけ一時的に出る。表示中は
+          // メッセージ欄右上の介助ボタン列が広がり、h1(と、それに押し出される形で
+          // grid-board)の実効幅が変わってしまうため、文字サイズ間で条件を揃えるために
+          // 消えるまで待つ(最大1200ms、消えなければそのまま計測へ進む)
+          await page
+            .waitForSelector('.audio-status-hint', { state: 'detached', timeout: 1200 })
+            .catch(() => {})
+          const size = await page.evaluate(() => {
+            const label = document.querySelector('.tile-label')
+            return label ? parseFloat(getComputedStyle(label).fontSize) : null
+          })
+          if (size != null && prevSize != null && size < prevSize - 0.1) {
+            failures.push(
+              `[monotonic ${vw}x${vh} ${screenName}] ${prevFont}=${prevSize.toFixed(1)}px > ${font}=${size.toFixed(1)}px(文字サイズを上げたのにラベルが縮んだ)`,
+            )
+          }
+          prevSize = size
+          prevFont = font
+          await context.close()
+        }
+      }
+    }
+
+    // 見出し(h1)の標準時サイズが、文字サイズ設定の影響を受けない旧来の式のとおりか確認する
+    // (3巡目 must-1: h1 は --font-scale の対象外に戻した。実測基準値は3巡目の指示どおり)
+    const oldH1Expected = [
+      { vw: 1024, vh: 768, px: 53.76 },
+      { vw: 768, vh: 1024, px: 71.68 },
+      { vw: 390, vh: 844, px: 38.4 },
+    ]
+    for (const { vw, vh, px } of oldH1Expected) {
+      const context = await browser.newContext({ viewport: { width: vw, height: vh } })
+      const page = await context.newPage()
+      await page.addInitScript(
+        (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
+        { fontSize: 'standard', intervalMs: 5000 },
+      )
+      await page.goto(base)
+      await page.waitForTimeout(200)
+      await page.evaluate(() => document.fonts.ready)
+      const h1Size = await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.querySelector('h1')).fontSize),
+      )
+      if (Math.abs(h1Size - px) > 0.5) {
+        failures.push(
+          `[h1-baseline ${vw}x${vh}] h1=${h1Size.toFixed(2)}px(期待 ${px}px、旧来の式からずれている)`,
+        )
+      }
+      await context.close()
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+
+  return failures
+}
+
 async function main() {
   if (!fs.existsSync(DIST_DIR)) {
     console.error(`dist/ が無い。先に \`npm run build\` を実行すること: ${DIST_DIR}`)
@@ -646,6 +764,16 @@ async function main() {
     xlargeFitFailures.forEach((f) => console.error(f))
   }
   allFailures.push(...xlargeFitFailures)
+  port += 1
+
+  console.log(`--- checking: font-size-monotonic (port ${port}) ---`)
+  const monotonicFailures = await checkFontSizeMonotonicity(chromium, port)
+  if (monotonicFailures.length === 0) {
+    console.log('[font-size-monotonic] OK')
+  } else {
+    monotonicFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...monotonicFailures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)
