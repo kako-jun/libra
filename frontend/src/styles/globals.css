@@ -249,6 +249,9 @@ button {
      ビューポート外(負のtop)に出て読めなくなる(実測: 320x568 特大で h1.top=-20px)。
      start にして、はみ出しは必ず下側だけ(overflow-y:autoでスクロール可能)にする */
   align-content: start;
+  /* PR#16 再レビュー should-b: h1 の文字サイズ設定の上限をメッセージ欄幅基準にするため、
+     cqi を使えるようにする */
+  container-type: inline-size;
   column-gap: 12px;
   row-gap: 6px;
   min-height: 156px;
@@ -298,15 +301,24 @@ button {
   color: var(--text);
 }
 
-/* PR#16 Opus レビュー 再検証: h1(と緊急詳細/副表示)は既に 7vh ベースで十分大きい。
-   ここへさらに --font-scale(文字サイズ設定、最大1.55倍)を掛けると、特に幅の狭い
-   画面で「特大」設定時にメッセージ欄が max-height(40dvh) を大きく超える(実測: 複数の
-   ビューポートでh1が画面外にはみ出す)。--font-scale はタイル(選択肢)側の読みやすさが
-   本来の目的のため、メッセージ見出し・緊急詳細/副表示には適用しない */
+/* PR#16 Opus レビュー 再検証(破棄): h1(と緊急詳細/副表示)は既に 7vh ベースで十分大きいから
+   として --font-scale を h1 から除外していたが、PR#16 再レビュー should-b で
+   「主役のメッセージが最大」という序列がむしろ崩れる(特大時、タイルラベルより
+   h1 の方が小さくなることがあった)と指摘された。
+   --font-scale を戻しつつ、以前はみ出しの原因だった「7vh に無条件で掛ける」方式は
+   避け、タイルの --tile-label-font と同じパターン(min() の中でだけ vh 側に掛け、
+   上限にも掛ける)にする。上限はメッセージ欄の幅基準(cqi、.message-panel に
+   container-type:inline-size を設定済み)にすることで、幅の狭い画面では自動的に
+   頭打ちになり、40dvh の上限 + align-content:start (はみ出しは下方向のみ)で
+   必ず収まる */
 h1 {
   margin: 0;
   max-width: 16ch;
-  font-size: clamp(2.35rem, 7vh, 5.4rem);
+  font-size: clamp(
+    2.35rem,
+    min(calc(var(--font-scale) * 7vh), 14cqi),
+    calc(var(--font-scale) * 5.4rem)
+  );
   line-height: 1.05;
   letter-spacing: 0;
 }
@@ -833,7 +845,11 @@ h1 {
   }
 
   h1 {
-    font-size: clamp(1.5rem, 5.5vh, 2.4rem);
+    font-size: clamp(
+      1.5rem,
+      min(calc(var(--font-scale) * 5.5vh), 16cqi),
+      calc(var(--font-scale) * 2.4rem)
+    );
   }
 
   /* 狭い画面ではメッセージ列の幅を大きく削らないよう、右上の警告音停止中表示を
