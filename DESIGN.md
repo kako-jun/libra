@@ -14,9 +14,9 @@ Theme: green-based, calm, medical-adjacent, and readable. Urgent actions may use
 
 Border-first tiles were retired, then (再レビュー) gap/radius/shadow were retired too: the grid is now a seamless, edge-to-edge board. Cells carry no gap between them, no rounded corners, no drop shadow — only a background fill color and a thin divider line on each cell's right and bottom edge (`box-shadow: inset`, so it never doubles up with the neighbor's own line). The message panel and the letter-board input strip use the same seamless treatment (`border-bottom` in the divider color) so the whole screen reads as one continuous plate. Every color is a CSS custom property on `:root` in `frontend/src/styles/globals.css` (the source of truth); component CSS never hardcodes a color.
 
-Two design variants are switched by the `?design=a|b` URL query (default `a`) via `:root[data-design]`. This query is a development/decision-making entry point for comparing the two, not something the patient operates. Selectors are identical between variants — only token values differ.
+Two themes — 明るい (light, daytime ward) and 夜間 (dark, night ward) — are a caregiver setting (`Settings.theme`: `'light' | 'dark' | 'auto'`, default `'auto'`), not a URL query. `'auto'` follows the device's `prefers-color-scheme` and re-resolves immediately when the OS setting changes (App.tsx subscribes to the `matchMedia` `change` event), so a ward that dims its lights at night can just leave it on auto. App.tsx resolves the setting to the actual `light`/`dark` value and sets `:root[data-theme]` accordingly — CSS only ever sees `data-theme="light"` or `"dark"`, never `"auto"`. Selectors are identical between the two themes — only token values differ.
 
-### Design A — 明るい・穏やか (bright, calm; daytime ward)
+### Light theme — 明るい (bright, calm; daytime ward)
 
 | Token                | Value     | Usage                                            |
 | -------------------- | --------- | ------------------------------------------------- |
@@ -31,11 +31,11 @@ Two design variants are switched by the `?design=a|b` URL query (default `a`) vi
 | `--message-text`     | `#f3fbf7` | Message panel text                                 |
 | `--urgent-bg`        | `#b3261e` | Emergency tile / message panel (solid fill)        |
 | `--urgent-text`      | `#ffffff` | Text on urgent fill                                |
-| `--scan-ring`        | `#facc15` | Scan-cursor ring (same value in both variants)     |
+| `--scan-ring`        | `#facc15` | Scan-cursor ring (same value in both themes)     |
 | `--grid-line`        | `#cde3d4` | Cell divider line (pale green-gray)                |
 | `--grid-line-width`  | `1px`     | Divider line thickness (`3px` under high contrast) |
 
-### Design B — 暗い・夜間向け (dark, night ward)
+### Dark theme — 夜間 (dark, night ward)
 
 | Token                | Value     | Usage                                            |
 | -------------------- | --------- | ------------------------------------------------- |
@@ -52,16 +52,16 @@ Two design variants are switched by the `?design=a|b` URL query (default `a`) vi
 | `--urgent-text`      | `#ffffff` | Text on urgent fill                                |
 | `--grid-line`        | `#2d5a41` | Cell divider line (lighter green than the dark bg/tile fill, so it stays visible on both) |
 
-The emergency tile and message panel are always a solid deep-red fill (`--urgent-bg`) with white text, in both variants, so emergency stays the single most attention-grabbing surface on screen regardless of design or time of day.
+The emergency tile and message panel are always a solid deep-red fill (`--urgent-bg`) with white text, in both themes, so emergency stays the single most attention-grabbing surface on screen regardless of theme or time of day.
 
-### High contrast (caregiver setting, layers on top of either variant)
+### High contrast (caregiver setting, layers on top of either theme)
 
 `:root[data-high-contrast="true"]` only thickens `--grid-line-width` to `3px` (cells still carry no separate border) and pushes text/background toward pure black/white:
 
-| Variant + HC | `--text`  | `--bg`    | `--message-bg` | `--message-text` |
-| ------------ | --------- | --------- | ---------------- | ------------------- |
-| A            | `#000000` | `#eafaf1` | `#003820`         | `#ffffff`           |
-| B            | `#ffffff` | `#000000` | `#000000`         | `#ffffff`           |
+| Theme + HC | `--text`  | `--bg`    | `--message-bg` | `--message-text` |
+| ---------- | --------- | --------- | ---------------- | ------------------- |
+| light      | `#000000` | `#eafaf1` | `#003820`         | `#ffffff`           |
+| dark       | `#ffffff` | `#000000` | `#000000`         | `#ffffff`           |
 
 ### Font size (caregiver setting)
 
@@ -95,9 +95,9 @@ BIZ UDPGothic (400/700) is bundled via `@fontsource/biz-udpgothic` and imported 
 
 ## 4. Layout Principles
 
-- Message panel stays at the top, flush with the grid below it (no gap, no radius — see §2).
-- Tile grid fills the remaining space edge-to-edge; `app-shell` padding is `0` on the sides/top (only the bottom keeps clearance for the fixed caregiver button/audio hint).
-- Screens with 8 items or fewer (requirements.md §4.1's "1画面8項目以内" target) use a **fill grid**: `computeGridLayout()` (App.tsx) measures the grid area's real size via `ResizeObserver`, picks the column count whose resulting aspect ratio best matches the area (with a small tie-break toward an evenly-divisible column count), and sets `--cols`/`--rows` so `grid-template-columns/rows: repeat(var(--cols/rows), 1fr)` divides the area exactly — no isolated tile, no leftover blank space. If the last row would be short, the last tile gets `grid-column: span N` to fill it instead of leaving empty cells.
+- Message panel stays at the top, flush with the grid below it (no gap, no radius — see §2). The caregiver button and the "alarm audio not unlocked" hint live inside the message panel's top-right corner (a dedicated `grid-template-areas` column, `.message-panel-controls`) rather than floating fixed over the bottom-right of the screen — see §8.
+- Tile grid fills the remaining space edge-to-edge; `app-shell` has no padding at all (`0`) on any side, since there's no longer a fixed-position control band to leave clearance for.
+- Screens with 8 items or fewer (requirements.md §4.1's "1画面8項目以内" target) use a **fill grid**: `computeGridLayout()` (`frontend/src/lib/gridLayout.ts`, unit-tested for n=2..8 × landscape/portrait/square) measures the grid area's real size via `ResizeObserver` and picks `(cols, rows=ceil(n/cols))` by, in order: (1) fewest empty cells — only 0 or 1 is ever allowed, candidates needing a span of 3+ are rejected outright; (2) among the survivors, the cell aspect ratio (`width/cols ÷ height/rows`) closest to 1, preferring one inside `[0.6, 1.6]` when any candidate reaches it. `--cols`/`--rows` then drive `grid-template-columns/rows: repeat(var(--cols/rows), 1fr)`, so the area divides exactly — no isolated tile, no leftover blank space. If the last row would be short by exactly one cell, that last tile gets `grid-column: span 2` (never more) to fill it instead of leaving an empty cell.
 - Screens with more items (the letter board) fall back to `repeat(auto-fit, minmax(...))` with a scrollable grid and a minimum tile height, same as before Issue #3.
 - No nested cards; no gap between cells (see §2's seamless-grid rule).
 - Buttons use stable min-heights so labels do not resize the layout.
@@ -110,7 +110,7 @@ Source of truth: `docs/requirements.md`.
 - The patient has exactly one input: a single "on" (tap anywhere / any key / Bluetooth shutter) timed to an automatic scan cursor.
 - Scanning runs from startup and never requires the patient to start or stop it.
 - The first scan item of every screen is Emergency.
-- Caregiver menu opens with a 2-second long press on a corner button; it is not in the scan cycle.
+- Caregiver menu opens with a 2-second long press on the button in the message panel's top-right corner; it is not in the scan cycle.
 - Number keys 1-9 are a developer/caregiver aid only and hidden by default.
 - Speech can be OFF, tone-only, short, or full. The emergency alarm sounds even when OFF.
 
@@ -147,7 +147,7 @@ No pans, no hanging strings, no other motif (e.g. a speech bubble, grid, or a si
 
 ## 8. Caregiver UI
 
-The caregiver panel (long-press menu) reuses the same palette as the patient screen via tokens, as flat status/action colors rather than tile tones. Values below are Design A; Design B substitutes its own `--caregiver-*` tokens (see `globals.css`) but the roles are identical:
+The caregiver panel (long-press menu) reuses the same palette as the patient screen via tokens, as flat status/action colors rather than tile tones. Values below are the light theme; the dark theme substitutes its own `--caregiver-*` tokens (see `globals.css`) but the roles are identical:
 
 | Element                                     | Background (token)             | Border (token)                  | Text (token)                    | Meaning                                      |
 | -------------------------------------------- | -------------------------------- | ---------------------------------- | ---------------------------------- | --------------------------------------------- |
@@ -160,4 +160,4 @@ The caregiver panel (long-press menu) reuses the same palette as the patient scr
 | `...button.active`                            | `--caregiver-action-bg`            | `--caregiver-action-bg`               | `--caregiver-action-text`              | Voice mode / font size option, selected        |
 | `.audio-status-hint`                          | `--caregiver-status-warn-bg`       | `--caregiver-status-warn-border`       | `--caregiver-status-warn-text`         | Alarm audio not yet unlocked                   |
 
-The warn/OK token pairing is shared by Wake Lock status, offline-ready status, and the alarm-audio hint, so caregivers learn one visual pattern for "this needs your attention" across all of them, in either design variant. The 文字サイズ (font size) picker reuses the same `.caregiver-choice-options` look as the voice-mode picker (`--caregiver-status-ok-bg`/`--caregiver-action-bg` unselected/selected pair); 高コントラスト is a plain checkbox like 聴覚スキャン.
+The warn/OK token pairing is shared by Wake Lock status, offline-ready status, and the alarm-audio hint, so caregivers learn one visual pattern for "this needs your attention" across all of them, in either theme. The 文字サイズ (font size) and 表示 (theme: light/dark/auto) pickers both reuse the same `.caregiver-choice-options` look as the voice-mode picker (`--caregiver-status-ok-bg`/`--caregiver-action-bg` unselected/selected pair); 高コントラスト is a plain checkbox like 聴覚スキャン.

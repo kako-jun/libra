@@ -14,8 +14,8 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 - **Large grid UI** — Not fixed to Esuna's 9-grid rule, but keeps the same easy-to-press grid feeling.
 - **Message display** — The selected phrase is shown in large type so the person nearby can read it.
 - **Emergency alarm** — Selecting Emergency shows a red banner with no confirmation step and sounds a Web Audio alarm (works even with speech OFF) until a caregiver clears it.
-- **Caregiver menu** — A 2-second long-press on a corner button opens scan interval / head-hold / debounce / auditory-scan / speech-mode / font-size / high-contrast settings and emergency clear. Settings persist to localStorage.
-- **Two design variants** — A bright/calm variant and a dark/night variant, switched with the `?design=a|b` URL query (default `a`); high contrast layers on top of either. Tiles use surface color and rounded corners instead of borders, with a thick yellow ring + slight scale-up marking the current scan target.
+- **Caregiver menu** — A 2-second long-press on a corner button, moved to the top-right corner of the message panel (not a floating bottom bar), opens scan interval / head-hold / debounce / auditory-scan / speech-mode / font-size / theme / high-contrast settings and emergency clear. Settings persist to localStorage.
+- **Light/dark theme** — A caregiver setting (light / dark / auto, default auto) instead of a URL query; auto follows the device's `prefers-color-scheme` live. High contrast layers on top of either theme. The tile grid is a seamless, gap-less board (no rounded corners, cells separated only by a thin divider line) that always fills its screen area edge to edge — column/row count is computed from the item count and the grid area's own aspect ratio, never leaving empty cells or a blank strip. The current scan target gets a thick yellow ring drawn just inside its own cell (no scale-up, so it never overlaps a neighboring cell).
 - **Speech modes** — Off, vibration/tone only, short speech, and full speech.
 - **PWA-ready structure** — Same frontend/backend/release shape as Esuna.
 
