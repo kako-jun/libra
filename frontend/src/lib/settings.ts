@@ -6,6 +6,9 @@ export type VoiceMode = 'off' | 'tone' | 'short' | 'full'
 /** Issue #3: 介助者設定の文字サイズ。タイル・見出しの clamp() 基準値を切り替える */
 export type FontSize = 'standard' | 'large' | 'xlarge'
 
+/** Issue #3: 表示(明暗)テーマ。auto は端末の prefers-color-scheme に追従する */
+export type Theme = 'light' | 'dark' | 'auto'
+
 export interface Settings {
   /** スキャン間隔(ms)。既定 1500、範囲 500〜5000 */
   intervalMs: number
@@ -19,8 +22,10 @@ export interface Settings {
   voiceMode: VoiceMode
   /** 文字サイズ。既定 standard */
   fontSize: FontSize
-  /** 高コントラスト。既定 OFF。A/B いずれのデザインにも重ねて効く */
+  /** 高コントラスト。既定 OFF。明るい/夜間いずれのテーマにも重ねて効く */
   highContrast: boolean
+  /** 表示(明暗)テーマ。既定 auto(端末の設定に追従) */
+  theme: Theme
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -31,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   voiceMode: 'off',
   fontSize: 'standard',
   highContrast: false,
+  theme: 'auto',
 }
 
 const STORAGE_KEY = 'libra'
@@ -44,6 +50,7 @@ const DEBOUNCE_MS_MAX = 3000
 
 const VOICE_MODES: VoiceMode[] = ['off', 'tone', 'short', 'full']
 const FONT_SIZES: FontSize[] = ['standard', 'large', 'xlarge']
+const THEMES: Theme[] = ['light', 'dark', 'auto']
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
@@ -83,6 +90,7 @@ export function normalizeSettings(input: unknown): Settings {
       : DEFAULT_SETTINGS.fontSize,
     highContrast:
       typeof raw.highContrast === 'boolean' ? raw.highContrast : DEFAULT_SETTINGS.highContrast,
+    theme: THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : DEFAULT_SETTINGS.theme,
   }
 }
 

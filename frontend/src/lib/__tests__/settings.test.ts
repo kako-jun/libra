@@ -11,6 +11,7 @@ describe('normalizeSettings', () => {
       voiceMode: 'short',
       fontSize: 'large',
       highContrast: true,
+      theme: 'dark',
     }
     expect(normalizeSettings(input)).toEqual(input)
   })
@@ -102,6 +103,22 @@ describe('normalizeSettings', () => {
 
   it('highContrast が true ならそのまま通過する', () => {
     expect(normalizeSettings({ highContrast: true }).highContrast).toBe(true)
+  })
+
+  it('theme が既知の値(light)ならそのまま通過する', () => {
+    expect(normalizeSettings({ theme: 'light' }).theme).toBe('light')
+  })
+
+  it('theme が既知の値(dark)ならそのまま通過する', () => {
+    expect(normalizeSettings({ theme: 'dark' }).theme).toBe('dark')
+  })
+
+  it('theme が既知の値(auto)ならそのまま通過する', () => {
+    expect(normalizeSettings({ theme: 'auto' }).theme).toBe('auto')
+  })
+
+  it('theme が未知の値なら既定値(auto)にフォールバックする', () => {
+    expect(normalizeSettings({ theme: 'sepia' }).theme).toBe(DEFAULT_SETTINGS.theme)
   })
 
   it('voiceMode が未知の値なら既定値にフォールバックする', () => {
