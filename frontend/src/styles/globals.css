@@ -45,6 +45,11 @@
   --caregiver-button-bg: #f3fbf7;
   --caregiver-button-text: #052e2b;
   --font-scale: 1;
+  /* PR#16 4巡目 must-F: タイルラベルの文字サイズ専用の変数。--font-scale(vhベースの
+     上限を押し上げるためのもの)とは別に、cqi/cqbの頭打ち値に直接掛ける比率として
+     用意する(下の --tile-label-font 参照)。値は kako-jun 未確認の既定値
+     (標準0.8/大0.9/特大1.0)として採用、後で調整できるようCSS変数にしてある */
+  --label-ratio: 0.8;
   /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る */
   --grid-line: #cde3d4;
   --grid-line-width: 1px;
@@ -132,10 +137,12 @@
    ビューポート追従は保ったまま全体を拡大する。 */
 :root[data-font-size='large'] {
   --font-scale: 1.25;
+  --label-ratio: 0.9;
 }
 
 :root[data-font-size='xlarge'] {
   --font-scale: 1.55;
+  --label-ratio: 1;
 }
 
 :root {
@@ -458,22 +465,25 @@ h1 {
 
 .tile {
   /* kako-jun 追加指示: 予告(.tile-preview)の文字サイズをラベルの45〜55%程度にするため、
-     ラベルの clamp() 式を変数化して共有する。ブレークポイントごとの上書きはここで行い、
-     .tile-label と .tile-preview の両方が追従する。
+     ラベルの clamp() 式を変数化して共有する。.tile-label と .tile-preview の両方が
+     追従する。
      PR#16 Opus レビュー must-3: 横幅(cqi)だけでなく高さ(cqb)でも頭打ちにする(横長タイルで
      縦にはみ出すのを防ぐ)。container-type を size にして cqb を有効にする。
-     PR#16 再レビュー must-A/B(方針転換): 以前は文字サイズ設定に応じて gridLayout の
-     最小セル寸法自体を引き上げ、収まらなければスクロールへ逃がしていた。これだと
-     8項目以下の画面でも大/特大文字でスクロール化してしまい、緊急タイルが巡回中に
-     画面外へ消えることがあった。最小セル寸法は文字サイズに関係なく既定のまま固定し
-     (App.tsx)、代わりにここで --font-scale を「min() の中の vh 項」と「clamp の上限」
-     にだけ掛ける。「セルに収まる範囲で、文字サイズ設定が許す上限まで大きくする」という
-     意味になり、セルが小さければ自動的に文字が縮む(cqi/cqbが頭打ちする)ため、
-     どんな文字サイズ設定でも fill レイアウトを維持できる */
+     PR#16 3巡目 must-2 再検証・4巡目 must-F(方針転換): 以前は「min() の中の vh 項」と
+     「clamp の上限」にだけ --font-scale を掛けていたが、セルに十分な余裕がある画面
+     (例: 項目数が少なく1セルが大きい画面)では標準設定の時点で既にcqi/cqbの頭打ちに
+     達してしまい、60通り中27通りで文字サイズ設定を「標準→大→特大」と変えても
+     見た目上まったく変化しないバグがあった(vh項の上限を押し上げても、cqi/cqbという
+     より小さい方の項がそもそも変わらないため)。
+     文字サイズ設定は「セルの頭打ち値(cqi/cqbのmin)に対する比率」として --label-ratio
+     (標準0.8/大0.9/特大1.0)を直接掛ける形に変える。これによりセルが大きく余裕がある
+     画面でも、標準設定では頭打ち値の80%までしか使わず、大/特大に上げると同じセルの
+     中でも確実にラベルが大きくなる。vh 項は(セル自体が極端に大きい/小さい画面での)
+     上限側の安全網としてのみ残す */
   --tile-label-font: clamp(
     1.05rem,
-    min(calc(var(--font-scale) * 4.8vh), 15cqi, 20cqb),
-    calc(var(--font-scale) * 3.4rem)
+    calc(var(--label-ratio) * min(15cqi, 20cqb)),
+    min(calc(var(--font-scale) * 4.8vh), 3.4rem)
   );
   container-type: size;
   position: relative;
@@ -655,12 +665,12 @@ h1 {
   overflow: hidden;
   color: var(--text-muted);
   /* kako-jun 追加指示: ラベルの45〜55%程度(ここでは50%)、最小でも0.85rem相当にする。
-     --tile-label-font(.tile で定義、ブレークポイントごとに上書き)を参照するので、
-     画面幅が変わってもラベルとの比率を保ったまま追従する。
-     PR#16 再レビュー must-A/B: --tile-label-font には既に --font-scale が内包されて
-     いるため、比率(0.5倍)側には掛けない。最小値の0.85rem側にだけ掛けて、文字サイズ
-     設定が大きい時は最小値も一緒に持ち上がるようにする */
-  font-size: max(calc(var(--font-scale) * 0.85rem), 0.5 * var(--tile-label-font));
+     --tile-label-font(.tile で定義)を参照するので、画面幅が変わってもラベルとの
+     比率を保ったまま追従する。
+     PR#16 4巡目 must-F: --tile-label-font 自身が --label-ratio を内包しているため
+     比率(0.5倍)側には掛けない。最小値の0.85rem側は --label-ratio を掛けて、予告も
+     ラベルと同じ比率設定に追従させる(「予告行も同じ比率に追従する」) */
+  font-size: max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font));
   font-weight: 700;
   line-height: 1.1;
   text-align: center;
