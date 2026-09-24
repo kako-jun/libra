@@ -14,6 +14,7 @@ let mod: {
 class MockServiceWorkerContainer extends EventTarget {
   controller: MockController | null = null
   getRegistration = vi.fn()
+  register = vi.fn().mockResolvedValue(undefined)
 }
 
 /** postMessage({type:'GET_CACHE_NAME'}) に対し、指定したキャッシュ名で応答するモック。
@@ -213,7 +214,82 @@ describe('offlineReady', () => {
       setServiceWorker(container)
       container.getRegistration.mockRejectedValue(new Error('offline'))
 
-      await expect(mod.recheckOfflineReady(vi.fn())).resolves.toBeUndefined()
+      await expect(mod.recheckOfflineReady(vi.fn())).resolves.toBe('not-ready')
+    })
+  })
+
+  describe('PR#11 4巡目 should-1: registrationが無い場合はregister()し直す', () => {
+    it('getRegistration()がundefinedを返すなら、PROD環境ではregister()を呼ぶ', async () => {
+      vi.stubEnv('PROD', true)
+      const container = new MockServiceWorkerContainer()
+      setServiceWorker(container) // controller無し -> not-ready
+      container.getRegistration.mockResolvedValue(undefined)
+
+      await mod.recheckOfflineReady(vi.fn())
+      await flush()
+
+      expect(container.register).toHaveBeenCalledWith('/sw.js', { scope: '/' })
+    })
+
+    it('PROD以外の環境ではregister()を呼ばない', async () => {
+      vi.stubEnv('PROD', false)
+      const container = new MockServiceWorkerContainer()
+      setServiceWorker(container)
+      container.getRegistration.mockResolvedValue(undefined)
+
+      await mod.recheckOfflineReady(vi.fn())
+      await flush()
+
+      expect(container.register).not.toHaveBeenCalled()
+    })
+
+    it('既存のregistrationがあればregister()は呼ばずupdate()だけ呼ぶ', async () => {
+      vi.stubEnv('PROD', true)
+      const container = new MockServiceWorkerContainer()
+      setServiceWorker(container)
+      const update = vi.fn().mockResolvedValue(undefined)
+      container.getRegistration.mockResolvedValue({ update })
+
+      await mod.recheckOfflineReady(vi.fn())
+      await flush()
+
+      expect(update).toHaveBeenCalled()
+      expect(container.register).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('PR#11 4巡目 should-2(c): オフライン中は更新チェック/再登録を試みない', () => {
+    const originalOnLine = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine')
+
+    afterEach(() => {
+      if (originalOnLine) Object.defineProperty(Navigator.prototype, 'onLine', originalOnLine)
+    })
+
+    it('navigator.onLine===falseならregister()もupdate()も呼ばない', async () => {
+      vi.stubEnv('PROD', true)
+      Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
+      const container = new MockServiceWorkerContainer()
+      setServiceWorker(container)
+      container.getRegistration.mockResolvedValue(undefined)
+
+      await mod.recheckOfflineReady(vi.fn())
+      await flush()
+
+      expect(container.getRegistration).not.toHaveBeenCalled()
+      expect(container.register).not.toHaveBeenCalled()
+    })
+
+    it('navigator.onLine===trueなら通常どおり試みる', async () => {
+      Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
+      const container = new MockServiceWorkerContainer()
+      setServiceWorker(container)
+      const update = vi.fn().mockResolvedValue(undefined)
+      container.getRegistration.mockResolvedValue({ update })
+
+      await mod.recheckOfflineReady(vi.fn())
+      await flush()
+
+      expect(update).toHaveBeenCalled()
     })
   })
 
@@ -312,6 +388,64 @@ describe('offlineReady', () => {
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
 
       expect(update).toHaveBeenCalled()
+      stop()
+    })
+
+    it('PR#11 4巡目 should-2(b): not-readyが続くと間隔が倍々に伸び、60分で打ち止めになる', async () => {
+      vi.useFakeTimers()
+      const container = new MockServiceWorkerContainer()
+      setServiceWorker(container) // controller無し -> 常に not-ready
+      const update = vi.fn().mockResolvedValue(undefined)
+      container.getRegistration.mockResolvedValue({ update })
+      const stop = mod.initOfflineReadyWatch(vi.fn())
+      await vi.advanceTimersByTimeAsync(0)
+      update.mockClear()
+
+      // 直前のtickからちょうど expectedMs 経った時点で1回だけ呼ばれることを確認する
+      const expectTickAfter = async (expectedMs: number) => {
+        await vi.advanceTimersByTimeAsync(expectedMs - 1)
+        expect(update).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(1)
+        expect(update).toHaveBeenCalledTimes(1)
+        update.mockClear()
+      }
+
+      await expectTickAfter(5 * 60 * 1000) // 1回目: 5分後。次は10分に伸びる
+      await expectTickAfter(10 * 60 * 1000) // 2回目: 10分後。次は20分に伸びる
+      await expectTickAfter(20 * 60 * 1000) // 3回目: 20分後。次は40分に伸びる
+      await expectTickAfter(40 * 60 * 1000) // 4回目: 40分後。次は60分(上限)に達する
+      await expectTickAfter(60 * 60 * 1000) // 5回目: 60分後
+      await expectTickAfter(60 * 60 * 1000) // 6回目: 依然60分間隔(これ以上は伸びない)
+
+      stop()
+    })
+
+    it('PR#11 4巡目 should-2(b): readyになると次回は5分間隔にリセットされる', async () => {
+      vi.useFakeTimers()
+      const container = new MockServiceWorkerContainer()
+      setServiceWorker(container)
+      const notify = vi.fn()
+      const stop = mod.initOfflineReadyWatch(notify)
+      await vi.advanceTimersByTimeAsync(0)
+
+      // 1回目のタイマー(5分後)はnot-readyのまま
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+      notify.mockClear()
+
+      // ここで ready になる(controllerが付き、キャッシュも揃う)
+      container.controller = new MockController(container, 'libra-abc123')
+      setCaches({ 'libra-abc123': ['/'] })
+
+      // 次のタイマーは10分後のはず(2回目、まだバックオフが伸びている)だが、
+      // ここで解決すると ready になり、以降は5分にリセットされる
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+      expect(notify).toHaveBeenCalledWith('ready')
+      notify.mockClear()
+
+      // リセットされていれば次は5分後に来る(10分後まで待たなくてよい)
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+      expect(notify).toHaveBeenCalledWith('ready')
+
       stop()
     })
 
