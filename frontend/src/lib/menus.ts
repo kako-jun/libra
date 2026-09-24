@@ -8,6 +8,7 @@ export type ScreenId =
   | 'home'
   | 'urgentDetail'
   | 'discomfort'
+  | 'discomfortOther'
   | 'painLocation'
   | 'moodRequest'
   | 'letters'
@@ -35,6 +36,7 @@ export interface MenuItem {
 export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   urgentDetail: 'home',
   discomfort: 'home',
+  discomfortOther: 'discomfort',
   painLocation: 'discomfort',
   moodRequest: 'home',
   letters: 'home',
@@ -44,6 +46,7 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   home: 'libra',
   urgentDetail: '緊急',
   discomfort: '不快',
+  discomfortOther: '不快・その他',
   painLocation: '痛い場所',
   moodRequest: '快・要望',
   letters: '文字盤',
@@ -80,15 +83,17 @@ function navigate(id: string, label: string, screen: ScreenId): MenuItem {
 }
 
 export interface HomeMenuOptions {
-  /** 伝達直後の1周だけ true。緊急中は常に false（緊急中は取り消し対象にしない） */
+  /** 伝達直後の1周だけ true。渡された値に関わらず emergencyActive 中は無視する */
   showUndo: boolean
+  /** 緊急中は取り消しを出さない（requirements.md §6: 緊急中は取り消し対象にしない）。
+   *  この判定を App 側に置かず、ここで一元的に保証する。 */
+  emergencyActive: boolean
 }
 
 export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
+  const showUndo = options.showUndo && !options.emergencyActive
   return homeScreen([
-    ...(options.showUndo
-      ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem]
-      : []),
+    ...(showUndo ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem] : []),
     message('yes', 'はい', 'はい', 'positive'),
     message('no', 'いいえ', 'いいえ'),
     navigate('discomfort-nav', '不快 →', 'discomfort'),
@@ -132,15 +137,23 @@ export function buildUrgentDetailMenu(): MenuItem[] {
   ])
 }
 
+// 1画面の項目数は緊急・戻るを含めて8以内(requirements.md §4.1)。
+// 「その他」は暑い/寒い/喉が渇いた/かゆい/眠れないを discomfortOther へ退避する。
 export function buildDiscomfortMenu(): MenuItem[] {
   return subScreen([
     navigate('pain-nav', '痛い →', 'painLocation'),
     message('suffering', '苦しい', '苦しいです', 'urgent'),
     message('phlegm', '痰を取ってほしい', '痰を取ってほしいです'),
     message('reposition', '体の向きを変えたい', '体の向きを変えたいです'),
+    message('toilet', 'トイレ', 'トイレに行きたいです'),
+    navigate('discomfort-other-nav', 'その他 →', 'discomfortOther'),
+  ])
+}
+
+export function buildDiscomfortOtherMenu(): MenuItem[] {
+  return subScreen([
     message('hot', '暑い', '暑いです'),
     message('cold', '寒い', '寒いです'),
-    message('toilet', 'トイレ', 'トイレに行きたいです'),
     message('thirsty', '喉が渇いた', '喉が渇きました'),
     message('itchy', 'かゆい', 'かゆいです'),
     message('cant-sleep', '眠れない', '眠れません'),
@@ -158,6 +171,7 @@ export function buildPainLocationMenu(): MenuItem[] {
   ])
 }
 
+// テレビ・音楽は #8（フレーズ編集）で追加可能な位置にする。1画面8項目以内の枠に収めるため撤去。
 export function buildMoodRequestMenu(): MenuItem[] {
   return subScreen([
     message('fine', '大丈夫', '大丈夫です', 'positive'),
@@ -166,7 +180,6 @@ export function buildMoodRequestMenu(): MenuItem[] {
     message('quiet', '静かにしてほしい', '静かにしてほしいです'),
     message('family', '家族に会いたい', '家族に会いたいです'),
     message('talk', '話したい', '話したいです'),
-    message('media', 'テレビ・音楽', 'テレビか音楽をつけてほしいです'),
   ])
 }
 
@@ -193,6 +206,8 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
       return buildUrgentDetailMenu()
     case 'discomfort':
       return buildDiscomfortMenu()
+    case 'discomfortOther':
+      return buildDiscomfortOtherMenu()
     case 'painLocation':
       return buildPainLocationMenu()
     case 'moodRequest':
