@@ -30,6 +30,9 @@ export interface MenuItem {
   detail?: string
   tone?: Tone
   action: ActionId
+  /** 下位画面へ進むタイル(navigate)だけが持つ、遷移先の中身の予告(例:「痛い・苦しい・…」)。
+   *  読み上げ対象外(ラベルのみ読む)。タイル表示でだけ使う。 */
+  preview?: string
 }
 
 /** 下位画面の「戻る」の遷移先。画面ツリーに従う（painLocation は discomfort の子）。 */
@@ -78,8 +81,22 @@ function message(id: string, label: string, text: string, tone?: Tone): MenuItem
   return { id, label, tone, action: { type: 'message', text, tone } }
 }
 
+const PREVIEW_ITEM_COUNT = 4
+
+/** 遷移先メニューの中身の予告テキストを自動生成する。緊急・戻るは除き、
+ *  先頭から数項目のラベルを「・」で繋いで末尾に「…」を付ける。ハードコードしない
+ *  ことで menus.ts の項目定義を変更しても自動で追従する。 */
+function buildPreview(screen: ScreenId): string {
+  const items = buildMenu(screen, { showUndo: false, emergencyActive: false })
+  const contentLabels = items
+    .filter((item) => item.action.type !== 'emergency' && item.action.type !== 'back')
+    .map((item) => item.label)
+  if (contentLabels.length === 0) return ''
+  return `${contentLabels.slice(0, PREVIEW_ITEM_COUNT).join('・')}…`
+}
+
 function navigate(id: string, label: string, screen: ScreenId): MenuItem {
-  return { id, label, action: { type: 'navigate', screen } }
+  return { id, label, action: { type: 'navigate', screen }, preview: buildPreview(screen) }
 }
 
 export interface HomeMenuOptions {
@@ -96,9 +113,9 @@ export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
     ...(showUndo ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem] : []),
     message('yes', 'はい', 'はい', 'positive'),
     message('no', 'いいえ', 'いいえ'),
-    navigate('discomfort-nav', '不快 →', 'discomfort'),
-    navigate('mood-nav', '快・要望 →', 'moodRequest'),
-    navigate('letters-nav', '文字盤 →', 'letters'),
+    navigate('discomfort-nav', '不快', 'discomfort'),
+    navigate('mood-nav', '快・要望', 'moodRequest'),
+    navigate('letters-nav', '文字盤', 'letters'),
   ])
 }
 
@@ -141,12 +158,12 @@ export function buildUrgentDetailMenu(): MenuItem[] {
 // 「その他」は暑い/寒い/喉が渇いた/かゆい/眠れないを discomfortOther へ退避する。
 export function buildDiscomfortMenu(): MenuItem[] {
   return subScreen([
-    navigate('pain-nav', '痛い →', 'painLocation'),
+    navigate('pain-nav', '痛い', 'painLocation'),
     message('suffering', '苦しい', '苦しいです', 'urgent'),
     message('phlegm', '痰を取ってほしい', '痰を取ってほしいです'),
     message('reposition', '体の向きを変えたい', '体の向きを変えたいです'),
     message('toilet', 'トイレ', 'トイレに行きたいです'),
-    navigate('discomfort-other-nav', 'その他 →', 'discomfortOther'),
+    navigate('discomfort-other-nav', 'その他', 'discomfortOther'),
   ])
 }
 

@@ -78,9 +78,9 @@ describe('ホームの並び順(安全の優先順位 §2 の回帰テスト)', 
       '取り消し',
       'はい',
       'いいえ',
-      '不快 →',
-      '快・要望 →',
-      '文字盤 →',
+      '不快',
+      '快・要望',
+      '文字盤',
     ])
   })
 
@@ -90,9 +90,38 @@ describe('ホームの並び順(安全の優先順位 §2 の回帰テスト)', 
       '緊急',
       'はい',
       'いいえ',
-      '不快 →',
-      '快・要望 →',
-      '文字盤 →',
+      '不快',
+      '快・要望',
+      '文字盤',
     ])
+  })
+})
+
+describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
+  it('不快タイルの予告は遷移先(discomfort)の緊急・戻るを除いた先頭項目から自動生成される', () => {
+    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const discomfortTile = items.find((item) => item.id === 'discomfort-nav')
+    expect(discomfortTile?.preview).toBe('痛い・苦しい・痰を取ってほしい・体の向きを変えたい…')
+  })
+
+  it('快・要望タイルの予告は遷移先(moodRequest)から自動生成される', () => {
+    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const moodTile = items.find((item) => item.id === 'mood-nav')
+    expect(moodTile?.preview).toBe('大丈夫・ありがとう・眠りたい・静かにしてほしい…')
+  })
+
+  it('文字盤タイルの予告は遷移先(letters)から自動生成される', () => {
+    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const lettersTile = items.find((item) => item.id === 'letters-nav')
+    expect(lettersTile?.preview).toBe('あ・い・う・え…')
+  })
+
+  it('message/emergency/back/undo などの navigate 以外のアイテムは preview を持たない', () => {
+    const items = buildHomeMenu({ showUndo: true, emergencyActive: false })
+    for (const item of items) {
+      if (item.action.type !== 'navigate') {
+        expect(item.preview).toBeUndefined()
+      }
+    }
   })
 })

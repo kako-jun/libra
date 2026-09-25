@@ -123,7 +123,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     // 文字盤ナビへ進める(index5)
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 4)
-    expect(scanningLabel(container)).toBe('文字盤 →')
+    expect(scanningLabel(container)).toBe('文字盤')
     fireEvent.keyDown(window, { key: ' ' }) // letters 画面へ遷移
     expect(container.querySelector('.letter-strip')).not.toBeNull()
 
@@ -140,7 +140,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // index0=緊急
     expect(h1Text(container)).toBe('緊急です。来てください')
-    expect(container.querySelector('.status-stack')?.textContent).toContain('緊急')
+    expect(container.querySelector('.grid-board')?.getAttribute('aria-label')).toContain('緊急')
   })
 
   it('緊急中にホームで「はい」を選んでも見出しは緊急のまま副表示に「最新: はい」が出る', () => {
@@ -328,12 +328,40 @@ describe('App', () => {
 
     // home: 0緊急,1はい,2いいえ,3不快→,... index3まで進めて不快へ遷移する
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2)
-    expect(scanningLabel(container)).toBe('不快 →')
+    expect(scanningLabel(container)).toBe('不快')
     fireEvent.keyDown(window, { key: ' ' }) // discomfort へ遷移(goTo)
 
     expect(speak).toHaveBeenCalled()
     const lastUtterance = speak.mock.calls[speak.mock.calls.length - 1][0] as { text: string }
     expect(lastUtterance.text).toBe('緊急')
+  })
+
+  it('Issue #3 追加指示: navigate タイルの聴覚スキャン読み上げはラベルのみ(山形アイコン・予告の記号は読まない)', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
+    fireEvent.click(checkbox) // 聴覚スキャンON
+    const closeButton = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === '閉じる',
+    ) as HTMLElement
+    fireEvent.click(closeButton) // home へ戻る
+
+    const speak = (window as unknown as { speechSynthesis: { speak: ReturnType<typeof vi.fn> } })
+      .speechSynthesis.speak as ReturnType<typeof vi.fn>
+    speak.mockClear()
+
+    // home: 0緊急,1はい,2いいえ,3不快(navigate) までカーソルを進める
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2)
+    expect(scanningLabel(container)).toBe('不快')
+
+    expect(speak).toHaveBeenCalled()
+    const lastUtterance = speak.mock.calls[speak.mock.calls.length - 1][0] as { text: string }
+    expect(lastUtterance.text).toBe('不快')
+    expect(lastUtterance.text).not.toContain('→')
+    expect(lastUtterance.text).not.toContain('…')
+    expect(lastUtterance.text).not.toContain('・')
   })
 
   it('S-new-1/nit: 伝達の読み上げは画面遷移直後の読み上げ1回だけ打ち切られず、その次のカーソル移動は通常どおりcancelされる', () => {
@@ -754,5 +782,213 @@ describe('App', () => {
     fireEvent.pointerDown(button2)
     vi.advanceTimersByTime(2000)
     expect(second.container.textContent).toContain('スキャン間隔: 2.5 秒')
+  })
+
+  describe('Issue #3 追加指示: 表示テーマ(明るい/夜間/自動)・文字サイズ・高コントラスト', () => {
+    // window.matchMedia の複雑なモック。複数のクエリ(prefers-color-scheme, display-mode)を
+    // 個別に扱い、addEventListener で登録されたリスナーを trigger() で発火できるようにする。
+    // App.tsx は起動時に matchMedia を同期的に呼ぶため、render() より前に呼び出しておく。
+    function mockMatchMedia(initial: Record<string, boolean> = {}) {
+      const instances = new Map<
+        string,
+        Array<{ mql: { matches: boolean }; listeners: Set<(e: { matches: boolean }) => void> }>
+      >()
+      const matchMediaFn = vi.fn((query: string) => {
+        const listeners = new Set<(e: { matches: boolean }) => void>()
+        const mql = {
+          matches: initial[query] ?? false,
+          media: query,
+          addEventListener: (_event: string, cb: (e: { matches: boolean }) => void) =>
+            listeners.add(cb),
+          removeEventListener: (_event: string, cb: (e: { matches: boolean }) => void) =>
+            listeners.delete(cb),
+        }
+        if (!instances.has(query)) instances.set(query, [])
+        instances.get(query)?.push({ mql, listeners })
+        return mql
+      })
+      ;(window as unknown as { matchMedia: typeof window.matchMedia }).matchMedia =
+        matchMediaFn as unknown as typeof window.matchMedia
+      return {
+        trigger(query: string, matches: boolean) {
+          for (const entry of instances.get(query) ?? []) {
+            entry.mql.matches = matches
+            for (const cb of entry.listeners) cb({ matches })
+          }
+        },
+      }
+    }
+
+    afterEach(() => {
+      delete document.documentElement.dataset.theme
+      delete document.documentElement.dataset.fontSize
+      delete document.documentElement.dataset.highContrast
+    })
+
+    it('theme=auto(既定)かつ OS が明るい設定なら data-theme は light になる', () => {
+      mockMatchMedia({ '(prefers-color-scheme: dark)': false })
+      render(() => <App />)
+      expect(document.documentElement.dataset.theme).toBe('light')
+    })
+
+    it('theme=auto(既定)かつ OS が暗い設定なら data-theme は dark になる', () => {
+      mockMatchMedia({ '(prefers-color-scheme: dark)': true })
+      render(() => <App />)
+      expect(document.documentElement.dataset.theme).toBe('dark')
+    })
+
+    it('auto中にOSのテーマ変更(matchMediaのchangeイベント)が来ると即座に data-theme が追従する', () => {
+      const media = mockMatchMedia({ '(prefers-color-scheme: dark)': false })
+      render(() => <App />)
+      expect(document.documentElement.dataset.theme).toBe('light')
+      media.trigger('(prefers-color-scheme: dark)', true)
+      expect(document.documentElement.dataset.theme).toBe('dark')
+      media.trigger('(prefers-color-scheme: dark)', false)
+      expect(document.documentElement.dataset.theme).toBe('light')
+    })
+
+    it('介助者メニューで表示「夜間」を選ぶと、OSが明るくても data-theme は dark に固定される', () => {
+      mockMatchMedia({ '(prefers-color-scheme: dark)': false })
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const darkButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '夜間',
+      ) as HTMLElement
+      fireEvent.click(darkButton)
+      expect(document.documentElement.dataset.theme).toBe('dark')
+    })
+
+    it('介助者メニューで表示「明るい」を選ぶと、OSが暗くても data-theme は light に固定される', () => {
+      mockMatchMedia({ '(prefers-color-scheme: dark)': true })
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const lightButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '明るい',
+      ) as HTMLElement
+      fireEvent.click(lightButton)
+      expect(document.documentElement.dataset.theme).toBe('light')
+    })
+
+    it('起動直後は文字サイズ standard・高コントラスト false が data 属性に反映される', () => {
+      render(() => <App />)
+      expect(document.documentElement.dataset.fontSize).toBe('standard')
+      expect(document.documentElement.dataset.highContrast).toBe('false')
+    })
+
+    it('介助者メニューで文字サイズ「特大」を選ぶと data-font-size が xlarge になる', () => {
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const xlargeButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '特大',
+      ) as HTMLElement
+      fireEvent.click(xlargeButton)
+      expect(document.documentElement.dataset.fontSize).toBe('xlarge')
+    })
+
+    it('介助者メニューで高コントラストを ON にすると data-high-contrast が true になる', () => {
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const checkboxes = Array.from(
+        container.querySelectorAll('input[type="checkbox"]'),
+      ) as HTMLInputElement[]
+      const highContrastCheckbox = checkboxes.find(
+        (input) => input.closest('label')?.textContent === '高コントラスト',
+      ) as HTMLInputElement
+      fireEvent.click(highContrastCheckbox)
+      expect(document.documentElement.dataset.highContrast).toBe('true')
+    })
+  })
+
+  describe('Issue #3 追加指示: navigate タイルの山形アイコン・予告表示', () => {
+    it('不快タイル(navigate)には山形アイコンと予告が表示され、ラベルに矢印文字は含まない', () => {
+      const { container } = render(() => <App />)
+      const tiles = Array.from(container.querySelectorAll('.tile'))
+      const discomfortTile = tiles.find(
+        (tile) => tile.querySelector('.tile-label')?.textContent === '不快',
+      ) as HTMLElement
+      expect(discomfortTile.querySelector('.tile-label')?.textContent).not.toContain('→')
+      expect(discomfortTile.querySelector('.tile-chevron')).not.toBeNull()
+      expect(discomfortTile.querySelector('.tile-preview')?.textContent).toContain('痛い')
+    })
+
+    it('はい(message)タイルには山形アイコン・予告が表示されない', () => {
+      const { container } = render(() => <App />)
+      const tiles = Array.from(container.querySelectorAll('.tile'))
+      const yesTile = tiles.find(
+        (tile) => tile.querySelector('.tile-label')?.textContent === 'はい',
+      ) as HTMLElement
+      expect(yesTile.querySelector('.tile-chevron')).toBeNull()
+      expect(yesTile.querySelector('.tile-preview')).toBeNull()
+    })
+  })
+
+  describe('PR#16 Opus レビュー should-4: ResizeObserver 実測 → 列数 → 最後のタイルのspan', () => {
+    // jsdom には ResizeObserver が無いため、App.tsx の `new ResizeObserver(cb)` を
+    // 差し替えて捕まえ、trigger() で実測イベントを手動発火できるようにする
+    class MockResizeObserver {
+      static instances: MockResizeObserver[] = []
+      callback: (entries: unknown[]) => void
+      constructor(callback: (entries: unknown[]) => void) {
+        this.callback = callback
+        MockResizeObserver.instances.push(this)
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      trigger(width: number, height: number) {
+        this.callback([
+          {
+            contentBoxSize: [{ inlineSize: width, blockSize: height }],
+            contentRect: { width, height },
+          },
+        ])
+      }
+    }
+
+    beforeEach(() => {
+      MockResizeObserver.instances = []
+      ;(window as unknown as { ResizeObserver: unknown }).ResizeObserver = MockResizeObserver
+    })
+
+    it('横長 1000x500 で7項目(ホーム+取り消し)なら 4列×2行、最後のタイルが span 2 になる', () => {
+      const { container } = render(() => <App />)
+      // 「はい」を選んで home+取り消しの7項目状態にする(緊急,取り消し,はい,いいえ,不快,快要望,文字盤)
+      vi.advanceTimersByTime(HEAD_HOLD_MS)
+      fireEvent.keyDown(window, { key: ' ' }) // はい選択 → home(取り消し表示)
+      expect(tileLabels(container)).toHaveLength(7)
+
+      const observer = MockResizeObserver.instances[MockResizeObserver.instances.length - 1]
+      observer.trigger(1000, 500)
+
+      const board = container.querySelector('.grid-board') as HTMLElement
+      expect(board.classList.contains('grid-fill')).toBe(true)
+      expect(board.style.getPropertyValue('--cols')).toBe('4')
+      expect(board.style.getPropertyValue('--rows')).toBe('2')
+
+      const tiles = Array.from(container.querySelectorAll('.tile'))
+      const lastTile = tiles[tiles.length - 1] as HTMLElement
+      expect(lastTile.style.gridColumn).toBe('span 2')
+    })
+
+    it('画面サイズが変わり列数が変化すると --cols が追従する', () => {
+      const { container } = render(() => <App />)
+      const observer = MockResizeObserver.instances[MockResizeObserver.instances.length - 1]
+
+      observer.trigger(1000, 500) // 横長: 6項目(ホーム)は3列×2行になるはず
+      const board = container.querySelector('.grid-board') as HTMLElement
+      expect(board.style.getPropertyValue('--cols')).toBe('3')
+
+      observer.trigger(500, 1000) // 縦長に変化: 2列側に変わる
+      expect(board.style.getPropertyValue('--cols')).toBe('2')
+      expect(board.style.getPropertyValue('--rows')).toBe('3')
+    })
   })
 })

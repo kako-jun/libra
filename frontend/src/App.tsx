@@ -15,6 +15,7 @@ import {
   recheckOfflineReady,
   type OfflineReadyStatus,
 } from './lib/offlineReady'
+import { computeGridLayout } from './lib/gridLayout'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const ALARM_REPEAT_MS = 3000
@@ -60,11 +61,62 @@ function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
   window.speechSynthesis?.speak(utterance)
 }
 
+const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
+  standard: '標準',
+  large: '大',
+  xlarge: '特大',
+}
+
+const FONT_SIZES: Settings['fontSize'][] = ['standard', 'large', 'xlarge']
+
+const THEME_LABELS: Record<Settings['theme'], string> = {
+  light: '明るい',
+  dark: '夜間',
+  auto: '自動',
+}
+
+const THEMES: Settings['theme'][] = ['light', 'dark', 'auto']
+
+// PR#16 Opus レビュー nit: <meta name="theme-color"> をテーマに追従させる。
+// --message-bg(通常時)と同じ値にする(globals.cssのトークンと目視で揃えている)
+const THEME_COLOR: Record<'light' | 'dark', string> = {
+  light: '#0f5132',
+  dark: '#0a2318',
+}
+
 export default function App() {
   // 開発補助: URL に ?dev を付けると番号バッジを表示する（既定は非表示）
   const showDevNumbers = new URLSearchParams(window.location.search).has('dev')
 
   const [settings, setSettings] = createSignal<Settings>(loadSettings())
+
+  // Issue #3 追加指示: 表示テーマ(明るい/夜間/自動)。auto は端末の prefers-color-scheme に
+  // 追従し、OS側の設定変更にも即座に反応する(matchMedia の change を購読)。
+  const prefersDarkQuery =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null
+  const [systemPrefersDark, setSystemPrefersDark] = createSignal(prefersDarkQuery?.matches ?? false)
+  onMount(() => {
+    if (!prefersDarkQuery) return
+    const onChange = () => setSystemPrefersDark(prefersDarkQuery.matches)
+    prefersDarkQuery.addEventListener('change', onChange)
+    onCleanup(() => prefersDarkQuery.removeEventListener('change', onChange))
+  })
+  const resolvedTheme = createMemo<'light' | 'dark'>(() => {
+    const theme = settings().theme
+    if (theme === 'auto') return systemPrefersDark() ? 'dark' : 'light'
+    return theme
+  })
+
+  createEffect(() => {
+    document.documentElement.dataset.theme = resolvedTheme()
+    document.documentElement.dataset.fontSize = settings().fontSize
+    document.documentElement.dataset.highContrast = String(settings().highContrast)
+    // PR#16 Opus レビュー nit: ブラウザ/OSのUI色(タブバー等)もテーマに追従させる
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', THEME_COLOR[resolvedTheme()])
+  })
   const scanConfig = createMemo<ScanConfig>(() => ({
     intervalMs: settings().intervalMs,
     headHoldMs: settings().intervalMs * settings().headHoldMultiplier,
@@ -110,6 +162,27 @@ export default function App() {
     buildMenu(screen(), { showUndo: showUndo(), emergencyActive: emergencyActive() }),
   )
 
+  // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
+  // ResizeObserver で追従するので、回転・キャレギバー設定変更後の再計算も自動で効く。
+  // PR#16 再レビュー must-A/B: 最小セル寸法は文字サイズに関係なく既定(160x84)のまま
+  // 固定する。「収まらない」問題は最小セル寸法をここで引き上げてスクロールへ逃がすのでは
+  // なく、CSS側で文字をセルに合わせて縮める(--tile-label-font の min())ことで解決する。
+  // これにより8項目以下の画面は常に全面充填(fill)され、スクロールに落ちない。
+  let gridBoardEl: HTMLElement | undefined
+  const [gridSize, setGridSize] = createSignal({ width: 0, height: 0 })
+  // PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数(globals.css 側で
+  // ブレークポイントごとに違う値、--label-cqi/--label-cqb)をここにハードコード
+  // せず、実際に描画されている grid-board から getComputedStyle で読み取って
+  // computeGridLayout に渡す。CSS側の値を変えてもJS側の定数を追従して直す
+  // 必要が無くなる(4巡目でCSS側だけ揃えて起きた食い違いの再発防止)
+  const [labelFactors, setLabelFactors] = createSignal({ width: 0.15, height: 0.2 })
+  const gridLayout = createMemo(() =>
+    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height, {
+      labelWidthFactor: labelFactors().width,
+      labelHeightFactor: labelFactors().height,
+    }),
+  )
+
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
 
   // PR#11 must-4: orientation:any(縦横両対応)のため、横向き小画面(例 844x390)では
@@ -122,6 +195,9 @@ export default function App() {
   createEffect(() => {
     scanIndex()
     screen() // 画面遷移直後、遷移前と同じ index(例: どちらも先頭)でも再度スクロールする
+    // PR#16 Opus レビュー nit: 画面サイズ変化(回転・キーボード開閉等)でタイル位置が
+    // ずれた場合にも追従して再スクロールする
+    gridSize()
     if (typeof document === 'undefined') return
     const el = document.querySelector('.tile.scanning')
     el?.scrollIntoView?.({ block: 'nearest' })
@@ -349,6 +425,34 @@ export default function App() {
     onCleanup(() => window.clearInterval(id))
   })
 
+  // Issue #3 再レビュー: grid-board の実測サイズを追従し、列数計算(computeGridLayout)へ渡す
+  onMount(() => {
+    if (!gridBoardEl || typeof ResizeObserver === 'undefined') return
+    const readLabelFactors = () => {
+      if (!gridBoardEl || typeof getComputedStyle === 'undefined') return
+      const style = getComputedStyle(gridBoardEl)
+      const cqi = Number.parseFloat(style.getPropertyValue('--label-cqi'))
+      const cqb = Number.parseFloat(style.getPropertyValue('--label-cqb'))
+      if (Number.isFinite(cqi) && Number.isFinite(cqb)) {
+        setLabelFactors({ width: cqi / 100, height: cqb / 100 })
+      }
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const box = entry.contentBoxSize?.[0]
+      const width = box ? box.inlineSize : entry.contentRect.width
+      const height = box ? box.blockSize : entry.contentRect.height
+      setGridSize({ width, height })
+      // ブレークポイント(画面幅)が変わるのも実質「サイズが変わる」ときなので、
+      // resize のたびに --label-cqi/--label-cqb の実効値も読み直す
+      readLabelFactors()
+    })
+    observer.observe(gridBoardEl)
+    readLabelFactors()
+    onCleanup(() => observer.disconnect())
+  })
+
   // Issue #5: 画面スリープ防止。起動時に取得し、タブが再表示されたときに再取得する。
   // PR#11 must-2: 可視のまま error/released になった場合の再取得(スイッチ入力毎・
   // 30秒間隔タイマー)も initWakeLock 内でまとめて行う
@@ -493,6 +597,8 @@ export default function App() {
 
   let longPressTimer: number | undefined
   const onCaregiverButtonDown = () => {
+    // PR#16 Opus レビュー nit: 前回分のタイマーが残っていたら先に消してから開始する
+    if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
     longPressTimer = window.setTimeout(() => {
       setCaregiverMenuOpen(true)
       resetCaregiverIdleTimer()
@@ -514,24 +620,41 @@ export default function App() {
   return (
     <main class="app-shell">
       <section class="message-panel" aria-live="polite">
-        <div>
-          <p class="eyebrow">bedside communication</p>
-          <h1>{message()}</h1>
-          <Show when={emergencyActive() && emergencyDetails().length > 0}>
-            <ul class="emergency-details">
-              <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
-            </ul>
+        <h1>{message()}</h1>
+        <Show when={emergencyActive() && emergencyDetails().length > 0}>
+          <ul class="emergency-details">
+            <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
+          </ul>
+        </Show>
+        <Show when={emergencyActive() && emergencySubMessage()}>
+          <p class="emergency-sub">最新: {emergencySubMessage()}</p>
+        </Show>
+
+        {/* kako-jun 追加指示: 下部の帯(介助ボタン・警告音停止中)を廃止し、タイル領域を
+            画面下端まで使う。両方ともメッセージ欄右上、文字と重ならない位置へ移す */}
+        <div class="message-panel-controls">
+          {/* PR#16 Opus レビュー should-6: 警告音停止中表示の有無でボタン位置が
+              跳ねないよう、介助ボタンを先頭固定にする(常に同じ位置)。表示が
+              現れる/消えるのはボタンの下だけ */}
+          <button
+            type="button"
+            class="caregiver-button"
+            data-caregiver-control
+            onPointerDown={onCaregiverButtonDown}
+            onPointerUp={onCaregiverButtonUp}
+            onPointerLeave={onCaregiverButtonUp}
+            onPointerCancel={onCaregiverButtonUp}
+            onContextMenu={(event) => event.preventDefault()}
+            aria-label="介助者メニュー（2秒長押し）"
+          >
+            介助
+          </button>
+
+          <Show when={!alarmAudioRunning()}>
+            {/* S-new-4: data-caregiver-control を外し pointer-events:none にする。
+                本人のタップは下のタイルへ届き、通常のスイッチ入力として扱われる(resumeも走る) */}
+            <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
           </Show>
-          <Show when={emergencyActive() && emergencySubMessage()}>
-            <p class="emergency-sub">最新: {emergencySubMessage()}</p>
-          </Show>
-        </div>
-        <div class="status-stack" aria-label="現在の状態">
-          <span>{SCREEN_TITLES[screen()]}</span>
-          <span>音声 {VOICE_LABELS[settings().voiceMode]}</span>
-          <span>
-            {scanState().index + 1} / {currentMenu().length}
-          </span>
         </div>
       </section>
 
@@ -543,14 +666,31 @@ export default function App() {
 
       <section
         class="grid-board"
-        classList={{ 'show-numbers': showDevNumbers }}
+        classList={{ 'show-numbers': showDevNumbers, 'grid-fill': gridLayout().fill }}
+        style={{
+          '--cols': String(gridLayout().cols),
+          '--rows': String(gridLayout().rows),
+        }}
         aria-label={`${SCREEN_TITLES[screen()]}の選択肢`}
+        ref={(el) => {
+          gridBoardEl = el
+        }}
       >
         <For each={currentMenu()}>
           {(item, index) => (
             <div
               class={`tile tile-${item.tone ?? 'neutral'}`}
-              classList={{ scanning: scanState().index === index() }}
+              classList={{
+                scanning: scanState().index === index(),
+                'tile-nav': item.action.type === 'navigate',
+              }}
+              style={
+                gridLayout().fill &&
+                index() === currentMenu().length - 1 &&
+                gridLayout().lastSpan > 1
+                  ? { 'grid-column': `span ${gridLayout().lastSpan}` }
+                  : undefined
+              }
               aria-hidden="true"
             >
               <span class="tile-number">{index() + 1}</span>
@@ -558,30 +698,31 @@ export default function App() {
               <Show when={item.detail}>
                 <span class="tile-detail">{item.detail}</span>
               </Show>
+              {/* Issue #3 追加指示: 下位画面へ進むタイルは矢印文字ではなく、山形アイコン+
+                  中身の予告(menus.ts で自動生成)で示す。読み上げはラベルのみ(記号は読まない) */}
+              <Show when={item.action.type === 'navigate'}>
+                <svg
+                  class="tile-chevron"
+                  viewBox="0 0 20 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M5 3 L15 12 L5 21"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <Show when={item.preview}>
+                  <span class="tile-preview">{item.preview}</span>
+                </Show>
+              </Show>
             </div>
           )}
         </For>
       </section>
-
-      <Show when={!alarmAudioRunning()}>
-        {/* S-new-4: data-caregiver-control を外し pointer-events:none にする。
-            本人のタップは下のタイルへ届き、通常のスイッチ入力として扱われる(resumeも走る) */}
-        <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
-      </Show>
-
-      <button
-        type="button"
-        class="caregiver-button"
-        data-caregiver-control
-        onPointerDown={onCaregiverButtonDown}
-        onPointerUp={onCaregiverButtonUp}
-        onPointerLeave={onCaregiverButtonUp}
-        onPointerCancel={onCaregiverButtonUp}
-        onContextMenu={(event) => event.preventDefault()}
-        aria-label="介助者メニュー（2秒長押し）"
-      >
-        介助
-      </button>
 
       <Show when={caregiverMenuOpen()}>
         <div class="caregiver-overlay" data-caregiver-control>
@@ -678,6 +819,49 @@ export default function App() {
                 </For>
               </div>
             </div>
+
+            <div class="caregiver-field">
+              <span>文字サイズ</span>
+              <div class="caregiver-choice-options">
+                <For each={FONT_SIZES}>
+                  {(size) => (
+                    <button
+                      type="button"
+                      classList={{ active: settings().fontSize === size }}
+                      onClick={() => updateSettings({ fontSize: size })}
+                    >
+                      {FONT_SIZE_LABELS[size]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <div class="caregiver-field">
+              <span>表示</span>
+              <div class="caregiver-choice-options">
+                <For each={THEMES}>
+                  {(theme) => (
+                    <button
+                      type="button"
+                      classList={{ active: settings().theme === theme }}
+                      onClick={() => updateSettings({ theme })}
+                    >
+                      {THEME_LABELS[theme]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <label class="caregiver-field caregiver-checkbox">
+              <input
+                type="checkbox"
+                checked={settings().highContrast}
+                onChange={(event) => updateSettings({ highContrast: event.currentTarget.checked })}
+              />
+              <span>高コントラスト</span>
+            </label>
 
             <button
               type="button"

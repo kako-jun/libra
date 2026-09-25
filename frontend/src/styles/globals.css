@@ -1,6 +1,165 @@
+/* ===================================================================
+   Design tokens (Issue #3)
+   ------------------------------------------------------------------
+   すべての色は変数に集約する。ハードコード色を残さない。
+   data-theme="light"(明るい・昼、既定) / "dark"(夜間向け) を :root に付け、
+   値だけを切り替える。構造(セレクタ)はテーマ間で共通。介助者設定「表示」で
+   light/dark/auto を選べ、auto は prefers-color-scheme に追従して App.tsx が
+   実際の data-theme を light/dark のどちらかに解決する(このCSSはlight/darkの
+   2値しか見ない)。data-high-contrast="true" はどちらのテーマにも重ねて効く。 */
+:root,
+:root[data-theme='light'] {
+  --bg: #eafaf1;
+  --surface: #ffffff;
+  --surface-calm: #dcf5e6;
+  --surface-positive: #c9f0d9;
+  /* PR#16 Opus レビュー must-2: 黄枠単体(vs白 1.53)ではWCAG非テキスト3:1を満たさないため、
+     二重枠(濃色アウトライン+黄)にする。面の色自体も少し濃くする */
+  --surface-scanning: #fde68a;
+  --text: #0f241d;
+  --text-muted: #4b6358;
+  --message-bg: #0f5132;
+  --message-text: #f3fbf7;
+  --urgent-bg: #b3261e;
+  --urgent-text: #ffffff;
+  --urgent-text-muted: #ffd9d6;
+  --scan-ring: #facc15;
+  --scan-ring-width: 6px;
+  /* 通常セル(surface-scanning)向けの濃色アウトライン。urgentセル(赤地)では
+     コントラストが足りない(2.5:1程度)ため、urgent用に別トークンを持つ */
+  --scan-ring-outline: #0f241d;
+  --scan-ring-outline-urgent: #ffffff;
+  --caregiver-panel-bg: #ffffff;
+  --caregiver-status-ok-bg: #ecfdf5;
+  --caregiver-status-ok-border: #86efac;
+  --caregiver-status-warn-bg: #fff7ed;
+  --caregiver-status-warn-border: #f59e0b;
+  --caregiver-status-warn-text: #7f1d1d;
+  --caregiver-action-bg: #065f46;
+  --caregiver-action-text: #ffffff;
+  --caregiver-action-disabled-bg: #e5e7eb;
+  --caregiver-action-disabled-text: #6b7280;
+  --caregiver-close-bg: #052e2b;
+  /* メッセージ欄の色調(通常/肯定/緊急)ごとに3:1以上を保つため上書きする。
+     既定(通常の濃い緑背景)は明るいボタン */
+  --caregiver-button-bg: #f3fbf7;
+  --caregiver-button-text: #052e2b;
+  --font-scale: 1;
+  /* PR#16 4巡目 must-F: タイルラベルの文字サイズ専用の変数。--font-scale(vhベースの
+     上限を押し上げるためのもの)とは別に、cqi/cqbの頭打ち値に直接掛ける比率として
+     用意する(下の --tile-label-font 参照)。
+     PR#16 5巡目 must-G 再検証: 標準0.8だと、4巡目でcqi/cqb係数をブレークポイント間で
+     統一した(15/20に固定)ことと合わさって、スマホ幅で標準時のラベルが22〜28%
+     縮小する新規バグが出た。係数をブレークポイント別に戻す(下の --label-cqi/
+     --label-cqb 参照)のに合わせ、標準側にも少し余白を残しつつ縮小幅を抑えるため
+     0.8→0.85 に引き上げる(値は kako-jun 未確認の既定値、後で調整できるよう
+     CSS変数にしてある) */
+  --label-ratio: 0.85;
+  /* PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数を CSS 変数にする。
+     App.tsx が getComputedStyle(gridBoardEl) でこの実効値を読み、
+     computeGridLayout の labelWidthFactor/labelHeightFactor(0〜1の比率、
+     この値を100で割ったもの)にそのまま渡す。JS側にハードコードしないことで、
+     ブレークポイントごとに違う値(下の @media 参照)と常に一致させる */
+  --label-cqi: 15;
+  --label-cqb: 20;
+  /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る */
+  --grid-line: #cde3d4;
+  --grid-line-width: 1px;
+}
+
+:root[data-theme='dark'] {
+  --bg: #07140f;
+  --surface: #17362a;
+  --surface-calm: #123a29;
+  --surface-positive: #1a4a32;
+  --surface-scanning: #6b5510;
+  --text: #eafaf1;
+  --text-muted: #9fc4b0;
+  --message-bg: #0a2318;
+  --message-text: #eafaf1;
+  --urgent-bg: #d7263d;
+  --urgent-text: #ffffff;
+  --urgent-text-muted: #ffd9d6;
+  --scan-ring: #facc15;
+  --scan-ring-width: 6px;
+  /* 暗いテーマは自身の面(surface-scanning/urgent-bg)がどちらも暗いため、
+     明るいアウトラインひとつで両方に3:1以上を満たせる */
+  --scan-ring-outline: #eafaf1;
+  --scan-ring-outline-urgent: #eafaf1;
+  --caregiver-panel-bg: #14261f;
+  --caregiver-status-ok-bg: #123a29;
+  --caregiver-status-ok-border: #4ade80;
+  --caregiver-status-warn-bg: #3a2408;
+  --caregiver-status-warn-border: #f59e0b;
+  --caregiver-status-warn-text: #ffd9a8;
+  --caregiver-action-bg: #1a4a32;
+  --caregiver-action-text: #eafaf1;
+  --caregiver-action-disabled-bg: #2a2a2a;
+  --caregiver-action-disabled-text: #8a8a8a;
+  --caregiver-close-bg: #06120c;
+  --caregiver-button-bg: #f3fbf7;
+  --caregiver-button-text: #052e2b;
+  /* 暗い背景(#07140f)・タイル面(#17362a)のどちらよりも明るい緑にして区切り線を視認できるようにする */
+  --grid-line: #2d5a41;
+}
+
+/* メッセージ欄の色調ごとの介助ボタン配色上書き(PR#16 should-1)。
+   計算済み(scratchpad/contrast.mjs、WCAG relative luminance):
+   - 通常(濃緑背景)・緊急(赤背景): 明るいボタン(#f3fbf7地/#052e2b文字)で
+     どちらのテーマでも3:1以上(最小4.71:1)
+   - 肯定(淡緑背景、明るいテーマのみ): 明るいボタンは1.18:1で不足するため、
+     この組み合わせだけ濃いボタンに反転する(11.84:1)
+   - 肯定(暗緑背景、暗いテーマ): 明るいボタンのままで9.64:1を満たす */
+:root[data-theme='light'][data-message-tone='positive'] {
+  --caregiver-button-bg: #052e2b;
+  --caregiver-button-text: #f3fbf7;
+}
+
+/* 高コントラスト: 明暗どちらの案にも重ねて効く（介助者設定、既定 OFF）。
+   区切り線・スキャン枠を太くし、区切り線/text-muted の彩度も強める */
+:root[data-high-contrast='true'] {
+  --grid-line-width: 3px;
+  --scan-ring-width: 9px;
+}
+
+:root[data-theme='light'][data-high-contrast='true'] {
+  --text: #000000;
+  --message-bg: #003820;
+  --message-text: #ffffff;
+  --surface: #ffffff;
+  --surface-calm: #d7f4e2;
+  --surface-positive: #b8ecd0;
+  --text-muted: #33463e;
+  --grid-line: #6b9b83;
+}
+
+:root[data-theme='dark'][data-high-contrast='true'] {
+  --bg: #000000;
+  --text: #ffffff;
+  --surface: #000000;
+  --surface-calm: #001a10;
+  --surface-positive: #00301c;
+  --message-bg: #000000;
+  --message-text: #ffffff;
+  --text-muted: #c9ecd9;
+  --grid-line: #4a8a68;
+}
+
+/* 文字サイズ（介助者設定）。clamp() の結果に係数を掛けるだけで、
+   ビューポート追従は保ったまま全体を拡大する。 */
+:root[data-font-size='large'] {
+  --font-scale: 1.25;
+  --label-ratio: 0.93;
+}
+
+:root[data-font-size='xlarge'] {
+  --font-scale: 1.55;
+  --label-ratio: 1;
+}
+
 :root {
-  color: #052e2b;
-  background: #f3fbf7;
+  color: var(--text);
+  background: var(--bg);
   /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
      Linux 等で中国語フォントへ落ちうるため、日本語書体より前に置かない。 */
   font-family:
@@ -28,11 +187,24 @@ body {
 }
 
 body {
-  background: #f3fbf7;
+  background: var(--bg);
 }
 
 button {
   font: inherit;
+}
+
+/* Issue #3: 見出し・ラベル類の文節改行。対応ブラウザでは意味の区切りで折り返し、
+   語の途中(「ゆっく/り」等)での改行を避ける。未対応ブラウザでは overflow-wrap が
+   安全弁になる（タイル自体の余裕はコンテナクエリで確保する）。 */
+.message-panel h1,
+.emergency-details,
+.emergency-sub,
+.tile-label,
+.audio-status-hint {
+  word-break: auto-phrase;
+  line-break: strict;
+  overflow-wrap: anywhere;
 }
 
 .app-shell {
@@ -45,7 +217,9 @@ button {
      .letter-strip/.grid-board に明示的に grid-row を固定し、letter-strip の有無に関わらず
      grid-board が常に 1fr トラックを使うようにする */
   grid-template-rows: auto auto 1fr;
-  gap: 14px;
+  /* Issue #3 再々レビュー: メッセージ欄・文字盤入力欄・タイル格子を隙間なく連続した
+     一枚の盤に見せる。区切りは各要素の border-bottom(--grid-line)だけに任せる */
+  gap: 0;
   /* PR#11 再レビュー must-C: 従来は min-height:100vh だったため、内容がビューポートより
      高くなると .app-shell 自身が育ってしまい、overflow:hidden が実際には何も切り取らず
      document(html/body)側がスクロールしていた。その結果 scrollIntoView が document を
@@ -56,13 +230,11 @@ button {
      フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
   height: 100vh;
   height: 100dvh;
-  /* PR#11 4巡目 nit: 右下に固定表示される「介助」ボタン(bottom:10px, 高さ約56px)と、
-     その上の「警告音停止中」表示(bottom:74px, 高さ約40px)が、タイル領域(grid-board)の
-     右下と重なっていた。grid-board の内側の padding では、視覚上の箱の大きさそのものは
-     変わらず(overflow-y:auto によるスクロール量だけが変わる)重なりを防げないため、
-     app-shell 側の padding-bottom でタイル領域自体をこの高さ分だけ手前で切り上げる */
-  padding: 14px 14px 130px;
+  /* kako-jun 追加指示: 介助ボタン・警告音停止中表示をメッセージ欄内(右上)へ移し、
+     下部に確保していた約130pxの帯を廃止。タイル領域を画面下端まで使う */
+  padding: 0;
   overflow: hidden;
+  background: var(--bg);
   /* Issue #5: 本人画面はダブルタップ拡大・ピンチ拡大・スクロール・テキスト選択・
      長押しコンテキストメニューを起こさない。介助者パネル内の操作(input/button)は
      .caregiver-panel 側で明示的に上書きして妨げない */
@@ -73,58 +245,150 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ===================================================================
+   メッセージ欄 — 主役。枠線は使わず面の色だけで区切る。
+   =================================================================== */
+/* Issue #3 追加指示: 状態表示(アプリ名・音声モード・スキャン位置)を撤去し、
+   メッセージ欄はメッセージそのもの(と緊急詳細)だけを大きく表示する専任にする。
+   角丸・影はやめ、下の格子と地続きの一枚の盤に見えるよう区切り線だけで区切る */
 .message-panel {
   grid-row: 1;
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  /* controls は message とだけ同じ行に置く(details/sub 行にはまたがせない)。
+     auto サイズの行を複数またぐ配置は、またいだ分だけ各行を余分に膨らませてしまい
+     (実機検証: 文字盤スクロール画面でタイルがビューポート外に出た)、その分だけ
+     grid-board の使える高さが減ってしまうため避ける */
+  grid-template-areas:
+    'message controls'
+    'details details'
+    'sub sub';
+  /* PR#16 Opus レビュー 再検証で発覚: align-content:center のまま max-height で
+     頭打ちにすると、中身がその上限より大きい場合に上下へ均等にはみ出し、上側が
+     ビューポート外(負のtop)に出て読めなくなる(実測: 320x568 特大で h1.top=-20px)。
+     start にして、はみ出しは必ず下側だけ(overflow-y:autoでスクロール可能)にする */
+  align-content: start;
+  /* PR#16 再レビュー should-b: h1 の文字サイズ設定の上限をメッセージ欄幅基準にするため、
+     cqi を使えるようにする */
+  container-type: inline-size;
+  column-gap: 12px;
+  row-gap: 6px;
   min-height: 156px;
+  /* kako-jun 回答(question): 特大文字時などにメッセージ欄が画面の6割超を占めて
+     しまわないよう、画面高さの40%を上限にする。格子(タイル)側に最低60%を残す。
+     上限を超える分は内部スクロールで読める(はみ出し非表示にはしない) */
+  max-height: 40vh;
+  max-height: 40dvh;
+  overflow-y: auto;
   padding: 22px;
-  color: #f7fee7;
-  background: #064e3b;
-  border: 4px solid #052e2b;
-  border-radius: 8px;
+  color: var(--message-text);
+  background: var(--message-bg);
+  border-bottom: var(--grid-line-width) solid var(--grid-line);
+}
+
+.message-panel h1 {
+  grid-area: message;
+}
+
+.message-panel .emergency-details {
+  grid-area: details;
+}
+
+.message-panel .emergency-sub {
+  grid-area: sub;
+}
+
+/* kako-jun 追加指示: 介助ボタン・警告音停止中表示はメッセージ欄右上に置く(文字と重ならない
+   よう grid で専用列を確保する。position:fixed はやめ、通常のレイアウトに組み込む) */
+.message-panel-controls {
+  grid-area: controls;
+  /* PR#16 5巡目 should-A(試行→撤回): 4巡目の nit-b では .audio-status-hint(警告音
+     停止中表示)の出現/消失で列幅が変わる問題を、列幅を表示ありの分だけ常に確保する
+     (min-width)で直したが、5巡目でこれを「列幅は介助ボタン幅のみにし、hintは
+     position:absoluteでボタン下に重ねる」方式に変えようとした。
+     実装・検証の結果、これは新たな重なりバグを2件生んだ: (1) 幅を明示しないと
+     containing block(ボタン幅=約46px)基準のshrink-to-fitでhintが押し潰され、
+     折り返し行数が激増して高さがパネルからはみ出しタイルと重なる。(2) 幅を
+     明示(200px/128px)すると、今度はその幅がh1の列(message)側にまで水平に
+     はみ出し、h1のテキストと重なることがある(実測: 390x844ホームでh1がhintと
+     重なった)。h1は独立したgrid列(message)を持つため、controls列自体の幅を
+     hintぶん確保しておく(min-width)のがh1との重なりを構造的に防ぐ唯一の方法
+     だった。position:absolute自体(hintをflexの行送りから外す)は、パネルの
+     行の高さがhintの出現で伸びるのを防ぐ効果があるため残す。min-widthは
+     4巡目の値のまま復活させる(nit-a/nit-bの効果は維持したまま、should-Aの
+     ねらいである「hintがフローの高さ計算に影響しない」は達成できている) */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-self: end;
+  align-self: start;
+  min-width: 200px;
+  /* PR#16 5巡目 nit: 844x390のように横向きで縦の余裕が無い画面では、h1自体が
+     短く(このブレークポイントの下限24px×2行)、パネルの行の高さが介助ボタン
+     (44px)+隙間(6px)+hint(128px幅時34px)=84pxに届かず、position:absoluteの
+     hintの矩形(getBoundingClientRect)がgrid-boardの先頭タイルの矩形と
+     幾何学的に重なる(実際には .message-panel の overflow-y:auto にクリップ
+     されて描画はされない。document.elementFromPointで確認済みで、
+     e2e/offline.e2e.mjsの重なり判定もこれを踏まえelementFromPointで実際の
+     描画を再確認する方式に直したが、scratchpad/rv16r4.mjs 側は矩形だけを見る
+     ため引き続き検出する)。
+     素直に min-height:84px を常時足すと直るが、それは緊急詳細を5件積んだ状態
+     (emerg5+sub)のような、message/controls行(この行)と details/sub行が
+     同時に40dvhの予算を奪い合う画面で、副表示(.emergency-sub)側が溢れる
+     新規の回帰を生んだ(実測で確認)。安全に関わる緊急詳細の可視性を、見えても
+     いない警告音表示の見た目上の几帳面さより優先し、:has()でdetails/subが
+     存在しない(競合しない)ときだけ min-height を効かせる。details/subが
+     存在するときは、この行の高さは以前どおりh1基準のまま(hintの下端が
+     パネルからはみ出す可能性はあるが、上記のとおり実際には視認されない) */
+  min-height: 44px;
+}
+
+.message-panel:not(:has(.emergency-details, .emergency-sub)) .message-panel-controls {
+  min-height: 84px;
 }
 
 :root[data-message-tone='urgent'] .message-panel {
-  background: #7f1d1d;
-  border-color: #dc2626;
+  color: var(--urgent-text);
+  background: var(--urgent-bg);
 }
 
 :root[data-message-tone='positive'] .message-panel {
-  background: #065f46;
-  border-color: #10b981;
+  background: var(--surface-positive);
+  color: var(--text);
 }
 
-.eyebrow {
-  margin: 0 0 8px;
-  color: #bbf7d0;
-  font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
+/* PR#16 3巡目 must-1(should-b を撤回): h1 に --font-scale を効かせる should-b を
+   2巡目で入れたが、3巡目の再レビューで「見出しの拡大→メッセージ欄が伸びる→格子が
+   縮む→列数反転→タイルの文字が逆に縮む」という連鎖が発覚した(標準時でも見出しが
+   23〜29%縮小する新規バグ、文字サイズを上げるとタイルの文字が逆に小さくなる新規
+   バグの根本原因)。メッセージ欄の高さ(≒格子の面積)が文字サイズ設定に左右されては
+   ならない、という判断で should-b 自体を撤回する。
+   h1(と緊急詳細/副表示)は --font-scale の対象外に戻し、以前の実測値
+   (1024x768で53.8px・768x1024で71.7px・390x844で38.4px程度)に戻す。
+   文字サイズ設定は選択肢(タイル)の文字だけに効く(docs/user-guide.md に明記)。
+   40dvh の上限だけは cqi で抑える(幅の狭い画面での安全網。通常時は 7vh 側が先に
+   効くため、実質的な挙動は以前の「7vh のみ」の式と変わらない) */
 h1 {
   margin: 0;
   max-width: 16ch;
-  font-size: clamp(2.35rem, 7vh, 5.4rem);
-  line-height: 1.02;
+  font-size: clamp(2.35rem, min(7vh, 14cqi), 5.4rem);
+  line-height: 1.05;
   letter-spacing: 0;
 }
 
-/* 見出し(h1)の6割程度の大きさ。緊急の赤背景(#7f1d1d)上で読める配色にする
-   (DESIGN.md §2 の Urgent tile 色を文字色として再利用)。
+/* 見出し(h1)の6割程度の大きさ。緊急の赤背景上でも読める配色にする。
    横並び+折り返し(S-new-3)にし、詳細が積み上がっても縦に伸びすぎないようにする。 */
 .emergency-details {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.2em 0.8em;
+  /* 「・」区切り自体が項目間の間隔を示すため、flex の gap は入れない(二重の
+     間隔で「苦しい　・痛い」のように空いて見えるのを避け、「苦しい・痛い」に詰める) */
+  gap: 0.2em 0;
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
-  color: #fee2e2;
+  color: var(--urgent-text-muted);
   font-size: clamp(1.4rem, 4.2vh, 3.2rem);
   font-weight: 800;
   line-height: 1.15;
@@ -137,63 +401,57 @@ h1 {
 /* 「・」で区切って一続きの文として読みやすくする(先頭項目には付けない) */
 .emergency-details li:not(:first-child)::before {
   content: '・';
-  margin-right: 0.2em;
 }
 
 .emergency-sub {
   margin: 8px 0 0;
-  color: #fee2e2;
+  color: var(--urgent-text-muted);
   font-size: clamp(1.4rem, 4.2vh, 3.2rem);
   font-weight: 800;
-}
-
-.status-stack {
-  display: grid;
-  align-content: center;
-  min-width: 152px;
-  gap: 8px;
-}
-
-.status-stack span {
-  display: block;
-  padding: 8px 10px;
-  color: #052e2b;
-  background: #ecfdf5;
-  border: 2px solid #86efac;
-  border-radius: 6px;
-  font-weight: 800;
-  text-align: center;
 }
 
 .letter-strip {
   grid-row: 2;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
   align-items: center;
+  border-bottom: var(--grid-line-width) solid var(--grid-line);
 }
 
 .letter-strip output {
   min-height: 54px;
   padding: 10px 14px;
   overflow: hidden;
-  color: #052e2b;
-  background: #ffffff;
-  border: 3px solid #065f46;
-  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* ===================================================================
+   タイル — 隙間なしの格子。セルは右+下の細い区切り線だけで区切り、
+   角丸・影・gap は使わない(格子が一枚の盤に見えるようにする)。
+   =================================================================== */
 .grid-board {
   /* PR#11 3巡目 question: letter-strip が無い画面(ほとんどの画面)でも常に3番目の
      1fr トラックを使う。.letter-strip が DOM に無いときの auto-placement 任せにしない */
   grid-row: 3;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  grid-auto-rows: minmax(126px, 1fr);
-  gap: 12px;
+  /* PR#16 Opus レビュー 再検証(破棄): 当初はここに --font-scale を掛け、文字サイズ
+     設定に応じて最小タイル幅自体を大きくしていた。
+     PR#16 3巡目 must-2 再検証: 列の幅(=列数)が文字サイズ設定で変わると、
+     fill モードで起きたのと同じ「列数反転→タイルの文字が逆に縮む」連鎖がここでも
+     起きうる(実測: 1280x720 文字盤で標準→大でラベルが27.5px→25.5pxに縮んだ)。
+     列数(auto-fitの折返し基準)は文字サイズ設定に関係なく固定し、文字自体は
+     --tile-label-font 側(cqi/cqbで頭打ち)で伸縮させる、他の画面と同じ方針に揃える */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* PR#16 3巡目 should-a: sticky 緊急タイルの高さぶん、他のタイルの scroll-margin-top
+     に使う(下の .tile 側の宣言参照)。grid-auto-rows の minmax 下限と同じ値にしておけば、
+     緊急タイル(先頭行)もほぼ同じ高さのため近似として十分機能する */
+  --scroll-row-min: calc(var(--font-scale) * 126px);
+  grid-auto-rows: minmax(var(--scroll-row-min), 1fr);
+  gap: 0;
   min-height: 0;
   /* PR#11 must-4: orientation:any(縦横両対応)のため、横向き小画面(例 844x390)では
      文字盤等の項目数が多い画面で下段のタイルがビューポート外に出ることがある。
@@ -211,18 +469,108 @@ h1 {
   touch-action: none;
 }
 
+/* Issue #3 再レビュー: 項目数が少ない画面(目安8項目以内)では、孤立タイル・下部の
+   空白を出さないよう App.tsx(computeGridLayout)が算出した列数(--cols)・行数(--rows)で
+   grid 領域全体を等分してタイルで埋める。auto-fit/minmax によるスクロールは使わない。 */
+.grid-board.grid-fill {
+  grid-template-columns: repeat(var(--cols, 1), 1fr);
+  grid-template-rows: repeat(var(--rows, 1), 1fr);
+  grid-auto-rows: unset;
+  overflow-y: hidden;
+}
+
+.grid-board.grid-fill .tile {
+  min-height: 0;
+  height: 100%;
+}
+
+/* PR#16 再レビュー must-A/B: スクロールモード(9項目以上、現状は文字盤のみ)では
+   緊急タイルが常に先頭(1番目)にある(menus.ts の subScreen/homeScreen)。
+   巡回中に下の方の項目がスキャン対象になっても、緊急タイルだけは
+   sticky で画面内に留め続け、本人がいつでも押せる状態を保つ。
+   文字盤の2段階化(緊急を別の固定領域に出す等)は Issue #4 で扱う。現行の文字盤の
+   応急対応としてはこれで足りる */
+.grid-board:not(.grid-fill) .tile:first-child {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* PR#16 3巡目 should-a: 上の sticky 緊急タイル(z-index:2)が、巡回でスクロールして
+   来たスキャン対象タイルの上端に重なって隠してしまっていた(.tile.scanning の
+   既定 z-index:1 は sticky より低いまま)。スクロールモードでは常にスキャン対象を
+   sticky より前面にする(緊急タイル自身が対象の時は :first-child 側がそのまま
+   勝つので特に問題ない)。この規則は上の sticky 規則と詳細度が同じ(クラス4つ)なので
+   ソース順で後にある(=このルール)が勝つ */
+.grid-board:not(.grid-fill) .tile.scanning {
+  z-index: 3;
+}
+
+/* PR#16 3巡目 should-a: scrollIntoView({block:'nearest'}) は要素の scroll-margin を
+   考慮するため、sticky 緊急タイルの高さぶんだけ上に余白を持たせることで、スキャン対象
+   タイルの上端が sticky タイルの下に隠れたまま「ぎりぎり見えている」扱いになるのを防ぐ。
+   PR#16 5巡目 nit: 下端側にも小さな余白(scroll-margin-bottom)を持たせ、タイルが
+   ビューポートの下端ぎりぎりに張り付いた「見えてはいるが窮屈」な状態を避ける。
+   844x390・特大の文字盤のように、sticky緊急タイル(130px)+スキャン対象タイル
+   (130px)の合計(260px)が格子領域の高さ(251.6px)を上回る組み合わせでは、
+   上端(sticky優先)と下端を両方完全に収める余地が物理的に無い。この場合は
+   scrollIntoViewの既定の挙動どおり上端側が優先され、下端が約7%(約9px)
+   見切れる。これは既知の物理的制約として受け入れる(文字盤の2段階化で
+   緊急を別領域に出す Issue #4 が本来の解決策) */
+.grid-board:not(.grid-fill) .tile {
+  scroll-margin-top: var(--scroll-row-min, 0px);
+  scroll-margin-bottom: 8px;
+}
+
 .tile {
+  /* kako-jun 追加指示: 予告(.tile-preview)の文字サイズをラベルの45〜55%程度にするため、
+     ラベルの clamp() 式を変数化して共有する。.tile-label と .tile-preview の両方が
+     追従する。
+     PR#16 Opus レビュー must-3: 横幅(cqi)だけでなく高さ(cqb)でも頭打ちにする(横長タイルで
+     縦にはみ出すのを防ぐ)。container-type を size にして cqb を有効にする。
+     PR#16 3巡目 must-2 再検証・4巡目 must-F(方針転換): 以前は「min() の中の vh 項」と
+     「clamp の上限」にだけ --font-scale を掛けていたが、セルに十分な余裕がある画面
+     (例: 項目数が少なく1セルが大きい画面)では標準設定の時点で既にcqi/cqbの頭打ちに
+     達してしまい、60通り中27通りで文字サイズ設定を「標準→大→特大」と変えても
+     見た目上まったく変化しないバグがあった(vh項の上限を押し上げても、cqi/cqbという
+     より小さい方の項がそもそも変わらないため)。
+     文字サイズ設定は「セルの頭打ち値(cqi/cqbのmin)に対する比率」として --label-ratio
+     (標準0.85/大0.93/特大1.0)を直接掛ける形に変える。これによりセルが大きく
+     余裕がある画面でも、標準設定では頭打ち値の85%までしか使わず、大/特大に
+     上げると同じセルの中でも確実にラベルが大きくなる。vh 項は(セル自体が極端に
+     大きい/小さい画面での)上限側の安全網としてのみ残す。
+     PR#16 5巡目 must-G(4巡目 should-a の巻き戻し): 4巡目でcqi/cqb係数を
+     ブレークポイント間で15/20に統一したところ、スマホ幅で標準時のラベルが
+     22〜28%縮小する新規バグが出た(--label-ratioを掛ける対象が変わらないまま
+     係数だけ揃えたことで、狭い画面の実際の頭打ち値が下がった)。
+     係数を --label-cqi/--label-cqb という CSS 変数に戻し、ブレークポイントごとに
+     元の値(基本15/20、720px以下20/22、480px以下22/24、下の @media 参照)に
+     戻す。JS側(gridLayout.ts)にハードコードしていた頃の食い違いを繰り返さない
+     よう、今度は App.tsx がこの実効値を getComputedStyle で読んで
+     computeGridLayout に渡す(ハードコードされた定数を持たない) */
+  --tile-label-font: clamp(
+    1.05rem,
+    calc(var(--label-ratio) * min(calc(var(--label-cqi) * 1cqi), calc(var(--label-cqb) * 1cqb))),
+    min(calc(var(--font-scale) * 4.8vh), 3.4rem)
+  );
+  container-type: size;
   position: relative;
   display: grid;
   place-items: center;
   min-width: 0;
   min-height: 126px;
   padding: 18px 12px 12px;
-  color: #052e2b;
-  background: #ffffff;
-  border: 4px solid #065f46;
-  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  /* Issue #3 再々レビュー: 枠線ではなく、右+下だけの細い区切り線(box-shadow inset)で
+     区切る。二重線にならないよう各セルは自分の右辺・下辺だけを描く。高コントラスト時は
+     --grid-line-width が太くなる */
+  box-shadow: inset calc(-1 * var(--grid-line-width)) calc(-1 * var(--grid-line-width)) 0 0
+    var(--grid-line);
   cursor: pointer;
+  /* PR#16 Opus レビュー must-3: 上記の対策をすり抜けても隣セルへ文字がはみ出さないよう、
+     最後の保険として overflow:hidden にする */
+  overflow: hidden;
   /* PR#11 再レビュー must-D: 前回(nit-4)はここでの touch-action:none を「.app-shell の
      指定で足りる重複」として削除したが、.grid-board が overflow-y:auto でスクロール
      コンテナになった今は、このタイル自身にも明示しないとスワイプでパンが有効になる。
@@ -232,29 +580,70 @@ h1 {
   user-select: none;
 }
 
-.tile:active {
-  transform: translateY(1px);
-}
-
 .tile-urgent {
-  background: #fee2e2;
-  border-color: #991b1b;
+  color: var(--urgent-text);
+  background: var(--urgent-bg);
+  font-weight: 900;
 }
 
 .tile-calm {
-  background: #dcfce7;
-  border-color: #15803d;
+  background: var(--surface-calm);
 }
 
 .tile-positive {
-  background: #d1fae5;
-  border-color: #047857;
+  background: var(--surface-positive);
 }
 
+/* kako-jun 回答(question): 緊急タイルは色以外でも区別できるよう、両テーマとも
+   内側に白系の輪郭を付ける(色覚特性への配慮)。::before を使い、スキャン中の
+   ::after(黄色リング)と重ならず共存する */
+/* PR#16 再レビュー nit-d: スキャン中にこのタイル自身が対象になると、スキャンリング
+   (.tile.scanning::after)側の白系アウトラインと重なって区別しにくくなっていた。
+   常設の輪郭を細く・より透明にして、スキャンリングの太い白枠とは明確に見分けられる
+   ようにする(常設=補助的な色覚配慮、スキャン中=最優先の強調、という役割の違いが
+   見た目にも出るようにする) */
+.tile-urgent::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid var(--urgent-text);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Issue #3 再々レビュー: スキャン対象は遠目でも一目で分かる強調にする。
+   隙間なしの格子では拡大(scale)すると隣のセルと重なるため使わない。
+   代わりに、そのセルだけ面の色を変え、セル内側に収まる(inset、隣セルへはみ出さない)
+   太い黄色枠を ::after で重ねる。緊急タイルは常に濃い赤のベタ塗りのままなので、
+   リングだけを重ねる。
+   PR#16 Opus レビュー must-2: 黄色単体は白背景で非テキストコントラスト3:1を
+   満たさない(1.53:1)。黄色リングの内外に濃色/白のアウトライン線を重ねた二重枠にし、
+   アウトライン自体が3:1以上を満たすようにする(緊急セルは赤背景用に白系アウトラインへ
+   切り替える。scratchpad/contrast.mjs で計算済み)。 */
 .tile.scanning {
-  outline: 8px solid #facc15;
-  outline-offset: -12px;
-  background: #fefce8;
+  background: var(--surface-scanning);
+  z-index: 1;
+}
+
+.tile.scanning.tile-urgent {
+  background: var(--urgent-bg);
+}
+
+.tile.scanning::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: var(--scan-ring-width) solid var(--scan-ring);
+  box-shadow:
+    0 0 0 2px var(--scan-ring-outline),
+    inset 0 0 0 2px var(--scan-ring-outline);
+  pointer-events: none;
+}
+
+.tile.scanning.tile-urgent::after {
+  box-shadow:
+    0 0 0 2px var(--scan-ring-outline-urgent),
+    inset 0 0 0 2px var(--scan-ring-outline-urgent);
 }
 
 .tile-number {
@@ -265,8 +654,8 @@ h1 {
   place-items: center;
   width: 30px;
   height: 30px;
-  color: #ffffff;
-  background: #065f46;
+  color: var(--message-text);
+  background: var(--message-bg);
   border-radius: 50%;
   font-size: 0.9rem;
   font-weight: 900;
@@ -280,33 +669,102 @@ h1 {
 .tile-label {
   white-space: pre-line;
   text-align: center;
-  font-size: clamp(1.55rem, 4.8vh, 3.4rem);
+  /* PR#16 再レビュー must-A/B: --font-scale は既に --tile-label-font 自身の中で
+     (min() の vh 項と clamp の上限に)掛けてあるため、ここで二重に掛けない */
+  font-size: var(--tile-label-font);
   font-weight: 900;
-  line-height: 1.04;
+  line-height: 1.15;
   letter-spacing: 0;
 }
 
+/* PR#16 Opus レビュー should-2 再修正(2回目・破棄): 最初は .tile-label 自身に padding を、
+   次に position:absolute+inset を試したが、どちらも実測(bounding rect)で問題が
+   残った。padding 版は中央寄せの結果、矩形自体がアイコン/予告まで届いてしまい
+   「重なっている」ままだった。inset 版は矩形をアイコン/予告の領域より内側に確実に
+   収められたが、今度は矩形が確保した領域いっぱいに引き伸ばされるため、2文字の
+   ラベルでも矩形の高さだけは大きいまま(「4行に見える」という別の誤検知)になった。
+   3回目に .tile-nav(コンテナ)側へ padding を移して両方解決したかに見えたが、
+   PR#16 再レビュー should-c で発覚: .tile は container-type:size のコンテナであり、
+   --tile-label-font の cqi/cqb は「.tile 自身の content-box」を基準に計算される。
+   コンテナ(.tile-nav = .tile)に padding を足すとその content-box 自体が縮むため、
+   navigate タイルだけ cqi/cqb の基準が小さくなり、同じ画面内の非 navigate タイルより
+   ラベルが小さくなってしまっていた。
+   4回目(現在の実装): 余白は .tile-nav(コンテナ)ではなく .tile-nav .tile-label
+   (ラベル自身)の max-width/margin に持たせる。こうすればコンテナの content-box は
+   変わらず cqi/cqb の基準は全タイルで揃ったまま、ラベルの矩形だけがアイコン(右)・
+   予告(下)の分だけ狭まり・中央からずれて避ける(margin はコンテナの
+   place-items:center の中央位置を非対称にずらす効果を持つ) */
+.tile-nav .tile-label {
+  max-width: calc(100% - var(--font-scale) * clamp(20px, 14cqi, 42px));
+  margin-right: calc(var(--font-scale) * clamp(20px, 14cqi, 42px));
+  margin-bottom: calc(var(--font-scale) * clamp(22px, 20cqb, 48px));
+}
+
 .tile-detail {
-  color: #166534;
-  font-size: clamp(0.92rem, 1.8vh, 1.1rem);
+  color: var(--text-muted);
+  font-size: calc(var(--font-scale) * clamp(0.92rem, 1.8vh, 1.1rem));
   font-weight: 800;
   text-align: center;
 }
 
+.tile-urgent .tile-detail {
+  color: var(--urgent-text-muted);
+}
+
+/* Issue #3 追加指示: 下位画面へ進むタイル(navigate)の山形アイコン+中身の予告。
+   聴覚スキャン・読み上げはラベルのみを読むため、この2つはApp.tsx側でも
+   announce に渡らない(表示専用)。 */
+.tile-chevron {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: clamp(14px, 9cqi, 28px);
+  height: auto;
+  color: currentColor;
+  opacity: 0.75;
+  transform: translateY(-50%);
+}
+
+.tile-preview {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  left: 8px;
+  overflow: hidden;
+  color: var(--text-muted);
+  /* kako-jun 追加指示: ラベルの45〜55%程度(ここでは50%)、最小でも0.85rem相当にする。
+     --tile-label-font(.tile で定義)を参照するので、画面幅が変わってもラベルとの
+     比率を保ったまま追従する。
+     PR#16 4巡目 must-F: --tile-label-font 自身が --label-ratio を内包しているため
+     比率(0.5倍)側には掛けない。最小値の0.85rem側は --label-ratio を掛けて、予告も
+     ラベルと同じ比率設定に追従させる(「予告行も同じ比率に追従する」) */
+  font-size: max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font));
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===================================================================
+   介助者 UI — 目立たないが介助者には分かる見た目。
+   =================================================================== */
 .caregiver-button {
-  position: fixed;
-  right: 10px;
-  bottom: 10px;
+  /* kako-jun 追加指示: 画面隅への固定配置(position:fixed)をやめ、メッセージ欄右上の
+     .message-panel-controls 内に通常のレイアウトとして置く。
+     PR#16 should-1: 色をハードコード(rgb(0 0 0 / 22%))せず、メッセージ欄の色調
+     (通常/肯定/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text、
+     :root[data-message-tone]で上書き)にする */
   z-index: 20;
-  min-width: 56px;
-  min-height: 56px;
-  padding: 8px 12px;
-  color: #f7fee7;
-  background: #052e2b;
-  border: 2px solid #065f46;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
+  color: var(--caregiver-button-text);
+  background: var(--caregiver-button-bg);
+  border: none;
   border-radius: 8px;
+  font-size: 0.8rem;
   font-weight: 800;
-  opacity: 0.85;
   /* S3: 長押し中にスクロール/選択/callout メニューが割り込まないようにする */
   touch-action: none;
   user-select: none;
@@ -321,7 +779,7 @@ h1 {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgb(5 46 43 / 70%);
+  background: rgb(0 0 0 / 55%);
 }
 
 .caregiver-panel {
@@ -331,10 +789,10 @@ h1 {
   max-height: 90vh;
   padding: 20px;
   overflow-y: auto;
-  color: #052e2b;
-  background: #ffffff;
-  border: 4px solid #065f46;
-  border-radius: 10px;
+  color: var(--text);
+  background: var(--caregiver-panel-bg);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
   /* Issue #5: 親(.app-shell)の touch-action:none / user-select:none を打ち消し、
      スライダー操作・チェックボックス・文言の選択など通常の介助者操作を妨げない */
   touch-action: auto;
@@ -365,78 +823,99 @@ h1 {
   gap: 10px;
 }
 
-.caregiver-voice-options {
+.caregiver-voice-options,
+.caregiver-choice-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.caregiver-voice-options button {
+.caregiver-voice-options button,
+.caregiver-choice-options button {
   padding: 8px 12px;
-  color: #052e2b;
-  background: #ecfdf5;
-  border: 2px solid #065f46;
-  border-radius: 6px;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 2px solid var(--caregiver-action-bg);
+  border-radius: 8px;
   font-weight: 800;
 }
 
-.caregiver-voice-options button.active {
-  color: #ffffff;
-  background: #065f46;
+.caregiver-voice-options button.active,
+.caregiver-choice-options button.active {
+  color: var(--caregiver-action-text);
+  background: var(--caregiver-action-bg);
+  border-color: var(--caregiver-action-bg);
 }
 
 .caregiver-status {
   margin: 0;
   padding: 8px 10px;
-  color: #052e2b;
-  background: #ecfdf5;
-  border: 2px solid #86efac;
-  border-radius: 6px;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 2px solid var(--caregiver-status-ok-border);
+  border-radius: 8px;
   font-weight: 800;
 }
 
 .caregiver-status.warn {
-  color: #7f1d1d;
-  background: #fff7ed;
-  border-color: #f59e0b;
+  color: var(--caregiver-status-warn-text);
+  background: var(--caregiver-status-warn-bg);
+  border-color: var(--caregiver-status-warn-border);
 }
 
 .caregiver-action {
   min-height: 48px;
   padding: 10px 14px;
-  color: #ffffff;
-  background: #065f46;
+  color: var(--caregiver-action-text);
+  background: var(--caregiver-action-bg);
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-weight: 800;
 }
 
 .caregiver-action:disabled {
-  color: #6b7280;
-  background: #e5e7eb;
+  color: var(--caregiver-action-disabled-text);
+  background: var(--caregiver-action-disabled-bg);
 }
 
 .caregiver-close {
-  background: #052e2b;
+  background: var(--caregiver-close-bg);
 }
 
 /* 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる小さな表示。
-   本人向けではないため介助者ボタンと同じ隅に置くが、data-caregiver-controlは付けない
-   (S-new-4)。pointer-events:noneでタップを素通しし、下のタイルへの本人のスイッチ入力
-   (resumeも走る)を妨げない。 */
+   本人向けではないため介助者ボタンと同じくメッセージ欄右上に置くが、
+   data-caregiver-controlは付けない(S-new-4)。pointer-events:noneでタップを素通しし、
+   下のタイルへの本人のスイッチ入力(resumeも走る)を妨げない。
+   PR#16 5巡目 should-A: position:absoluteにして通常のフローから外し、介助ボタンの
+   すぐ下に重ねて表示する。フローに参加しないため、.message-panel-controls の
+   列幅(≒隣のh1の実効幅)に一切影響しない(出現・消失でも列幅・格子の組み替えが
+   起きない)。
+   実装時の落とし穴その1: 幅を明示せず right:0 だけ指定すると、containing block
+   (position:relativeの.message-panel-controls、ボタン1個ぶんの幅=約46pxまで
+   縮んでいる)を基準にshrink-to-fitの幅計算が行われ、200pxのはずの表示が
+   約46px幅まで押し潰されて折り返し行数が激増する(実測: 高さ133〜144pxまで
+   膨らみ、タイル格子と重なった)。width を max-width と同じ値で明示し、
+   containing block の狭さの影響を受けないようにする。
+   実装時の落とし穴その2: top:100% は「containing block(.message-panel-controls)の
+   高さに対する100%」なので、下の min-height:84px を追加した後は
+   位置がその84px分まるごと下にずれてしまう(ボタンの実際の高さより余った
+   分だけ余計に下がる)。介助ボタンの min-height(44px)を直接指定し、
+   .message-panel-controls 自身の高さ(min-heightで底上げされているかどうか)に
+   依存しないようにする */
 .audio-status-hint {
-  position: fixed;
-  right: 10px;
-  bottom: 74px;
+  position: absolute;
+  top: 44px;
+  right: 0;
   z-index: 20;
-  max-width: 220px;
-  margin: 0;
+  width: 200px;
+  max-width: 200px;
+  margin: 6px 0 0;
   padding: 4px 8px;
   pointer-events: none;
-  color: #7f1d1d;
-  background: #fff7ed;
-  border: 2px solid #f59e0b;
-  border-radius: 6px;
+  color: var(--caregiver-status-warn-text);
+  background: var(--caregiver-status-warn-bg);
+  border: 2px solid var(--caregiver-status-warn-border);
+  border-radius: 8px;
   font-size: 0.75rem;
   font-weight: 800;
   text-align: right;
@@ -445,19 +924,17 @@ h1 {
 @media (orientation: portrait) {
   .message-panel {
     min-height: 148px;
-    flex-direction: column;
-  }
-
-  .status-stack {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    min-width: 0;
   }
 }
 
 @media (max-width: 720px) {
-  .app-shell {
-    gap: 10px;
-    padding: 10px 10px 130px;
+  /* PR#16 5巡目 must-G(4巡目 should-a を巻き戻す): --label-cqi/--label-cqb を
+     このブレークポイント向けの値に上書きする。:root で定義することで、
+     .tile の子孫だけでなく App.tsx が getComputedStyle(gridBoardEl) で読む先
+     (gridBoardElはこれらの祖先)にも同じ実効値が伝わる */
+  :root {
+    --label-cqi: 20;
+    --label-cqb: 22;
   }
 
   .message-panel {
@@ -465,18 +942,15 @@ h1 {
   }
 
   .grid-board {
-    grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
-    grid-auto-rows: minmax(112px, 1fr);
-    gap: 8px;
+    /* PR#16 3巡目 must-2 再検証(上の基本ルールと同じ理由): 列幅は固定 */
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    --scroll-row-min: calc(var(--font-scale) * 112px);
+    grid-auto-rows: minmax(var(--scroll-row-min), 1fr);
   }
 
   .tile {
     min-height: 112px;
     padding: 18px 8px 10px;
-  }
-
-  .tile-label {
-    font-size: clamp(1.28rem, 4.7vh, 2.4rem);
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
@@ -494,9 +968,11 @@ h1 {
    タブレット(1024x600, 1180x700等)にも効いてタイルが小さくなってしまうため、
    500px まで下げてスマホ縦向きのみを狙う(S-new-7)。 */
 @media (max-width: 480px), (max-height: 500px) {
-  .app-shell {
-    gap: 8px;
-    padding: 8px 8px 130px;
+  /* PR#16 5巡目 must-G(4巡目 should-a を巻き戻す): このブレークポイント向けの
+     --label-cqi/--label-cqb */
+  :root {
+    --label-cqi: 22;
+    --label-cqb: 24;
   }
 
   .message-panel {
@@ -504,34 +980,35 @@ h1 {
     padding: 10px 12px;
   }
 
-  .eyebrow {
-    margin-bottom: 4px;
-  }
-
   h1 {
-    font-size: clamp(1.5rem, 5.5vh, 2.4rem);
+    /* PR#16 3巡目 must-1(should-b 撤回。上の基本ルールと同じ理由) */
+    font-size: clamp(1.5rem, min(5.5vh, 16cqi), 2.4rem);
   }
 
-  .status-stack {
-    gap: 4px;
+  /* 狭い画面ではメッセージ列の幅を大きく削らないよう、右上の警告音停止中表示を
+     小さめの折り返し幅にする(内容は変えず、より縦長に折り返すだけ) */
+  .audio-status-hint {
+    width: 128px;
+    max-width: 128px;
+    font-size: 0.68rem;
   }
 
-  .status-stack span {
-    padding: 4px 6px;
+  /* PR#16 5巡目 should-A(試行→撤回、上の .message-panel-controls のコメント参照):
+     上の .audio-status-hint の幅上書きに合わせて、min-width もこのブレークポイント
+     では128pxに縮める(4巡目 nit-b の値をそのまま復活) */
+  .message-panel-controls {
+    min-width: 128px;
   }
 
   .grid-board {
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    grid-auto-rows: minmax(84px, 1fr);
-    gap: 6px;
+    /* PR#16 3巡目 must-2 再検証(上の基本ルールと同じ理由): 列幅は固定 */
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    --scroll-row-min: calc(var(--font-scale) * 84px);
+    grid-auto-rows: minmax(var(--scroll-row-min), 1fr);
   }
 
   .tile {
     min-height: 84px;
     padding: 14px 6px 8px;
-  }
-
-  .tile-label {
-    font-size: clamp(1.05rem, 4vh, 1.9rem);
   }
 }
