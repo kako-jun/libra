@@ -508,9 +508,18 @@ h1 {
 
 /* PR#16 3巡目 should-a: scrollIntoView({block:'nearest'}) は要素の scroll-margin を
    考慮するため、sticky 緊急タイルの高さぶんだけ上に余白を持たせることで、スキャン対象
-   タイルの上端が sticky タイルの下に隠れたまま「ぎりぎり見えている」扱いになるのを防ぐ */
+   タイルの上端が sticky タイルの下に隠れたまま「ぎりぎり見えている」扱いになるのを防ぐ。
+   PR#16 5巡目 nit: 下端側にも小さな余白(scroll-margin-bottom)を持たせ、タイルが
+   ビューポートの下端ぎりぎりに張り付いた「見えてはいるが窮屈」な状態を避ける。
+   844x390・特大の文字盤のように、sticky緊急タイル(130px)+スキャン対象タイル
+   (130px)の合計(260px)が格子領域の高さ(251.6px)を上回る組み合わせでは、
+   上端(sticky優先)と下端を両方完全に収める余地が物理的に無い。この場合は
+   scrollIntoViewの既定の挙動どおり上端側が優先され、下端が約7%(約9px)
+   見切れる。これは既知の物理的制約として受け入れる(文字盤の2段階化で
+   緊急を別領域に出す Issue #4 が本来の解決策) */
 .grid-board:not(.grid-fill) .tile {
   scroll-margin-top: var(--scroll-row-min, 0px);
+  scroll-margin-bottom: 8px;
 }
 
 .tile {
