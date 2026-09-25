@@ -723,6 +723,49 @@ async function checkFontSizeMonotonicity(chromium, port) {
       }
       await context.close()
     }
+
+    // PR#16 5巡目 must-G: cqi/cqb係数をブレークポイントごとに戻し、--label-ratioを
+    // 標準0.85/大0.93/特大1.0にした後、標準時のラベルサイズが後退していないかを
+    // 具体的な下限値で確認する。実測値(このコミット時点)を基準に、4巡目で発生した
+    // 22〜28%縮小(390x844で22.0px等)へ戻ったら検知できるよう、実測よりわずかに
+    // 低い値を下限にする(rendering jitter の許容と、回帰検知の両立)
+    const standardLabelMinimums = [
+      // 実測23.33px(4巡目の回帰値は22.0px)
+      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 23 },
+      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['4'], minPx: 23 },
+      // 実測41.17px
+      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
+      // 実測28.79px
+      { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['4'], minPx: 27 },
+    ]
+    for (const { vw, vh, screenName, keys, minPx } of standardLabelMinimums) {
+      const context = await browser.newContext({ viewport: { width: vw, height: vh } })
+      const page = await context.newPage()
+      await page.addInitScript(
+        (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
+        { fontSize: 'standard', intervalMs: 5000 },
+      )
+      await page.goto(base)
+      await page.waitForTimeout(200)
+      for (const key of keys) {
+        await page.keyboard.press(key)
+        await page.waitForTimeout(80)
+      }
+      await page.waitForTimeout(150)
+      await page.evaluate(() => document.fonts.ready)
+      const size = await page.evaluate(() => {
+        const labels = [...document.querySelectorAll('.tile-label')].map((el) =>
+          parseFloat(getComputedStyle(el).fontSize),
+        )
+        return labels.length > 0 ? Math.min(...labels) : null
+      })
+      if (size != null && size < minPx - 0.1) {
+        failures.push(
+          `[standard-label-min ${vw}x${vh} ${screenName}] 標準=${size.toFixed(2)}px(下限 ${minPx}px を下回った)`,
+        )
+      }
+      await context.close()
+    }
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))

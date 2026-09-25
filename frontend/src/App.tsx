@@ -170,8 +170,17 @@ export default function App() {
   // これにより8項目以下の画面は常に全面充填(fill)され、スクロールに落ちない。
   let gridBoardEl: HTMLElement | undefined
   const [gridSize, setGridSize] = createSignal({ width: 0, height: 0 })
+  // PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数(globals.css 側で
+  // ブレークポイントごとに違う値、--label-cqi/--label-cqb)をここにハードコード
+  // せず、実際に描画されている grid-board から getComputedStyle で読み取って
+  // computeGridLayout に渡す。CSS側の値を変えてもJS側の定数を追従して直す
+  // 必要が無くなる(4巡目でCSS側だけ揃えて起きた食い違いの再発防止)
+  const [labelFactors, setLabelFactors] = createSignal({ width: 0.15, height: 0.2 })
   const gridLayout = createMemo(() =>
-    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height),
+    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height, {
+      labelWidthFactor: labelFactors().width,
+      labelHeightFactor: labelFactors().height,
+    }),
   )
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
@@ -419,6 +428,15 @@ export default function App() {
   // Issue #3 再レビュー: grid-board の実測サイズを追従し、列数計算(computeGridLayout)へ渡す
   onMount(() => {
     if (!gridBoardEl || typeof ResizeObserver === 'undefined') return
+    const readLabelFactors = () => {
+      if (!gridBoardEl || typeof getComputedStyle === 'undefined') return
+      const style = getComputedStyle(gridBoardEl)
+      const cqi = Number.parseFloat(style.getPropertyValue('--label-cqi'))
+      const cqb = Number.parseFloat(style.getPropertyValue('--label-cqb'))
+      if (Number.isFinite(cqi) && Number.isFinite(cqb)) {
+        setLabelFactors({ width: cqi / 100, height: cqb / 100 })
+      }
+    }
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
       if (!entry) return
@@ -426,8 +444,12 @@ export default function App() {
       const width = box ? box.inlineSize : entry.contentRect.width
       const height = box ? box.blockSize : entry.contentRect.height
       setGridSize({ width, height })
+      // ブレークポイント(画面幅)が変わるのも実質「サイズが変わる」ときなので、
+      // resize のたびに --label-cqi/--label-cqb の実効値も読み直す
+      readLabelFactors()
     })
     observer.observe(gridBoardEl)
+    readLabelFactors()
     onCleanup(() => observer.disconnect())
   })
 

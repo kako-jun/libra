@@ -47,9 +47,21 @@
   --font-scale: 1;
   /* PR#16 4巡目 must-F: タイルラベルの文字サイズ専用の変数。--font-scale(vhベースの
      上限を押し上げるためのもの)とは別に、cqi/cqbの頭打ち値に直接掛ける比率として
-     用意する(下の --tile-label-font 参照)。値は kako-jun 未確認の既定値
-     (標準0.8/大0.9/特大1.0)として採用、後で調整できるようCSS変数にしてある */
-  --label-ratio: 0.8;
+     用意する(下の --tile-label-font 参照)。
+     PR#16 5巡目 must-G 再検証: 標準0.8だと、4巡目でcqi/cqb係数をブレークポイント間で
+     統一した(15/20に固定)ことと合わさって、スマホ幅で標準時のラベルが22〜28%
+     縮小する新規バグが出た。係数をブレークポイント別に戻す(下の --label-cqi/
+     --label-cqb 参照)のに合わせ、標準側にも少し余白を残しつつ縮小幅を抑えるため
+     0.8→0.85 に引き上げる(値は kako-jun 未確認の既定値、後で調整できるよう
+     CSS変数にしてある) */
+  --label-ratio: 0.85;
+  /* PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数を CSS 変数にする。
+     App.tsx が getComputedStyle(gridBoardEl) でこの実効値を読み、
+     computeGridLayout の labelWidthFactor/labelHeightFactor(0〜1の比率、
+     この値を100で割ったもの)にそのまま渡す。JS側にハードコードしないことで、
+     ブレークポイントごとに違う値(下の @media 参照)と常に一致させる */
+  --label-cqi: 15;
+  --label-cqb: 20;
   /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る */
   --grid-line: #cde3d4;
   --grid-line-width: 1px;
@@ -137,7 +149,7 @@
    ビューポート追従は保ったまま全体を拡大する。 */
 :root[data-font-size='large'] {
   --font-scale: 1.25;
-  --label-ratio: 0.9;
+  --label-ratio: 0.93;
 }
 
 :root[data-font-size='xlarge'] {
@@ -484,13 +496,22 @@ h1 {
      見た目上まったく変化しないバグがあった(vh項の上限を押し上げても、cqi/cqbという
      より小さい方の項がそもそも変わらないため)。
      文字サイズ設定は「セルの頭打ち値(cqi/cqbのmin)に対する比率」として --label-ratio
-     (標準0.8/大0.9/特大1.0)を直接掛ける形に変える。これによりセルが大きく余裕がある
-     画面でも、標準設定では頭打ち値の80%までしか使わず、大/特大に上げると同じセルの
-     中でも確実にラベルが大きくなる。vh 項は(セル自体が極端に大きい/小さい画面での)
-     上限側の安全網としてのみ残す */
+     (標準0.85/大0.93/特大1.0)を直接掛ける形に変える。これによりセルが大きく
+     余裕がある画面でも、標準設定では頭打ち値の85%までしか使わず、大/特大に
+     上げると同じセルの中でも確実にラベルが大きくなる。vh 項は(セル自体が極端に
+     大きい/小さい画面での)上限側の安全網としてのみ残す。
+     PR#16 5巡目 must-G(4巡目 should-a の巻き戻し): 4巡目でcqi/cqb係数を
+     ブレークポイント間で15/20に統一したところ、スマホ幅で標準時のラベルが
+     22〜28%縮小する新規バグが出た(--label-ratioを掛ける対象が変わらないまま
+     係数だけ揃えたことで、狭い画面の実際の頭打ち値が下がった)。
+     係数を --label-cqi/--label-cqb という CSS 変数に戻し、ブレークポイントごとに
+     元の値(基本15/20、720px以下20/22、480px以下22/24、下の @media 参照)に
+     戻す。JS側(gridLayout.ts)にハードコードしていた頃の食い違いを繰り返さない
+     よう、今度は App.tsx がこの実効値を getComputedStyle で読んで
+     computeGridLayout に渡す(ハードコードされた定数を持たない) */
   --tile-label-font: clamp(
     1.05rem,
-    calc(var(--label-ratio) * min(15cqi, 20cqb)),
+    calc(var(--label-ratio) * min(calc(var(--label-cqi) * 1cqi), calc(var(--label-cqb) * 1cqb))),
     min(calc(var(--font-scale) * 4.8vh), 3.4rem)
   );
   container-type: size;
@@ -848,6 +869,15 @@ h1 {
 }
 
 @media (max-width: 720px) {
+  /* PR#16 5巡目 must-G(4巡目 should-a を巻き戻す): --label-cqi/--label-cqb を
+     このブレークポイント向けの値に上書きする。:root で定義することで、
+     .tile の子孫だけでなく App.tsx が getComputedStyle(gridBoardEl) で読む先
+     (gridBoardElはこれらの祖先)にも同じ実効値が伝わる */
+  :root {
+    --label-cqi: 20;
+    --label-cqb: 22;
+  }
+
   .message-panel {
     padding: 16px;
   }
@@ -862,9 +892,6 @@ h1 {
   .tile {
     min-height: 112px;
     padding: 18px 8px 10px;
-    /* PR#16 4巡目 should-a: --tile-label-font のcqi/cqb係数はブレークポイントごとに
-       ばらつかせず、.tile の基本ルール(15cqi/20cqb)を全画面幅で使う(揃える方が
-       単純、と判断)。ここでは padding/min-height などレイアウト値だけ上書きする */
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
@@ -882,6 +909,13 @@ h1 {
    タブレット(1024x600, 1180x700等)にも効いてタイルが小さくなってしまうため、
    500px まで下げてスマホ縦向きのみを狙う(S-new-7)。 */
 @media (max-width: 480px), (max-height: 500px) {
+  /* PR#16 5巡目 must-G(4巡目 should-a を巻き戻す): このブレークポイント向けの
+     --label-cqi/--label-cqb */
+  :root {
+    --label-cqi: 22;
+    --label-cqb: 24;
+  }
+
   .message-panel {
     min-height: 0;
     padding: 10px 12px;
@@ -915,7 +949,5 @@ h1 {
   .tile {
     min-height: 84px;
     padding: 14px 6px 8px;
-    /* PR#16 4巡目 should-a: 上のブレークポイントと同じ理由で --tile-label-font の
-       係数は上書きしない(.tile の基本ルールをそのまま使う) */
   }
 }
