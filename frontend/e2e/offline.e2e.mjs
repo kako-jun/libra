@@ -456,11 +456,37 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
         tiles: [...document.querySelectorAll('.grid-board .tile')].map((t) => rectOf(t)),
       }
     })
+    // PR#16 5巡目: .audio-status-hint(警告音停止中表示)は position:absolute の
+    // 子として .message-panel(overflow-y:auto)の内側にあり、パネルの表示範囲を
+    // 超えた分は実際には描画されず、クリップされて見えなくなる。単純な矩形の
+    // 幾何学的重なりだけを見ると「隠れて見えないはずの部分」まで重なり判定して
+    // しまう(実際に表示されているのはタイル/h1の方で、hintではない)ため、
+    // hint が関わる判定だけは document.elementFromPoint で実際にその座標に
+    // 描画されている要素を確認し、hint自身が描画されている場合だけ重なりとする
+    const isHintActuallyVisibleAt = async (rectA, rectB) => {
+      const left = Math.max(rectA.left, rectB.left)
+      const right = Math.min(rectA.right, rectB.right)
+      const top = Math.max(rectA.top, rectB.top)
+      const bottom = Math.min(rectA.bottom, rectB.bottom)
+      const cx = (left + right) / 2
+      const cy = (top + bottom) / 2
+      return page.evaluate(
+        ([x, y]) => {
+          const el = document.elementFromPoint(x, y)
+          return !!el && !!el.closest('.audio-status-hint')
+        },
+        [cx, cy],
+      )
+    }
     if (info.h1 && info.button && rectsOverlap(info.h1, info.button)) {
       failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助」ボタンと重なっている`)
     }
     if (info.h1 && info.hint && rectsOverlap(info.h1, info.hint)) {
-      failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「警告音停止中」表示と重なっている`)
+      if (await isHintActuallyVisibleAt(info.h1, info.hint)) {
+        failures.push(
+          `[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「警告音停止中」表示と重なっている`,
+        )
+      }
     }
     for (const tile of info.tiles) {
       if (info.board && !rectsOverlap(tile, info.board)) continue // スクロールアウトしている
@@ -468,7 +494,9 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
         failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助」ボタンと重なっている`)
       }
       if (info.hint && rectsOverlap(tile, info.hint)) {
-        failures.push(`[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`)
+        if (await isHintActuallyVisibleAt(tile, info.hint)) {
+          failures.push(`[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`)
+        }
       }
     }
   }

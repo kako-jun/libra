@@ -302,20 +302,50 @@ button {
    よう grid で専用列を確保する。position:fixed はやめ、通常のレイアウトに組み込む) */
 .message-panel-controls {
   grid-area: controls;
+  /* PR#16 5巡目 should-A(試行→撤回): 4巡目の nit-b では .audio-status-hint(警告音
+     停止中表示)の出現/消失で列幅が変わる問題を、列幅を表示ありの分だけ常に確保する
+     (min-width)で直したが、5巡目でこれを「列幅は介助ボタン幅のみにし、hintは
+     position:absoluteでボタン下に重ねる」方式に変えようとした。
+     実装・検証の結果、これは新たな重なりバグを2件生んだ: (1) 幅を明示しないと
+     containing block(ボタン幅=約46px)基準のshrink-to-fitでhintが押し潰され、
+     折り返し行数が激増して高さがパネルからはみ出しタイルと重なる。(2) 幅を
+     明示(200px/128px)すると、今度はその幅がh1の列(message)側にまで水平に
+     はみ出し、h1のテキストと重なることがある(実測: 390x844ホームでh1がhintと
+     重なった)。h1は独立したgrid列(message)を持つため、controls列自体の幅を
+     hintぶん確保しておく(min-width)のがh1との重なりを構造的に防ぐ唯一の方法
+     だった。position:absolute自体(hintをflexの行送りから外す)は、パネルの
+     行の高さがhintの出現で伸びるのを防ぐ効果があるため残す。min-widthは
+     4巡目の値のまま復活させる(nit-a/nit-bの効果は維持したまま、should-Aの
+     ねらいである「hintがフローの高さ計算に影響しない」は達成できている) */
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
   justify-self: end;
   align-self: start;
-  /* PR#16 4巡目 nit-b: .audio-status-hint(警告音停止中表示)はAudioContextのresume待ちの
-     間だけ一時的に現れる。この列は grid-template-columns:1fr auto の auto 側なので、
-     出現/消失のたびに列幅(≒このcontrols列の実際の幅)が変わり、それに押し出される形で
-     h1 の実効幅・折返し行数、ひいては grid-board の面積まで変わってしまっていた
-     (実測: 320x568特大ホーム+取り消しで22.7px→21.8pxのラベル縮小として現れた)。
-     .audio-status-hint の max-width(下の宣言、ブレークポイントで128pxに上書き)と
-     同じ幅を表示の有無に関わらず常に確保し、出現・消失で列幅が変化しないようにする */
   min-width: 200px;
+  /* PR#16 5巡目 nit: 844x390のように横向きで縦の余裕が無い画面では、h1自体が
+     短く(このブレークポイントの下限24px×2行)、パネルの行の高さが介助ボタン
+     (44px)+隙間(6px)+hint(128px幅時34px)=84pxに届かず、position:absoluteの
+     hintの矩形(getBoundingClientRect)がgrid-boardの先頭タイルの矩形と
+     幾何学的に重なる(実際には .message-panel の overflow-y:auto にクリップ
+     されて描画はされない。document.elementFromPointで確認済みで、
+     e2e/offline.e2e.mjsの重なり判定もこれを踏まえelementFromPointで実際の
+     描画を再確認する方式に直したが、scratchpad/rv16r4.mjs 側は矩形だけを見る
+     ため引き続き検出する)。
+     素直に min-height:84px を常時足すと直るが、それは緊急詳細を5件積んだ状態
+     (emerg5+sub)のような、message/controls行(この行)と details/sub行が
+     同時に40dvhの予算を奪い合う画面で、副表示(.emergency-sub)側が溢れる
+     新規の回帰を生んだ(実測で確認)。安全に関わる緊急詳細の可視性を、見えても
+     いない警告音表示の見た目上の几帳面さより優先し、:has()でdetails/subが
+     存在しない(競合しない)ときだけ min-height を効かせる。details/subが
+     存在するときは、この行の高さは以前どおりh1基準のまま(hintの下端が
+     パネルからはみ出す可能性はあるが、上記のとおり実際には視認されない) */
+  min-height: 44px;
+}
+
+.message-panel:not(:has(.emergency-details, .emergency-sub)) .message-panel-controls {
+  min-height: 84px;
 }
 
 :root[data-message-tone='urgent'] .message-panel {
@@ -846,11 +876,31 @@ h1 {
 /* 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる小さな表示。
    本人向けではないため介助者ボタンと同じくメッセージ欄右上に置くが、
    data-caregiver-controlは付けない(S-new-4)。pointer-events:noneでタップを素通しし、
-   下のタイルへの本人のスイッチ入力(resumeも走る)を妨げない。 */
+   下のタイルへの本人のスイッチ入力(resumeも走る)を妨げない。
+   PR#16 5巡目 should-A: position:absoluteにして通常のフローから外し、介助ボタンの
+   すぐ下に重ねて表示する。フローに参加しないため、.message-panel-controls の
+   列幅(≒隣のh1の実効幅)に一切影響しない(出現・消失でも列幅・格子の組み替えが
+   起きない)。
+   実装時の落とし穴その1: 幅を明示せず right:0 だけ指定すると、containing block
+   (position:relativeの.message-panel-controls、ボタン1個ぶんの幅=約46pxまで
+   縮んでいる)を基準にshrink-to-fitの幅計算が行われ、200pxのはずの表示が
+   約46px幅まで押し潰されて折り返し行数が激増する(実測: 高さ133〜144pxまで
+   膨らみ、タイル格子と重なった)。width を max-width と同じ値で明示し、
+   containing block の狭さの影響を受けないようにする。
+   実装時の落とし穴その2: top:100% は「containing block(.message-panel-controls)の
+   高さに対する100%」なので、下の min-height:84px を追加した後は
+   位置がその84px分まるごと下にずれてしまう(ボタンの実際の高さより余った
+   分だけ余計に下がる)。介助ボタンの min-height(44px)を直接指定し、
+   .message-panel-controls 自身の高さ(min-heightで底上げされているかどうか)に
+   依存しないようにする */
 .audio-status-hint {
+  position: absolute;
+  top: 44px;
+  right: 0;
   z-index: 20;
+  width: 200px;
   max-width: 200px;
-  margin: 0;
+  margin: 6px 0 0;
   padding: 4px 8px;
   pointer-events: none;
   color: var(--caregiver-status-warn-text);
@@ -929,12 +979,14 @@ h1 {
   /* 狭い画面ではメッセージ列の幅を大きく削らないよう、右上の警告音停止中表示を
      小さめの折り返し幅にする(内容は変えず、より縦長に折り返すだけ) */
   .audio-status-hint {
+    width: 128px;
     max-width: 128px;
     font-size: 0.68rem;
   }
 
-  /* PR#16 4巡目 nit-b: 上の .audio-status-hint の max-width 上書きに合わせて、
-     常時確保する幅もこのブレークポイントでは128pxに縮める */
+  /* PR#16 5巡目 should-A(試行→撤回、上の .message-panel-controls のコメント参照):
+     上の .audio-status-hint の幅上書きに合わせて、min-width もこのブレークポイント
+     では128pxに縮める(4巡目 nit-b の値をそのまま復活) */
   .message-panel-controls {
     min-width: 128px;
   }
