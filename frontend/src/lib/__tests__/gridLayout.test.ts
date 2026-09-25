@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   computeGridLayout,
+  DEFAULT_LABEL_HEIGHT_FACTOR,
+  DEFAULT_LABEL_WIDTH_FACTOR,
   DEFAULT_MIN_CELL_HEIGHT,
   DEFAULT_MIN_CELL_WIDTH,
   GRID_FILL_MAX_ITEMS,
@@ -10,6 +12,15 @@ import {
 const LANDSCAPE = { width: 1000, height: 500 } // aspect 2.0
 const PORTRAIT = { width: 500, height: 1000 } // aspect 0.5
 const SQUARE = { width: 600, height: 600 } // aspect 1.0
+
+// PR#16 5巡目 must-G: globals.css 側の係数はブレークポイントごとに異なり、
+// App.tsx は実際に描画された値を getComputedStyle で読んで渡す。テストでは
+// このファイルにハードコードせず、既定(基本ブレークポイント相当)の係数を
+// 明示的に options として渡す(呼び出し側の契約をテストでも同じ形にする)
+const BASE_FACTORS = {
+  labelWidthFactor: DEFAULT_LABEL_WIDTH_FACTOR,
+  labelHeightFactor: DEFAULT_LABEL_HEIGHT_FACTOR,
+}
 
 describe('computeGridLayout', () => {
   it('項目数0以下では fill しない', () => {
@@ -48,7 +59,7 @@ describe('computeGridLayout', () => {
     }
     for (const [n, want] of Object.entries(expected)) {
       it(`n=${n} → ${want.cols}列×${want.rows}行(lastSpan=${want.lastSpan})`, () => {
-        const result = computeGridLayout(Number(n), LANDSCAPE.width, LANDSCAPE.height)
+        const result = computeGridLayout(Number(n), LANDSCAPE.width, LANDSCAPE.height, BASE_FACTORS)
         expect(result).toEqual({ fill: true, ...want })
       })
     }
@@ -71,7 +82,7 @@ describe('computeGridLayout', () => {
     }
     for (const [n, want] of Object.entries(expected)) {
       it(`n=${n} → ${want.cols}列×${want.rows}行(lastSpan=${want.lastSpan})`, () => {
-        const result = computeGridLayout(Number(n), PORTRAIT.width, PORTRAIT.height)
+        const result = computeGridLayout(Number(n), PORTRAIT.width, PORTRAIT.height, BASE_FACTORS)
         expect(result).toEqual({ fill: true, ...want })
       })
     }
@@ -91,7 +102,7 @@ describe('computeGridLayout', () => {
     }
     for (const [n, want] of Object.entries(expected)) {
       it(`n=${n} → ${want.cols}列×${want.rows}行(lastSpan=${want.lastSpan})`, () => {
-        const result = computeGridLayout(Number(n), SQUARE.width, SQUARE.height)
+        const result = computeGridLayout(Number(n), SQUARE.width, SQUARE.height, BASE_FACTORS)
         expect(result).toEqual({ fill: true, ...want })
       })
     }
@@ -99,17 +110,17 @@ describe('computeGridLayout', () => {
 
   describe('PR#16 4巡目 must-E: 帯(1×N/N×1、N>=5)は最小セル寸法を満たしていても選ばれない', () => {
     it('1024x607(格子領域相当) n=7 → 4列×2行(帯にならない)', () => {
-      const result = computeGridLayout(7, 1024, 607)
+      const result = computeGridLayout(7, 1024, 607, BASE_FACTORS)
       expect(result).toEqual({ fill: true, cols: 4, rows: 2, lastSpan: 2 })
     })
 
     it('390x844 n=7 → 2列×4行(帯にならない)', () => {
-      const result = computeGridLayout(7, 390, 844)
+      const result = computeGridLayout(7, 390, 844, BASE_FACTORS)
       expect(result).toEqual({ fill: true, cols: 2, rows: 4, lastSpan: 2 })
     })
 
     it('1280x720 n=7 は帯(cols===1 または rows===1)にならない', () => {
-      const result = computeGridLayout(7, 1280, 720)
+      const result = computeGridLayout(7, 1280, 720, BASE_FACTORS)
       expect(result.fill).toBe(true)
       expect(result.cols).not.toBe(1)
       expect(result.rows).not.toBe(1)
@@ -118,7 +129,7 @@ describe('computeGridLayout', () => {
     it('横に極端に広い領域(2000x300)で n=8 でも 1行の帯にはならない', () => {
       // 幅は十分あるが高さが厳しい領域。8列×1行(空きセル0)は帯として除外され、
       // 別の(帯でない)候補が選ばれる
-      const result = computeGridLayout(8, 2000, 300)
+      const result = computeGridLayout(8, 2000, 300, BASE_FACTORS)
       if (result.fill) {
         expect(result.rows).not.toBe(1)
       }
@@ -128,7 +139,7 @@ describe('computeGridLayout', () => {
   it('lastSpan は常に1か2で、cols*rows - itemCount(空きセル数)は1以下', () => {
     for (const dims of [LANDSCAPE, PORTRAIT, SQUARE]) {
       for (let n = 2; n <= GRID_FILL_MAX_ITEMS; n += 1) {
-        const result = computeGridLayout(n, dims.width, dims.height)
+        const result = computeGridLayout(n, dims.width, dims.height, BASE_FACTORS)
         expect(result.lastSpan === 1 || result.lastSpan === 2).toBe(true)
         expect(result.cols * result.rows - n).toBeLessThanOrEqual(1)
       }
@@ -138,7 +149,7 @@ describe('computeGridLayout', () => {
   it('選ばれた列数・行数のセルは既定の最小セル寸法(160x84)を下回らない', () => {
     for (const dims of [LANDSCAPE, PORTRAIT, SQUARE]) {
       for (let n = 2; n <= GRID_FILL_MAX_ITEMS; n += 1) {
-        const result = computeGridLayout(n, dims.width, dims.height)
+        const result = computeGridLayout(n, dims.width, dims.height, BASE_FACTORS)
         if (!result.fill) continue
         expect(dims.width / result.cols).toBeGreaterThanOrEqual(DEFAULT_MIN_CELL_WIDTH)
         expect(dims.height / result.rows).toBeGreaterThanOrEqual(DEFAULT_MIN_CELL_HEIGHT)
@@ -158,11 +169,64 @@ describe('computeGridLayout', () => {
       // 8項目、実測領域は 1200x900。最小セル寸法が既定(160x84)なら3列×3行(span2、
       // セル幅400px)が選ばれるが、最小幅を500pxまで引き上げると3列(セル幅400px)は
       // 入らなくなり、2列(セル幅600px)まで列数が減る
-      const withDefault = computeGridLayout(8, 1200, 900)
+      const withDefault = computeGridLayout(8, 1200, 900, BASE_FACTORS)
       expect(withDefault.cols).toBe(3)
-      const withLargerMin = computeGridLayout(8, 1200, 900, { minCellWidth: 500 })
+      const withLargerMin = computeGridLayout(8, 1200, 900, { minCellWidth: 500, ...BASE_FACTORS })
       expect(withLargerMin.cols).toBeLessThan(3)
       expect(1200 / withLargerMin.cols).toBeGreaterThanOrEqual(500)
+    })
+  })
+
+  describe('PR#16 5巡目 must-G: labelWidthFactor/labelHeightFactor を呼び出し側から渡せる', () => {
+    it('係数を変えると同じ領域・項目数でも選ばれる列数が変わる(値がハードコードされていない)', () => {
+      // 幅に強く重み付けした係数(横長のセルを好む)と、高さに強く重み付けした
+      // 係数(縦長のセルを好む)とで、同じ 1000x300 8項目でも異なる列数を選ぶことを
+      // 確認する
+      const widthHeavy = computeGridLayout(8, 1000, 300, {
+        labelWidthFactor: 0.15,
+        labelHeightFactor: 0.2,
+      })
+      const heightHeavy = computeGridLayout(8, 1000, 300, {
+        labelWidthFactor: 0.01,
+        labelHeightFactor: 0.9,
+      })
+      expect(widthHeavy.fill).toBe(true)
+      expect(heightHeavy.fill).toBe(true)
+      expect(widthHeavy.cols).not.toBe(heightHeavy.cols)
+    })
+
+    it('係数を省略すると基本ブレークポイント相当の既定値(15/20)にフォールバックする', () => {
+      const withDefaults = computeGridLayout(8, 1200, 900)
+      const withExplicitBase = computeGridLayout(8, 1200, 900, BASE_FACTORS)
+      expect(withDefaults).toEqual(withExplicitBase)
+    })
+  })
+
+  describe('PR#16 5巡目 should-B: 候補ゼロ時に最小セル高さを50pxまで緩めて再探索する', () => {
+    // 実測: 568x320(横向きの低い画面)でのメッセージ欄を差し引いた格子領域は
+    // 幅568×高さ203px程度(同ラウンドのnitで .message-panel-controls に
+    // 条件付きmin-height:84pxを足した影響で、以前の実測値236.6pxより縮んでいる)。
+    // 7項目は候補が cols=2,rows=4(空きセル1)しか無く、必要セル高さは
+    // 203/4=50.75px で、既定の84pxはもちろん当初案の72px・一度引き下げた58pxでも
+    // 足りない
+    const REAL_BOARD_HEIGHT = 203
+
+    it('568x203で7項目は、既定の84pxでは候補が無いが50pxまで緩めてfillする', () => {
+      const result = computeGridLayout(7, 568, REAL_BOARD_HEIGHT, BASE_FACTORS)
+      expect(result.fill).toBe(true)
+      expect(REAL_BOARD_HEIGHT / result.rows).toBeGreaterThanOrEqual(50)
+    })
+
+    it('568x203で8項目もfillする(3列×3行、必要セル高さ≒67.7pxで既定より緩い50で足りる)', () => {
+      const result = computeGridLayout(8, 568, REAL_BOARD_HEIGHT, BASE_FACTORS)
+      expect(result.fill).toBe(true)
+      expect(REAL_BOARD_HEIGHT / result.rows).toBeGreaterThanOrEqual(50)
+    })
+
+    it('50pxまで緩めても候補が無い場合は従来どおり fill しない', () => {
+      // 高さ40pxでは50pxの緩和後でも1行すら確保できない
+      const result = computeGridLayout(8, 1200, 40, BASE_FACTORS)
+      expect(result.fill).toBe(false)
     })
   })
 
@@ -182,7 +246,7 @@ describe('computeGridLayout', () => {
     for (const [label, dims] of Object.entries(realDims)) {
       for (const n of [6, 7, 8]) {
         it(`${label} で n=${n} は既定の最小セル寸法(160x84)を満たし、帯にもならずに全面充填する`, () => {
-          const result = computeGridLayout(n, dims.width, dims.height)
+          const result = computeGridLayout(n, dims.width, dims.height, BASE_FACTORS)
           expect(result.fill).toBe(true)
           expect(dims.width / result.cols).toBeGreaterThanOrEqual(DEFAULT_MIN_CELL_WIDTH)
           expect(dims.height / result.rows).toBeGreaterThanOrEqual(DEFAULT_MIN_CELL_HEIGHT)
@@ -210,7 +274,7 @@ describe('computeGridLayout', () => {
       ]
       for (const dims of dimsList) {
         for (let n = 1; n <= 8; n += 1) {
-          const result = computeGridLayout(n, dims.width, dims.height)
+          const result = computeGridLayout(n, dims.width, dims.height, BASE_FACTORS)
           expect(result.fill).toBe(true)
         }
       }
@@ -228,7 +292,7 @@ describe('computeGridLayout', () => {
     // 「8項目以下は常に fill:true」を保証しているため、この不変条件は論理的に導かれる。
     // 実ブラウザでの目視相当の確認は scratchpad/rv16r.mjs と e2e/offline.e2e.mjs で行う
     it('fill:true のときは巡回位置に関わらず全タイルが同時に描画領域内へ収まる(スクロール自体が発生しない)', () => {
-      const result = computeGridLayout(8, 768, 850)
+      const result = computeGridLayout(8, 768, 850, BASE_FACTORS)
       expect(result.fill).toBe(true)
       // fill モードは cols*rows で領域全体を等分するため、8項目全てに専用セルがあり
       // (空きは1セルまで許容)、どのタイルも他のタイルより後ろへ隠れることがない
