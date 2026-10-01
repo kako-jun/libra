@@ -417,10 +417,20 @@ export default function App() {
   // Issue #6: 押している間の進捗(押下時間の下限があるときだけ値が入る)
   const [holdProgress, setHoldProgress] = createSignal<number | null>(null)
 
-  const handleSwitchOn = (now: number, target?: { index: number; screen: ScreenId }) => {
+  const handleSwitchOn = (
+    now: number,
+    target?: { index: number; screen: ScreenId; itemId: string | undefined },
+  ) => {
     if (caregiverMenuOpen()) return
-    // 押しっぱなし中に画面が変わった場合、押し始めの項目はもう存在しないので無視する
-    if (target && target.screen !== screen()) return
+    // 押しっぱなし中に画面が変わった、または同じ画面でも項目の並びが変わった(例: 取り消しが
+    // 消えた)場合、押し始めの項目はもう同じ位置にない。別の項目(特に緊急)を誤って
+    // 実行しないよう無視する
+    if (
+      target &&
+      (target.screen !== screen() || currentMenu()[target.index]?.id !== target.itemId)
+    ) {
+      return
+    }
     const itemCount = currentMenu().length
     const resynced = resync(scanState(), itemCount)
     const result = press(resynced, itemCount, now, scanConfig(), target?.index)
@@ -433,10 +443,10 @@ export default function App() {
   // 決定するのは押し始めにカーソルが乗っていた項目。
   const switchInput = createSwitchInput({
     getConfig: () => ({ minHoldMs: settings().minHoldMs, activateOn: settings().activateOn }),
-    snapshot: () => ({
-      index: resync(scanState(), currentMenu().length).index,
-      screen: screen(),
-    }),
+    snapshot: () => {
+      const index = resync(scanState(), currentMenu().length).index
+      return { index, screen: screen(), itemId: currentMenu()[index]?.id }
+    },
     onActivate: (target) => handleSwitchOn(Date.now(), target),
     onProgress: setHoldProgress,
   })
@@ -571,11 +581,9 @@ export default function App() {
     }
 
     const onPointerUp = (event: PointerEvent) => switchInput.up(`pointer:${event.pointerId}`)
-    const onPointerCancel = (event: PointerEvent) => {
-      // 取り消された押下は決定しない(離して決定でも実行しない)
-      switchInput.cancelAll()
-      void event
-    }
+    // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
+    const onPointerCancel = (event: PointerEvent) =>
+      switchInput.cancel(`pointer:${event.pointerId}`)
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
@@ -602,6 +610,9 @@ export default function App() {
     const onKeyUp = (event: KeyboardEvent) => switchInput.up(`key:${event.code || event.key}`)
     // 画面が見えなくなった・フォーカスを失った押下は、離す動作を取りこぼすので取り消す
     const onBlur = () => switchInput.cancelAll()
+    const onVisibilityHidden = () => {
+      if (document.visibilityState === 'hidden') switchInput.cancelAll()
+    }
 
     // M2: タッチ端末では pointerdown だけでは AudioContext の resume が保証されないため、
     // pointerup/touchend/click(capture) でも試す。介助者ボタンを含め常に呼んでよい。
@@ -616,6 +627,7 @@ export default function App() {
     window.addEventListener('pointerup', onPointerUp)
     window.addEventListener('pointercancel', onPointerCancel)
     window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibilityHidden)
     window.addEventListener('pointerup', onUserActivation, true)
     window.addEventListener('touchend', onUserActivation, true)
     window.addEventListener('click', onUserActivation, true)
@@ -629,6 +641,7 @@ export default function App() {
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerCancel)
       window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onVisibilityHidden)
       switchInput.cancelAll()
       window.removeEventListener('pointerup', onUserActivation, true)
       window.removeEventListener('touchend', onUserActivation, true)

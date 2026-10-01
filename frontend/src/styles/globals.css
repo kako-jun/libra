@@ -158,6 +158,9 @@
 }
 
 :root {
+  /* Issue #6: 押下進捗バー。明るい/夜間どちらの盤面でも見える色 */
+  --hold-progress-track: rgb(0 0 0 / 35%);
+  --hold-progress-fill: #ffd54a;
   color: var(--text);
   background: var(--bg);
   /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
@@ -1022,11 +1025,11 @@ h1 {
   right: 0;
   z-index: 25;
   height: 12px;
-  background: rgb(0 0 0 / 35%);
+  background: var(--hold-progress-track);
   pointer-events: none;
 }
 
 .hold-progress-bar {
   height: 100%;
-  background: #ffd54a;
+  background: var(--hold-progress-fill);
 }

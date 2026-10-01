@@ -87,11 +87,13 @@ export function press(
   targetIndex: number = state.index,
 ): PressResult {
   if (itemCount <= 0) return { state, activatedIndex: null }
+  // 押し始めの項目がもう存在しない(メニューが縮んだ)ときは、黙って別の項目を実行しない
+  if (targetIndex < 0 || targetIndex >= itemCount) return { state, activatedIndex: null }
   if (state.lastPressAt !== null && now - state.lastPressAt < Math.max(config.debounceMs, 0)) {
     return { state, activatedIndex: null }
   }
   return {
     state: { ...state, lastPressAt: now },
-    activatedIndex: targetIndex < itemCount ? targetIndex : state.index,
+    activatedIndex: targetIndex,
   }
 }

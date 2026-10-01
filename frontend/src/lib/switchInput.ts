@@ -39,6 +39,8 @@ export interface SwitchInput {
   down: (sourceId: string) => void
   /** スイッチが離された */
   up: (sourceId: string) => void
+  /** 指定した入力元の押下だけを取り消す(決定しない)。pointercancel など */
+  cancel: (sourceId: string) => void
   /** 押下中の入力をすべて取り消す(決定しない)。ブラー・介助者メニュー表示時など */
   cancelAll: () => void
 }
@@ -109,5 +111,5 @@ export function createSwitchInput<C>(options: SwitchInputOptions<C>): SwitchInpu
     for (const sourceId of Array.from(active.keys())) finish(sourceId)
   }
 
-  return { down, up, cancelAll }
+  return { down, up, cancel: (sourceId) => void finish(sourceId), cancelAll }
 }

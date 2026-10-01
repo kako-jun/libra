@@ -103,4 +103,14 @@ describe('switchInput', () => {
     input.up('k')
     expect(progress.at(-1)).toBeNull()
   })
+
+  it('cancel は指定した入力元だけ取り消し、他の入力元の押下は残す', () => {
+    const { input, activated } = setup({ minHoldMs: 0, activateOn: 'release' })
+    input.down('key')
+    input.down('pointer')
+    input.cancel('pointer')
+    input.up('pointer')
+    input.up('key')
+    expect(activated).toEqual([0])
+  })
 })
