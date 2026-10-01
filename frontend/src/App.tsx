@@ -729,7 +729,11 @@ export default function App() {
               {/* Issue #3 追加指示: 下位画面へ進むタイルは矢印文字ではなく、山形アイコン+
                   中身の予告(menus.ts で自動生成)で示す。読み上げはラベルのみ(記号は読まない) */}
               <Show when={item.action.type === 'navigate'}>
-                <svg class="tile-chevron" viewBox="0 0 20 24" aria-hidden="true">
+                <svg
+                  class="tile-chevron"
+                  viewBox="0 0 20 24"
+                  aria-hidden="true"
+                >
                   <path
                     d="M5 3 L15 12 L5 21"
                     fill="none"
