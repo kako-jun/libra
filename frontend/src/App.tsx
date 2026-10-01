@@ -140,7 +140,7 @@ export default function App() {
   const [messageTone, setMessageTone] = createSignal<Tone>(restoredEmergency ? 'urgent' : 'neutral')
 
   // Issue #22: 上部メッセージ(h1)を 1 行に収まる最大サイズで表示する。再計算は
-  // メッセージ変更・幅変化・回転/リサイズ・文字サイズ設定変更・Web フォント読み込み後だけ
+  // メッセージ変更・幅変化・回転/リサイズ・Web フォント読み込み後だけ(h1 は文字サイズ設定の対象外)
   // (rAF でまとめる。毎フレームの DOM 測定はしない)
   let headingEl: HTMLHeadingElement | undefined
   let headingFitFrame: number | undefined
@@ -153,7 +153,6 @@ export default function App() {
   }
   createEffect(() => {
     message()
-    settings().fontSize
     scheduleHeadingFit()
   })
   onMount(() => {
@@ -172,9 +171,13 @@ export default function App() {
     window.addEventListener('resize', scheduleHeadingFit)
     window.addEventListener('orientationchange', scheduleHeadingFit)
     const fonts = document.fonts
-    void fonts?.ready.then(scheduleHeadingFit)
+    let disposed = false
+    void fonts?.ready.then(() => {
+      if (!disposed) scheduleHeadingFit()
+    })
     fonts?.addEventListener?.('loadingdone', scheduleHeadingFit)
     onCleanup(() => {
+      disposed = true
       observer?.disconnect()
       window.removeEventListener('resize', scheduleHeadingFit)
       window.removeEventListener('orientationchange', scheduleHeadingFit)
