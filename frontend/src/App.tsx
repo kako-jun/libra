@@ -128,13 +128,14 @@ export default function App() {
   const [screen, setScreen] = createSignal<ScreenId>('home')
   // Issue #17: 再読み込み・再起動の前に未解除だった緊急は、起動時に復元する
   const restoredEmergency = loadEmergency()
-  let emergencySince = restoredEmergency?.since ?? 0
   const [emergencyActive, setEmergencyActive] = createSignal(restoredEmergency !== null)
   // 緊急の詳細（苦しい/痛い等）は積み上げ式。緊急の再選択では消さない(S1)
   const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>(
     restoredEmergency?.details ?? [],
   )
-  const [message, setMessage] = createSignal(restoredEmergency ? EMERGENCY_MESSAGE : DEFAULT_MESSAGE)
+  const [message, setMessage] = createSignal(
+    restoredEmergency ? EMERGENCY_MESSAGE : DEFAULT_MESSAGE,
+  )
   const [messageTone, setMessageTone] = createSignal<Tone>(restoredEmergency ? 'urgent' : 'neutral')
   const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>(
     restoredEmergency ? [{ text: EMERGENCY_MESSAGE, tone: 'urgent' }] : [],
@@ -345,9 +346,9 @@ export default function App() {
         if (!alreadyActive) {
           setEmergencyDetails([])
           showMessage(EMERGENCY_MESSAGE, 'urgent')
-          emergencySince = Date.now()
-          saveEmergency({ since: emergencySince, details: [] })
         }
+        // 再選択でも期限の起点を更新する(長時間続く緊急が期限切れで消えないように)
+        saveEmergency({ updatedAt: Date.now(), details: emergencyDetails() })
         startAlarm(ALARM_REPEAT_MS)
         goTo('urgentDetail')
         return
@@ -357,7 +358,7 @@ export default function App() {
         setEmergencyDetails((details) =>
           details.includes(action.label) ? details : [...details, action.label],
         )
-        saveEmergency({ since: emergencySince, details: emergencyDetails() })
+        saveEmergency({ updatedAt: Date.now(), details: emergencyDetails() })
         navigator.vibrate?.([60, 40, 60])
         announce(`緊急です。来てください。${action.label}`, action.label)
         setShowUndo(false)
@@ -721,11 +722,7 @@ export default function App() {
               {/* Issue #3 追加指示: 下位画面へ進むタイルは矢印文字ではなく、山形アイコン+
                   中身の予告(menus.ts で自動生成)で示す。読み上げはラベルのみ(記号は読まない) */}
               <Show when={item.action.type === 'navigate'}>
-                <svg
-                  class="tile-chevron"
-                  viewBox="0 0 20 24"
-                  aria-hidden="true"
-                >
+                <svg class="tile-chevron" viewBox="0 0 20 24" aria-hidden="true">
                   <path
                     d="M5 3 L15 12 L5 21"
                     fill="none"

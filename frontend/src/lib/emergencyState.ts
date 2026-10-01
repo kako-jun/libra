@@ -4,12 +4,13 @@
 
 const STORAGE_KEY = 'libra-emergency'
 
-/** これより古い緊急は復元しない(取り残された古い状態が、いつまでも鳴り続けるのを防ぐ) */
+/** 最後の操作(発報・再選択・詳細追加)からこれより経った緊急は復元しない
+ *  (取り残された古い状態が、いつまでも鳴り続けるのを防ぐ) */
 export const EMERGENCY_RESTORE_TTL_MS = 12 * 60 * 60 * 1000
 
 export interface EmergencyState {
-  /** 緊急が発生した時刻(epoch ms) */
-  since: number
+  /** 最後に緊急が発報・再選択・詳細追加された時刻(epoch ms)。期限の起点 */
+  updatedAt: number
   /** 追加された詳細（苦しい/痛い等） */
   details: string[]
 }
@@ -38,19 +39,21 @@ export function loadEmergency(now = Date.now()): EmergencyState | null {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<EmergencyState> | null
-    if (!parsed || typeof parsed.since !== 'number' || !Number.isFinite(parsed.since)) {
+    if (!parsed || typeof parsed.updatedAt !== 'number' || !Number.isFinite(parsed.updatedAt)) {
       clearSavedEmergency()
       return null
     }
-    if (now - parsed.since > EMERGENCY_RESTORE_TTL_MS) {
+    if (now - parsed.updatedAt > EMERGENCY_RESTORE_TTL_MS) {
       clearSavedEmergency()
       return null
     }
     const details = Array.isArray(parsed.details)
       ? parsed.details.filter((d): d is string => typeof d === 'string')
       : []
-    return { since: parsed.since, details }
+    return { updatedAt: parsed.updatedAt, details }
   } catch {
+    // 壊れた値(JSON として読めない)は残さない。読み出し自体の例外でも何もしない
+    clearSavedEmergency()
     return null
   }
 }

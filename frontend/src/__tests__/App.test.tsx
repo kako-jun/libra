@@ -306,12 +306,17 @@ describe('App', () => {
   it('Issue #17: 緊急詳細も復元され、解除後の再読み込みでは復元されない', () => {
     const first = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急選択 → urgentDetail
-    fireEvent.keyDown(window, { key: ' ' }) // 先頭待機中: index0 = 緊急(詳細画面でも先頭は緊急)
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=戻る
+    vi.advanceTimersByTime(INTERVAL_MS) // index2=苦しい
+    expect(scanningLabel(first.container)).toBe('苦しい')
+    fireEvent.keyDown(window, { key: ' ' }) // 苦しい選択 → home
+    expect(first.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
     first.unmount()
     cleanup()
 
     const second = render(() => <App />)
     expect(h1Text(second.container)).toBe('緊急です。来てください')
+    expect(second.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
 
     const button = second.container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
