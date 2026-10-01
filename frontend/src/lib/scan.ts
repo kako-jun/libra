@@ -74,12 +74,17 @@ export interface PressResult {
   activatedIndex: number | null
 }
 
-/** スイッチが「オン」になったときに呼ぶ。連打無視の対象なら activatedIndex は null。 */
+/**
+ * スイッチが「オン」になったときに呼ぶ。連打無視の対象なら activatedIndex は null。
+ * targetIndex を渡すと、現在のカーソルではなくその項目を実行対象にする
+ * (押下時間の下限・離して決定で、押し始めに乗っていた項目を使うため)。
+ */
 export function press(
   state: ScanState,
   itemCount: number,
   now: number,
   config: ScanConfig,
+  targetIndex: number = state.index,
 ): PressResult {
   if (itemCount <= 0) return { state, activatedIndex: null }
   if (state.lastPressAt !== null && now - state.lastPressAt < Math.max(config.debounceMs, 0)) {
@@ -87,6 +92,6 @@ export function press(
   }
   return {
     state: { ...state, lastPressAt: now },
-    activatedIndex: state.index,
+    activatedIndex: targetIndex < itemCount ? targetIndex : state.index,
   }
 }

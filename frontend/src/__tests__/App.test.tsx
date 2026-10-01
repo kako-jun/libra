@@ -290,6 +290,34 @@ describe('App', () => {
     expect(h1Text(container)).not.toBe('緊急です。来てください')
   })
 
+  it('Issue #6: 下限0.5秒で、0.2秒のキー押下は無視され0.6秒の押下は決定される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 500 }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(200)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+
+    vi.advanceTimersByTime(1000) // 連打無視は押下の決定時のみ。ここでは先頭待機が過ぎてよい
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    const index = container.querySelector('.tile.scanning .tile-label')?.textContent
+    vi.advanceTimersByTime(600)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(index).toBeTruthy()
+    // 押し始めに乗っていた項目が実行され、見出し or 画面が変わる
+    expect(h1Text(container)).not.toBe('選んだ内容がここに大きく出ます')
+  })
+
+  it('Issue #6: 離して決定モードでは押下中は実行されず、離した時点で実行される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' }) // index0=緊急
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    vi.advanceTimersByTime(100)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
     const { container } = render(() => <App />)
     // カーソルは index0(緊急)。"3"キーは index2(いいえ)への直接ジャンプではなく

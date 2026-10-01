@@ -1012,3 +1012,21 @@ h1 {
     padding: 14px 6px 8px;
   }
 }
+
+/* Issue #6: 押下時間の下限があるとき、押している間の進み具合を画面上端に出す。
+   入力を邪魔しないよう pointer-events:none。 */
+.hold-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  height: 12px;
+  background: rgb(0 0 0 / 35%);
+  pointer-events: none;
+}
+
+.hold-progress-bar {
+  height: 100%;
+  background: #ffd54a;
+}

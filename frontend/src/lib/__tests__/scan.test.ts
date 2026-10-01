@@ -143,4 +143,9 @@ describe('resync', () => {
     const next = resync(state, 0)
     expect(next.index).toBe(0)
   })
+
+  it('Issue #6: targetIndex を渡すとカーソルでなくその項目を実行対象にする', () => {
+    const state = { index: 2, nextAdvanceAt: 0, lastPressAt: null }
+    expect(press(state, 3, 1000, config, 1).activatedIndex).toBe(1)
+  })
 })
