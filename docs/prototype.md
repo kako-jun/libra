@@ -18,7 +18,7 @@ It is not a hospital system replacement and does not replace a nurse call. The p
 
 ## Next candidates
 
-- Persist settings in localStorage
+- ~~Persist settings in localStorage~~ (done)
 - Add editable phrase sets
 - Add caregiver confirmation mode
 - Add scan speed controls

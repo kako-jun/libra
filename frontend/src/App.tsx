@@ -306,6 +306,7 @@ export default function App() {
   }
 
   const clearEmergency = () => {
+    const wasActive = emergencyActive()
     setEmergencyActive(false)
     setEmergencyDetails([])
     setEmergencySubMessage(null)
@@ -314,7 +315,8 @@ export default function App() {
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
     // 解除後に緊急メッセージが履歴に残ると、解除→伝達→取り消しで赤い緊急文言が戻るため履歴を空にする
-    setMessageHistory([])
+    // 緊急が無いときの解除ボタンでは通常の取り消し履歴を消さない
+    if (wasActive) setMessageHistory([])
     // S2: 解除後に緊急中分の古い取り消しが復活しないようにする
     setShowUndo(false)
     undoLapsRemaining = 0

@@ -799,6 +799,12 @@ describe('App', () => {
       ) as HTMLElement
       fireEvent.click(clearButton)
     }
+    const closeCaregiverMenu = (container: HTMLElement) => {
+      const closeButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '閉じる',
+      ) as HTMLElement
+      fireEvent.click(closeButton)
+    }
 
     it('緊急を選ぶと保存され、通常起動では何も保存されない', () => {
       const { container } = render(() => <App />)
@@ -849,17 +855,29 @@ describe('App', () => {
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
       expect(h1Text(container)).toBe('緊急です。来てください')
       clearEmergencyViaMenu(container)
-      const closeButton = Array.from(container.querySelectorAll('button')).find(
-        (b) => b.textContent === '閉じる',
-      )
-      if (closeButton) fireEvent.click(closeButton)
+      closeCaregiverMenu(container)
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい
       expect(h1Text(container)).toBe('はい')
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
       fireEvent.keyDown(window, { key: ' ' }) // 取り消し
-      expect(h1Text(container)).not.toBe('緊急です。来てください')
+      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
+    })
+
+    it('緊急なしで解除ボタンを押しても取り消し履歴は消えない(A→解除→B→取り消し→A)', () => {
+      const { container } = render(() => <App />)
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+      fireEvent.keyDown(window, { key: ' ' }) // はい (A)
+      expect(h1Text(container)).toBe('はい')
+      clearEmergencyViaMenu(container) // 緊急なしの解除ボタン(disabled で何も起きない)
+      closeCaregiverMenu(container)
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // 緊急→取り消し→はい→いいえ
+      fireEvent.keyDown(window, { key: ' ' }) // いいえ (B)
+      expect(h1Text(container)).toBe('いいえ')
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
+      fireEvent.keyDown(window, { key: ' ' }) // 取り消し
+      expect(h1Text(container)).toBe('はい')
     })
 
     it('復元後に警告音が鳴れない状態なら「警告音停止中」表示が出る', () => {
