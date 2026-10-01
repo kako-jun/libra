@@ -22,6 +22,9 @@ describe('normalizeSettings', () => {
       highContrast: true,
       theme: 'dark',
       phrases: {},
+      hapticsEnabled: false,
+      hapticsStrength: 'strong',
+      hapticSoundWhenVoiceOff: true,
     }
     expect(normalizeSettings(input)).toEqual(input)
   })
@@ -269,6 +272,27 @@ describe('saveSettings', () => {
         current,
       )
       expect(Object.keys(next?.phrases ?? {})).toEqual(['moodRequest'])
+    })
+  })
+
+  describe('Issue #13: 触覚フィードバック設定', () => {
+    it('既定は ON・標準・音声OFFでは効果音なしで、型違いは既定値に戻す', () => {
+      expect(normalizeSettings({})).toMatchObject({
+        hapticsEnabled: true,
+        hapticsStrength: 'standard',
+        hapticSoundWhenVoiceOff: false,
+      })
+      expect(
+        normalizeSettings({
+          hapticsEnabled: 'x',
+          hapticsStrength: 'huge',
+          hapticSoundWhenVoiceOff: 1,
+        }),
+      ).toMatchObject({
+        hapticsEnabled: true,
+        hapticsStrength: 'standard',
+        hapticSoundWhenVoiceOff: false,
+      })
     })
   })
 })

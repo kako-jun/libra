@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   getAlarmAudioStatus,
   initAlarmVisibilityResume,
+  playTonePattern,
   resumeAlarmAudioContext,
   startAlarm,
   stopAlarm,
@@ -15,6 +16,7 @@ let mod: {
   stopAlarm: typeof stopAlarm
   initAlarmVisibilityResume: typeof initAlarmVisibilityResume
   getAlarmAudioStatus: typeof getAlarmAudioStatus
+  playTonePattern: typeof playTonePattern
 }
 
 class MockGain {
@@ -63,6 +65,19 @@ describe('alarm', () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     delete (window as unknown as { AudioContext?: unknown }).AudioContext
+  })
+
+  describe('playTonePattern (Issue #13: 振動の代替の効果音)', () => {
+    it('AudioContext が running なら、パターンの振動する区間の数だけ音を鳴らす', () => {
+      mod.resumeAlarmAudioContext() // AudioContext を作る(MockAudioContext は running)
+      mod.playTonePattern([80, 100, 80])
+      expect(beepCount).toBe(2)
+    })
+
+    it('AudioContext が無い・running でないときは何もしない(例外も出さない)', () => {
+      expect(() => mod.playTonePattern([80])).not.toThrow() // まだ作られていない
+      expect(beepCount).toBe(0)
+    })
   })
 
   it('startAlarm は即時に1回鳴らす', () => {

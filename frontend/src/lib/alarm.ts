@@ -96,6 +96,38 @@ function beep(): void {
   }
 }
 
+/**
+ * 振動の代替の短い効果音(Issue #13)。パターン(振動・休止・振動…の ms)をそのまま
+ * 音の長さ・合間にして鳴らす。AudioContext が running でなければ何もしない
+ * (待ってまとめて鳴らすことはしない。警告音とは別で、取りこぼしても致命的でない)。
+ */
+export function playTonePattern(pattern: number[], frequency = 520): void {
+  const ctx = audioContext
+  if (!ctx || ctx.state !== 'running') return
+  try {
+    let at = ctx.currentTime
+    pattern.forEach((ms, index) => {
+      const seconds = ms / 1000
+      if (index % 2 === 0) {
+        const oscillator = ctx.createOscillator()
+        const gain = ctx.createGain()
+        oscillator.type = 'sine'
+        oscillator.frequency.setValueAtTime(frequency, at)
+        gain.gain.setValueAtTime(0.0001, at)
+        gain.gain.exponentialRampToValueAtTime(0.2, at + Math.min(0.01, seconds / 2))
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds)
+        oscillator.connect(gain)
+        gain.connect(ctx.destination)
+        oscillator.start(at)
+        oscillator.stop(at + seconds + 0.02)
+      }
+      at += seconds
+    })
+  } catch {
+    // 効果音の再生に失敗しても、他の動作は続ける
+  }
+}
+
 /** 警告音を鳴らし始める。介助者が止めるまで一定間隔で繰り返す。 */
 export function startAlarm(repeatMs = 3000): void {
   resumeAlarmAudioContext()

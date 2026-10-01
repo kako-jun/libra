@@ -18,6 +18,7 @@ import {
 import { computeGridLayout } from './lib/gridLayout'
 import PhraseEditor from './PhraseEditor'
 import { createSwitchInput } from './lib/switchInput'
+import { HAPTIC_STRENGTHS, playFeedback, type FeedbackEvent } from './lib/feedback'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
@@ -51,11 +52,13 @@ const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
   'not-ready': 'オフライン準備: 未完了',
 }
 
-function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
+function speak(mode: Settings['voiceMode'], text: string, shortText = text, legacyVibrate = false) {
   window.speechSynthesis?.cancel()
   if (mode === 'off') return
   if (mode === 'tone') {
-    navigator.vibrate?.(35)
+    // 効果音だけ(バイブ)。触覚フィードバック(#13)が有効なら、そちらの区別できるパターンを
+    // 打ち消さないよう、ここでは振動しない。触覚が OFF のときだけ従来の短い振動を出す
+    if (legacyVibrate) navigator.vibrate?.(35)
     return
   }
   const utterance = new SpeechSynthesisUtterance(mode === 'short' ? shortText : text)
@@ -63,6 +66,12 @@ function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
   utterance.rate = 0.85
   utterance.pitch = 0.9
   window.speechSynthesis?.speak(utterance)
+}
+
+const HAPTIC_STRENGTH_LABELS: Record<Settings['hapticsStrength'], string> = {
+  light: '弱',
+  standard: '標準',
+  strong: '強',
 }
 
 const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
@@ -264,7 +273,7 @@ export default function App() {
   let messageAnnounceGrace = false
 
   const announce = (text: string, shortText = text) => {
-    speak(settings().voiceMode, text, shortText)
+    speak(settings().voiceMode, text, shortText, !settings().hapticsEnabled)
     if (settings().auditoryScan) messageAnnounceGrace = true
   }
 
@@ -279,12 +288,21 @@ export default function App() {
     window.speechSynthesis?.speak(utterance)
   }
 
-  const showMessage = (text: string, tone: Tone = 'neutral') => {
+  // Issue #13: 本人への触覚フィードバック。パターンは lib/feedback.ts に集約している
+  const feedback = (event: FeedbackEvent) =>
+    playFeedback(event, {
+      enabled: settings().hapticsEnabled,
+      strength: settings().hapticsStrength,
+      soundWhenVoiceOff: settings().hapticSoundWhenVoiceOff,
+      voiceMode: settings().voiceMode,
+    })
+
+  const showMessage = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     setMessage(text)
     setMessageTone(tone)
     setMessageHistory((items) => [{ text, tone }, ...items].slice(0, 5))
     document.documentElement.dataset.messageTone = tone
-    navigator.vibrate?.(tone === 'urgent' ? [60, 40, 60] : 35)
+    feedback(event ?? (tone === 'urgent' ? 'urgentMessage' : 'message'))
     announce(text)
   }
 
@@ -313,15 +331,15 @@ export default function App() {
 
   // 通常の伝達完了。緊急中は見出し(緊急表示)を上書きせず、副表示にだけ出す
   // （requirements.md §4.3: 緊急表示は介助者が解除するまで残り、本人入力で上書きされない）。
-  const completeTransmission = (text: string, tone: Tone = 'neutral') => {
+  const completeTransmission = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     if (emergencyActive()) {
       setEmergencySubMessage(text)
-      navigator.vibrate?.(35)
+      feedback(event ?? 'message')
       announce(text)
       goTo('home')
       return
     }
-    showMessage(text, tone)
+    showMessage(text, tone, event)
     setShowUndo(true)
     undoLapsRemaining = 1
     goTo('home')
@@ -364,6 +382,7 @@ export default function App() {
     setEmergencyDetails([])
     setEmergencySubMessage(null)
     stopAlarm()
+    feedback('cleared')
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
@@ -401,7 +420,9 @@ export default function App() {
         undoLapsRemaining = 0
         if (!alreadyActive) {
           setEmergencyDetails([])
-          showMessage(EMERGENCY_MESSAGE, 'urgent')
+          showMessage(EMERGENCY_MESSAGE, 'urgent', 'emergency')
+        } else {
+          feedback('emergency')
         }
         startAlarm(ALARM_REPEAT_MS)
         goTo('urgentDetail')
@@ -412,7 +433,7 @@ export default function App() {
         setEmergencyDetails((details) =>
           details.includes(action.label) ? details : [...details, action.label],
         )
-        navigator.vibrate?.([60, 40, 60])
+        feedback('urgentMessage')
         announce(`緊急です。来てください。${action.label}`, action.label)
         setShowUndo(false)
         goTo('home')
@@ -442,7 +463,9 @@ export default function App() {
         return
       }
       case 'message': {
-        completeTransmission(action.text, action.tone ?? 'neutral')
+        // はい・いいえは、本人が他人の反応なしに区別できる専用の振動パターンで返す
+        const event: FeedbackEvent = item.id === 'yes' ? 'yes' : item.id === 'no' ? 'no' : 'message'
+        completeTransmission(action.text, action.tone ?? 'neutral', event)
         return
       }
       case 'letterRow': {
@@ -502,6 +525,8 @@ export default function App() {
     const result = press(resynced, itemCount, now, scanConfig(), target?.index)
     setScanState(result.state)
     if (result.activatedIndex === null) return
+    // 入力が受理されたことを、まず軽い振動で返す。この後の伝達・緊急のパターンが置き換える
+    feedback('accepted')
     activateIndex(result.activatedIndex)
   }
 
@@ -515,6 +540,13 @@ export default function App() {
     },
     onActivate: (target) => handleSwitchOn(Date.now(), target),
     onProgress: setHoldProgress,
+  })
+
+  // 緊急の呼び出し中は、警告音と同じ周期で振動も繰り返し、まだ続いていることを本人が知れるようにする
+  createEffect(() => {
+    if (!emergencyActive()) return
+    const id = window.setInterval(() => feedback('emergencyActive'), ALARM_REPEAT_MS)
+    onCleanup(() => window.clearInterval(id))
   })
 
   // 緊急状態の保存。有効な間は内容の変化ごとに保存し、解除されたら保存ごと消す。
@@ -1003,6 +1035,47 @@ export default function App() {
                 </For>
               </div>
             </div>
+
+            <label class="caregiver-field caregiver-checkbox">
+              <input
+                type="checkbox"
+                checked={settings().hapticsEnabled}
+                onChange={(event) =>
+                  updateSettings({ hapticsEnabled: event.currentTarget.checked })
+                }
+              />
+              <span>本人への振動フィードバック（受理・はい/いいえ・緊急）</span>
+            </label>
+
+            <Show when={settings().hapticsEnabled}>
+              <div class="caregiver-field">
+                <span>振動の強さ</span>
+                <div class="caregiver-choice-options">
+                  <For each={HAPTIC_STRENGTHS}>
+                    {(strength) => (
+                      <button
+                        type="button"
+                        classList={{ active: settings().hapticsStrength === strength }}
+                        onClick={() => updateSettings({ hapticsStrength: strength })}
+                      >
+                        {HAPTIC_STRENGTH_LABELS[strength]}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </div>
+
+              <label class="caregiver-field caregiver-checkbox">
+                <input
+                  type="checkbox"
+                  checked={settings().hapticSoundWhenVoiceOff}
+                  onChange={(event) =>
+                    updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
+                  }
+                />
+                <span>振動できない端末では、音声OFFでも短い効果音で知らせる</span>
+              </label>
+            </Show>
 
             <div class="caregiver-field">
               <span>文字サイズ</span>
