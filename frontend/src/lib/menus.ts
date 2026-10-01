@@ -14,6 +14,8 @@ export type ScreenId =
   | 'painLocation'
   | 'moodRequest'
   | 'letters'
+  | 'lettersRow'
+  | 'lettersYesNo'
 
 export type ActionId =
   | { type: 'emergency' }
@@ -22,6 +24,7 @@ export type ActionId =
   | { type: 'back' }
   | { type: 'navigate'; screen: ScreenId }
   | { type: 'message'; text: string; tone?: Tone }
+  | { type: 'letterRow'; row: number }
   | { type: 'letterAppend'; char: string }
   | { type: 'letterBackspace' }
   | { type: 'letterCommit' }
@@ -45,6 +48,8 @@ export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   painLocation: 'discomfort',
   moodRequest: 'home',
   letters: 'home',
+  lettersRow: 'letters',
+  lettersYesNo: 'letters',
 }
 
 export const SCREEN_TITLES: Record<ScreenId, string> = {
@@ -55,6 +60,8 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   painLocation: '痛い場所',
   moodRequest: '快・要望',
   letters: '文字盤',
+  lettersRow: '文字盤・文字',
+  lettersYesNo: '文字盤・はい/いいえ',
 }
 
 const EMERGENCY_ITEM: MenuItem = {
@@ -119,6 +126,8 @@ export interface HomeMenuOptions {
   /** 緊急中は取り消しを出さない（requirements.md §4.3: 本人のスイッチ入力で上書き・取り消しされない）。
    *  この判定を App 側に置かず、ここで一元的に保証する。 */
   emergencyActive: boolean
+  /** 文字盤の文字段階(lettersRow)で表示する行の添字(LETTER_ROWS)。省略時は先頭の行 */
+  letterRow?: number
 }
 
 export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
@@ -179,19 +188,50 @@ export function buildMoodRequestMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen(phraseItems('moodRequest', phrases))
 }
 
-export const LETTERS = ['あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ']
+/** 文字盤の行。清音 46 字 + 長音「ー」(requirements.md §4.6)。濁点・半濁点・小書きは置かない */
+export const LETTER_ROWS: { name: string; chars: string[] }[] = [
+  { name: 'あ行', chars: ['あ', 'い', 'う', 'え', 'お'] },
+  { name: 'か行', chars: ['か', 'き', 'く', 'け', 'こ'] },
+  { name: 'さ行', chars: ['さ', 'し', 'す', 'せ', 'そ'] },
+  { name: 'た行', chars: ['た', 'ち', 'つ', 'て', 'と'] },
+  { name: 'な行', chars: ['な', 'に', 'ぬ', 'ね', 'の'] },
+  { name: 'は行', chars: ['は', 'ひ', 'ふ', 'へ', 'ほ'] },
+  { name: 'ま行', chars: ['ま', 'み', 'む', 'め', 'も'] },
+  { name: 'や行', chars: ['や', 'ゆ', 'よ'] },
+  { name: 'ら行', chars: ['ら', 'り', 'る', 'れ', 'ろ'] },
+  { name: 'わ行', chars: ['わ', 'を', 'ん', 'ー'] },
+]
 
+/** 文字盤の行段階: 緊急 / 戻る / あ〜わ行 / 確定 / 1字消す / はい・いいえ → */
 export function buildLettersMenu(): MenuItem[] {
-  const letterItems: MenuItem[] = LETTERS.map((char) => ({
-    id: `letter-${char}`,
-    label: char,
-    action: { type: 'letterAppend', char },
+  const rowItems: MenuItem[] = LETTER_ROWS.map((row, index) => ({
+    id: `letter-row-${index}`,
+    label: row.name,
+    action: { type: 'letterRow', row: index },
   }))
   return subScreen([
-    ...letterItems,
-    { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
+    ...rowItems,
     { id: 'commit', label: '確定', tone: 'positive', action: { type: 'letterCommit' } },
+    { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
+    navigate('letters-yesno-nav', 'はい・いいえ', 'lettersYesNo'),
   ])
+}
+
+/** 文字盤の文字段階: 緊急 / 戻る(行段階へ) / その行の文字 */
+export function buildLettersRowMenu(row = 0): MenuItem[] {
+  const chars = LETTER_ROWS[row]?.chars ?? LETTER_ROWS[0].chars
+  return subScreen(
+    chars.map((char) => ({
+      id: `letter-${char}`,
+      label: char,
+      action: { type: 'letterAppend', char } as ActionId,
+    })),
+  )
+}
+
+/** 入力途中の文字列への先読み(「○○？」)に即答する。戻ると入力途中の文字列は保持される */
+export function buildLettersYesNoMenu(): MenuItem[] {
+  return subScreen([message('yes', 'はい', 'はい', 'positive'), message('no', 'いいえ', 'いいえ')])
 }
 
 export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuItem[] {
@@ -210,5 +250,9 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
       return buildMoodRequestMenu(homeOptions.phrases)
     case 'letters':
       return buildLettersMenu()
+    case 'lettersRow':
+      return buildLettersRowMenu(homeOptions.letterRow)
+    case 'lettersYesNo':
+      return buildLettersYesNoMenu()
   }
 }
