@@ -865,7 +865,7 @@ describe('App', () => {
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
     })
 
-    it('緊急なしで解除ボタンを押しても取り消し履歴は消えない(A→解除→B→取り消し→A)', () => {
+    it('緊急なしの解除ボタンは無効で、取り消し履歴は消えない(A→解除→B→取り消し→A)', () => {
       const { container } = render(() => <App />)
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい (A)

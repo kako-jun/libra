@@ -21,6 +21,6 @@ It is not a hospital system replacement and does not replace a nurse call. The p
 - ~~Persist settings in localStorage~~ (done)
 - Add editable phrase sets
 - Add caregiver confirmation mode
-- Add scan speed controls
-- Add actual PWA icons and install copy
+- ~~Add scan speed controls~~ (done: caregiver menu "スキャン間隔")
+- ~~Add actual PWA icons~~ (icons done; install copy is still open)
 - Add Japanese / English display toggle
