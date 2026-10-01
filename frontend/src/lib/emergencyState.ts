@@ -3,6 +3,8 @@
 // 設定用のルートキー `libra`（settings.ts）とは別キー。設定のリセット・検証と混ぜない。
 // 有効期限は設けない（誤報の害より見逃しの害が大きい）。
 
+import { URGENT_DETAIL_LABELS } from './menus'
+
 export interface EmergencyState {
   /** 緊急が有効か。保存されるのは true のときだけ */
   active: true
@@ -20,7 +22,9 @@ export function normalizeEmergencyState(input: unknown): EmergencyState | null {
   const raw = input as Record<string, unknown>
   if (raw.active !== true) return null
   const details = Array.isArray(raw.details)
-    ? raw.details.filter((d): d is string => typeof d === 'string')
+    ? raw.details.filter(
+        (d): d is string => typeof d === 'string' && URGENT_DETAIL_LABELS.includes(d),
+      )
     : []
   return {
     active: true,
