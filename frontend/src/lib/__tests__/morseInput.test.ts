@@ -9,12 +9,13 @@ const config: MorseInputConfig = {
   wordGapMs: 4000,
 }
 
-function setup() {
+function setup(cfg: MorseInputConfig = config, paused: () => boolean = () => false) {
   const states: MorseState[] = []
   const events: Exclude<MorseEvent, null>[] = []
   const holds: (MorseSymbol | null)[] = []
   const input = createMorseInput({
-    getConfig: () => config,
+    getConfig: () => cfg,
+    isPaused: paused,
     onState: (s) => states.push(s),
     onEvent: (e) => events.push(e),
     onHold: (h) => holds.push(h),
@@ -126,5 +127,78 @@ describe('morseInput', () => {
     const { input, last } = setup()
     input.start('めか')
     expect(last().text).toBe('めか')
+  })
+
+  describe('ゆっくり押す人でも緊急に届く(押している間は確定・復帰を進めない)', () => {
+    it('900ms 押して 700ms 空ける、を5回繰り返しても緊急になる(押す+空ける > 文字の確定時間)', () => {
+      const { input, events, last } = setup()
+      input.start('')
+      for (let i = 0; i < 5; i += 1) {
+        input.down('k')
+        vi.advanceTimersByTime(900)
+        input.up('k')
+        vi.advanceTimersByTime(700)
+      }
+      expect(events).toEqual([{ type: 'emergency' }])
+      expect(last().text).toBe('') // 途中で「む」などが確定していない
+    })
+
+    it('長押しの境目 1.5 秒・文字の確定 0.5 秒という極端な設定でも、－5つで緊急になる', () => {
+      const extreme: MorseInputConfig = {
+        ...config,
+        dashMs: 1500,
+        letterGapMs: 500,
+        wordGapMs: 1500,
+      }
+      const { input, events } = setup(extreme)
+      input.start('')
+      for (let i = 0; i < 5; i += 1) {
+        input.down('k')
+        vi.advanceTimersByTime(1600)
+        input.up('k')
+        vi.advanceTimersByTime(300)
+      }
+      expect(events).toEqual([{ type: 'emergency' }])
+    })
+
+    it('押している間は文字が確定せず、離してから確定までの時間を数える', () => {
+      const { input, last, press } = setup()
+      input.start('')
+      press(100) // .
+      vi.advanceTimersByTime(1000)
+      input.down('k')
+      vi.advanceTimersByTime(5000) // 押しっぱなしの間に確定されない
+      expect(last().text).toBe('')
+      expect(last().code).toBe('.')
+      input.up('k') // - → .-  (い)
+      vi.advanceTimersByTime(1400)
+      expect(last().text).toBe('')
+      vi.advanceTimersByTime(200)
+      expect(last().text).toBe('い')
+    })
+
+    it('解放を取りこぼした押しっぱなしは 10 秒で捨てられ、無操作 30 秒でスキャンへ戻れる', () => {
+      const { input, events, last } = setup()
+      input.start('')
+      input.down('stuck')
+      vi.advanceTimersByTime(10500)
+      expect(last().code).toBe('') // 符号にはしない
+      expect(events).toEqual([])
+      vi.advanceTimersByTime(20000)
+      expect(events).toEqual([{ type: 'exit' }])
+    })
+  })
+
+  it('isPaused の間(介助者メニュー表示中など)は、文字確定も無操作での復帰も進めない', () => {
+    let paused = true
+    const { input, events, last, press } = setup(config, () => paused)
+    input.start('')
+    press(100)
+    vi.advanceTimersByTime(60000)
+    expect(last().code).toBe('.')
+    expect(events).toEqual([])
+    paused = false
+    vi.advanceTimersByTime(100)
+    expect(last().text).toBe('へ')
   })
 })

@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } from './lib/menus'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
-import { loadSettings, saveSettings, type Settings } from './lib/settings'
+import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
 import {
   getAlarmAudioStatus,
   initAlarmVisibilityResume,
@@ -19,7 +19,13 @@ import { computeGridLayout } from './lib/gridLayout'
 import PhraseEditor from './PhraseEditor'
 import { createSwitchInput } from './lib/switchInput'
 import { createMorseInput } from './lib/morseInput'
-import { formatMorseCode, type MorseState, type MorseSymbol } from './lib/morse'
+import {
+  effectiveDashMs,
+  formatMorseCode,
+  morseNoiseMs,
+  type MorseState,
+  type MorseSymbol,
+} from './lib/morse'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
@@ -300,33 +306,40 @@ export default function App() {
   const [morseHold, setMorseHold] = createSignal<MorseSymbol | null>(null)
   const morseConfig = () => {
     const s = settings()
-    // 押下時間の下限(#6)は雑音除去として効く。長押しの境目はそれより長くする
-    const noiseMs = Math.max(30, s.minHoldMs)
+    // 押下時間の下限(#6)は雑音除去として効く。長押しの境目はそれより長くする。
+    // 語の区切りが文字の確定より長いことは、設定の保存値で保証している(settings.ts)
     return {
-      noiseMs,
-      dashMs: Math.max(s.morseDashMs, noiseMs + 100),
+      noiseMs: morseNoiseMs(s.minHoldMs),
+      dashMs: effectiveDashMs(s.morseDashMs, s.minHoldMs),
       letterGapMs: s.morseLetterGapMs,
-      wordGapMs: Math.max(s.morseWordGapMs, s.morseLetterGapMs + 500),
+      wordGapMs: s.morseWordGapMs,
     }
   }
   const morseInput = createMorseInput({
     getConfig: morseConfig,
+    // 介助者メニューを開いている間は、裏で文字が確定したり復帰したりしないよう時間を止める
+    isPaused: caregiverMenuOpen,
     onHold: setMorseHold,
     onState: (state) => {
       const previous = morseText()
       setMorseView(state)
       setMorseText(state.text)
-      // 確定した文字を、音声モードに応じて読む
-      if (state.text.length > previous.length) {
-        const added = state.text.slice(previous.length).trim()
+      // 確定した文字を、音声モードに応じて読む。濁点・半濁点で文字が変わったとき(か→が)も読む。
+      // 1字消したときは読まない
+      if (state.text !== previous && state.text.length >= previous.length) {
+        const added = (
+          state.text.length > previous.length
+            ? state.text.slice(previous.length)
+            : (Array.from(state.text).pop() ?? '')
+        ).trim()
         if (added) announce(added, added)
       }
     },
     onEvent: (event) => {
       if (event.type === 'emergency') {
         // 長押し5つの連続: 確定を待たず即緊急(モールス中でも緊急に届く)
-        const emergencyItem = currentMenu()[0]
-        if (emergencyItem) runAction(emergencyItem)
+        // 並び順に頼らず、緊急のアクションを直接実行する
+        runAction({ id: 'emergency', label: '緊急', tone: 'urgent', action: { type: 'emergency' } })
       } else if (event.type === 'exit') {
         goTo('home')
       } else {
@@ -810,6 +823,7 @@ export default function App() {
       window.removeEventListener('contextmenu', onContextMenu)
       stopVisibilityResume()
       clearCaregiverIdleTimer()
+      morseInput.stop()
       stopAlarm()
     })
   })
@@ -891,13 +905,15 @@ export default function App() {
       </Show>
 
       <Show when={screen() === 'morse'}>
-        <section class="morse-panel" aria-live="polite" aria-label="モールス入力">
+        <section class="morse-panel" aria-label="モールス入力">
           <p class="morse-code" classList={{ holding: morseHold() !== null }}>
             {morseHold() !== null
               ? `${formatMorseCode(morseView()?.code ?? '')} ${morseHold() === '-' ? '－' : '・'}`.trim()
               : formatMorseCode(morseView()?.code ?? '') || '　'}
           </p>
-          <p class="morse-text">{morseText() || '短く押す＝・　長く押す＝－'}</p>
+          <p class="morse-text" aria-live="polite">
+            {morseText() || '短く押す＝・　長く押す＝－'}
+          </p>
           <ul class="morse-legend">
             <li>文字: 符号を入れて少し待つ</li>
             <li>語の区切り: もう少し待つ</li>
@@ -1085,13 +1101,19 @@ export default function App() {
                 checked={settings().morseEnabled}
                 onChange={(event) => updateSettings({ morseEnabled: event.currentTarget.checked })}
               />
-              <span>モールス入力を使う（上級者向け）</span>
+              <span>
+                モールス入力を使う（上級者向け。押下と解放を同時に送るシャッターでは長押しが使えません）
+              </span>
             </label>
 
             <Show when={settings().morseEnabled}>
               <label class="caregiver-field">
                 <span>
                   モールス: 長押し(－)の境目 {(settings().morseDashMs / 1000).toFixed(1)} 秒
+                  {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
+                  settings().morseDashMs
+                    ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
+                    : ''}
                 </span>
                 <input
                   type="range"
@@ -1115,9 +1137,17 @@ export default function App() {
                   max="3000"
                   step="100"
                   value={settings().morseLetterGapMs}
-                  onInput={(event) =>
-                    updateSettings({ morseLetterGapMs: Number(event.currentTarget.value) })
-                  }
+                  onInput={(event) => {
+                    const letterGap = Number(event.currentTarget.value)
+                    // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
+                    updateSettings({
+                      morseLetterGapMs: letterGap,
+                      morseWordGapMs: Math.max(
+                        settings().morseWordGapMs,
+                        letterGap + MORSE_WORD_GAP_MARGIN_MS,
+                      ),
+                    })
+                  }}
                 />
               </label>
               <label class="caregiver-field">

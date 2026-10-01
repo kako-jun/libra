@@ -23,11 +23,16 @@ export interface MorseInputOptions {
   onState: (state: MorseState) => void
   /** 緊急・スキャンへ戻る・伝達の確定 */
   onEvent: (event: Exclude<MorseEvent, null>) => void
+  /** 介助者メニューが開いている間など、時間経過(文字確定・無操作での復帰)を止めたいとき true */
+  isPaused?: () => boolean
   /** 押している間の符号(短点/長点の見込み)。押下中でなければ null */
   onHold?: (symbol: MorseSymbol | null) => void
 }
 
 const TICK_INTERVAL_MS = 50
+
+/** 解放を取りこぼして押しっぱなしになった入力を、符号にせず捨てる時間(ms)。無操作での復帰を妨げない */
+const MAX_HOLD_MS = 10000
 
 export interface MorseInput {
   /** モールス画面に入った。text は前回までの確定済み文字列 */
@@ -72,9 +77,19 @@ export function createMorseInput(options: MorseInputOptions): MorseInput {
 
   const tick = () => {
     if (!state) return
-    const before = state
-    const result = tickMorse(state, Date.now(), options.getConfig())
-    if (result.state !== before || result.event) apply(result)
+    if (options.isPaused?.()) return
+    const now = Date.now()
+    // 解放を取りこぼした押下が残り続けると、文字確定も無操作での復帰も止まってしまう
+    for (const [sourceId, startedAt] of Array.from(pressed.entries())) {
+      if (now - startedAt > MAX_HOLD_MS) pressed.delete(sourceId)
+    }
+    // 押している間は、文字の確定・語の区切り・無操作での復帰を進めない。時間は離した時刻から測る。
+    // (長押しの最中に確定されると、－5つの緊急の符号がばらけて届かなくなる)
+    if (pressed.size === 0) {
+      const before = state
+      const result = tickMorse(state, now, options.getConfig())
+      if (result.state !== before || result.event) apply(result)
+    }
     reportHold()
   }
 

@@ -128,6 +128,16 @@ export function formatMorseCode(code: string): string {
   return Array.from(code, (c) => (c === '.' ? '・' : '－')).join(' ')
 }
 
+/** この時間に満たない押下は接点のばたつき等の雑音として符号にしない(ms)。押下時間の下限(#6)が大きければそれに従う */
+export function morseNoiseMs(minHoldMs: number): number {
+  return Math.max(10, minHoldMs)
+}
+
+/** 実際に使う長押し(－)の境目(ms)。押下時間の下限(#6)より必ず長くする(下限未満は雑音で捨てるため) */
+export function effectiveDashMs(dashMs: number, minHoldMs: number): number {
+  return Math.max(dashMs, morseNoiseMs(minHoldMs) + 100)
+}
+
 export interface MorseConfig {
   /** 押している時間がこれ以上なら長押し(－)(ms) */
   dashMs: number
@@ -160,7 +170,8 @@ export interface MorseResult {
 }
 
 export function startMorse(now: number, text = ''): MorseState {
-  return { code: '', text, lastAt: now, wordMarked: false }
+  // 入り直した直後に、既存の文字列へ勝手に語の区切りを足さない(次の入力まで)
+  return { code: '', text, lastAt: now, wordMarked: true }
 }
 
 /** 符号(短点/長点)が1つ入力された。長押し5つの連続は確定を待たず緊急にする。 */
@@ -176,13 +187,21 @@ export function pushSymbol(state: MorseState, symbol: MorseSymbol, now: number):
   return { state: { ...state, code, lastAt: now, wordMarked: false }, event: null }
 }
 
-/** 末尾の文字へ濁点/半濁点を付ける。付けられなければ null */
+/** 濁点・半濁点の付いた文字から、付く前の文字を引く(ば→は、ぱ→は)。付いていなければそのまま */
+const UNMARKED: Record<string, string> = Object.fromEntries(
+  [...Object.entries(DAKUTEN), ...Object.entries(HANDAKUTEN)].map(([base, marked]) => [
+    marked,
+    base,
+  ]),
+)
+
+/** 末尾の文字へ濁点/半濁点を付ける(ば→ぱ のように付け替えもできる)。付けられなければ null */
 function applyMark(text: string, mark: '゛' | '゜'): string | null {
   const chars = Array.from(text)
   const last = chars[chars.length - 1]
   if (last === undefined) return null
   const map = mark === '゛' ? DAKUTEN : HANDAKUTEN
-  const marked = map[last]
+  const marked = map[UNMARKED[last] ?? last]
   if (!marked) return null
   chars[chars.length - 1] = marked
   return chars.join('')
@@ -190,7 +209,9 @@ function applyMark(text: string, mark: '゛' | '゜'): string | null {
 
 function commitCode(state: MorseState): MorseResult {
   const { code } = state
-  const cleared = { ...state, code: '' }
+  // 消した後・捨てた後に、考えている間の無入力で語の区切りが勝手に入らないよう、
+  // 次の入力まで語の区切りは入れない(wordMarked)
+  const cleared = { ...state, code: '', wordMarked: true }
 
   if (code === MORSE_CONTROL_CODES.exit) return { state: cleared, event: { type: 'exit' } }
   if (code === MORSE_CONTROL_CODES.backspace) {
@@ -210,7 +231,8 @@ function commitCode(state: MorseState): MorseResult {
     const next = applyMark(state.text, char)
     return { state: next === null ? cleared : { ...cleared, text: next }, event: null }
   }
-  return { state: { ...cleared, text: state.text + char }, event: null }
+  // 文字を足したあとは、続く無入力で語の区切りを入れてよい
+  return { state: { ...cleared, text: state.text + char, wordMarked: false }, event: null }
 }
 
 /**

@@ -298,5 +298,13 @@ describe('saveSettings', () => {
         morseWordGapMs: 4000,
       })
     })
+
+    it('語の区切りは文字の確定より常に 0.5 秒以上長くなる(保存値で保証)', () => {
+      const n = normalizeSettings({ morseLetterGapMs: 3000, morseWordGapMs: 1500 })
+      expect(n.morseLetterGapMs).toBe(3000)
+      expect(n.morseWordGapMs).toBe(3500)
+      const ok = normalizeSettings({ morseLetterGapMs: 1000, morseWordGapMs: 4000 })
+      expect(ok.morseWordGapMs).toBe(4000)
+    })
   })
 })

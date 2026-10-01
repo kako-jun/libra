@@ -6,6 +6,8 @@ import {
   MORSE_TABLE,
   MORSE_WORD_SEPARATOR,
   decodeMorse,
+  effectiveDashMs,
+  morseNoiseMs,
   formatMorseCode,
   pushSymbol,
   startMorse,
@@ -208,5 +210,102 @@ describe('モールス入力の状態遷移', () => {
       state = tickMorse(state, MORSE_IDLE_EXIT_MS + config.letterGapMs, config).state
       expect(tickMorse(state, MORSE_IDLE_EXIT_MS + 5000, config).event).toBeNull()
     })
+  })
+
+  describe('語の区切りを勝手に入れない', () => {
+    it('1字消したあとは、次の入力まで語の区切りを入れない', () => {
+      let { result, at } = type(startMorse(0, 'あい'), MORSE_CONTROL_CODES.backspace, 0)
+      const state = tickMorse(result.state, at + config.wordGapMs * 3, config).state
+      expect(state.text).toBe('あ')
+      ;({ result, at } = type(state, '..-', at + config.wordGapMs * 3)) // う
+      expect(result.state.text).toBe('あう')
+    })
+
+    it('該当なしの符号を捨てたあとも入れない', () => {
+      const { result, at } = type(startMorse(0, 'あ'), '.......', 0)
+      expect(tickMorse(result.state, at + config.wordGapMs * 3, config).state.text).toBe('あ')
+    })
+
+    it('既存の文字列を持って入り直した直後も入れない', () => {
+      const state = tickMorse(startMorse(0, 'あい'), config.wordGapMs + 1, config).state
+      expect(state.text).toBe('あい')
+    })
+
+    it('文字を足したあとは、無入力が続くと入れる', () => {
+      const { result, at } = type(startMorse(0, 'あ'), '.-', 0)
+      expect(tickMorse(result.state, at + config.wordGapMs, config).state.text).toBe('あい　')
+    })
+  })
+
+  it('半濁点・濁点は付け替えもできる(ば→ぱ、ぱ→ば)', () => {
+    let { result, at } = type(startMorse(0, 'ば'), MORSE_TABLE['゜'], 0)
+    expect(result.state.text).toBe('ぱ')
+    ;({ result, at } = type(result.state, MORSE_TABLE['゛'], at))
+    expect(result.state.text).toBe('ば')
+  })
+
+  it('長押しの境目は押下時間の下限より必ず長く、雑音の下限は 10ms 以上', () => {
+    expect(effectiveDashMs(500, 0)).toBe(500)
+    expect(effectiveDashMs(500, 600)).toBe(700)
+    expect(effectiveDashMs(150, 2000)).toBe(2100)
+    expect(morseNoiseMs(0)).toBe(10)
+    expect(morseNoiseMs(800)).toBe(800)
+  })
+
+  it('符号表を全件固定値で照合する(誤った書き換えを検出)', () => {
+    const expected: Record<string, string> = {
+      あ: '--.--',
+      い: '.-',
+      う: '..-',
+      え: '-.---',
+      お: '.-...',
+      か: '.-..',
+      き: '-.-..',
+      く: '...-',
+      け: '-.--',
+      こ: '----',
+      さ: '-.-.-',
+      し: '--.-.',
+      す: '---.-',
+      せ: '.---.',
+      そ: '---.',
+      た: '-.',
+      ち: '..-.',
+      つ: '.--.',
+      て: '.-.--',
+      と: '..-..',
+      な: '.-.',
+      に: '-.-.',
+      ぬ: '....',
+      ね: '--.-',
+      の: '..--',
+      は: '-...',
+      ひ: '--..-',
+      ふ: '--..',
+      へ: '.',
+      ほ: '-..',
+      ま: '-..-',
+      み: '..-.-',
+      む: '-',
+      め: '-...-',
+      も: '-..-.',
+      や: '.--',
+      ゆ: '-..--',
+      よ: '--',
+      ら: '...',
+      り: '--.',
+      る: '-.--.',
+      れ: '---',
+      ろ: '.-.-',
+      わ: '-.-',
+      ゐ: '.-..-',
+      ゑ: '.--..',
+      を: '.---',
+      ん: '.-.-.',
+      '゛': '..',
+      '゜': '..--.',
+      ー: '.--.-',
+    }
+    expect(MORSE_TABLE).toEqual(expected)
   })
 })

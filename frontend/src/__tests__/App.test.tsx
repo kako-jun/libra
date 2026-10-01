@@ -618,8 +618,9 @@ describe('App', () => {
 
   it('Issue #14: モールス中はスキャンのカーソルが動かず、押下は項目を選ばない', () => {
     const { container } = enterMorse()
+    const before = scanningLabel(container)
     vi.advanceTimersByTime(10000)
-    expect(container.querySelector('.tile.scanning')).not.toBeNull() // 隠れた格子の状態だけ
+    expect(scanningLabel(container)).toBe(before) // カーソルは動かない
     expect(container.querySelector('.grid-board.is-hidden')).not.toBeNull()
     sendCode('.-')
     expect(h1Text(container)).not.toBe('緊急です。来てください')
@@ -636,6 +637,27 @@ describe('App', () => {
     expect(oscillatorStartCount).toBeGreaterThan(0)
     expect(container.querySelector('.morse-panel')).toBeNull() // スキャンの緊急詳細へ
     expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('Issue #14: ゆっくり押す人(0.9秒押して0.7秒空ける)でも、－5つで緊急に届く', () => {
+    const { container } = enterMorse()
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+      vi.advanceTimersByTime(900)
+      fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+      vi.advanceTimersByTime(700)
+    }
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #14: 介助者メニューを開いている間は、裏で語の区切りが入ったり自動復帰したりしない', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    openCaregiverMenu(container) // 開くまでの2秒で「い」が確定する
+    expect(morseTextOf(container)).toBe('い')
+    vi.advanceTimersByTime(40000) // 語の区切り(4秒)も無操作の復帰(30秒)も、裏では進まない
+    expect(morseTextOf(container)).toBe('い')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
   it('Issue #14: 直前に誤って短押しが入っていても、続けて長押し5つで緊急になる', () => {
