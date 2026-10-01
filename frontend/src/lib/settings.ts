@@ -3,6 +3,7 @@
 
 import { normalizePhraseSets, type PhraseSets } from './phrases'
 import type { ActivateOn } from './switchInput'
+import { HAPTIC_STRENGTHS, type HapticStrength } from './feedback'
 
 export type VoiceMode = 'off' | 'tone' | 'short' | 'full'
 
@@ -23,6 +24,14 @@ export interface Settings {
   minHoldMs: number
   /** Issue #6: 決定のタイミング。既定 press(押した瞬間) */
   activateOn: ActivateOn
+  /** Issue #13: 本人への触覚フィードバック(振動)。既定 ON */
+  hapticsEnabled: boolean
+  /** 振動の強さ(パターンの振動する長さ)。既定 standard */
+  hapticsStrength: HapticStrength
+  /** 振動できない端末の効果音代替を、音声 OFF のときも鳴らすか。既定 OFF */
+  hapticSoundWhenVoiceOff: boolean
+  /** 振動に加えて、いつも短い効果音でも返すか。振動モーターのない端末向け。既定 OFF */
+  hapticSoundAlso: boolean
   /** Issue #14: モールス入力を使うか。既定 OFF(上級者向け。ホームに入口が出るのは ON のときだけ) */
   morseEnabled: boolean
   /** モールス: 長押し(－)とみなす押下時間(ms)。既定 500、範囲 150〜1500 */
@@ -51,6 +60,10 @@ export const DEFAULT_SETTINGS: Settings = {
   debounceMs: 500,
   minHoldMs: 0,
   activateOn: 'press',
+  hapticsEnabled: true,
+  hapticsStrength: 'standard',
+  hapticSoundWhenVoiceOff: false,
+  hapticSoundAlso: false,
   morseEnabled: false,
   morseDashMs: 500,
   morseLetterGapMs: 1500,
@@ -109,6 +122,17 @@ export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTI
     activateOn: ACTIVATE_ONS.includes(raw.activateOn as ActivateOn)
       ? (raw.activateOn as ActivateOn)
       : base.activateOn,
+    hapticsEnabled:
+      typeof raw.hapticsEnabled === 'boolean' ? raw.hapticsEnabled : base.hapticsEnabled,
+    hapticsStrength: HAPTIC_STRENGTHS.includes(raw.hapticsStrength as HapticStrength)
+      ? (raw.hapticsStrength as HapticStrength)
+      : base.hapticsStrength,
+    hapticSoundWhenVoiceOff:
+      typeof raw.hapticSoundWhenVoiceOff === 'boolean'
+        ? raw.hapticSoundWhenVoiceOff
+        : base.hapticSoundWhenVoiceOff,
+    hapticSoundAlso:
+      typeof raw.hapticSoundAlso === 'boolean' ? raw.hapticSoundAlso : base.hapticSoundAlso,
     morseEnabled: typeof raw.morseEnabled === 'boolean' ? raw.morseEnabled : base.morseEnabled,
     morseDashMs: clampNumber(
       raw.morseDashMs,

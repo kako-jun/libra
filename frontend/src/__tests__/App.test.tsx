@@ -4,6 +4,7 @@ import App from '../App'
 import * as alarmModule from '../lib/alarm'
 import * as wakeLockModule from '../lib/wakeLock'
 import * as offlineReadyModule from '../lib/offlineReady'
+import { HAPTIC_PATTERNS, feedbackPattern } from '../lib/feedback'
 
 // requirements.md 既定値: intervalMs=1500, headHoldMultiplier=2(=headHoldMs 3000), debounceMs=500
 const HEAD_HOLD_MS = 3000
@@ -578,6 +579,89 @@ describe('App', () => {
     vi.advanceTimersByTime(100)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
     expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  // Issue #13: 本人への触覚フィードバック(はい/いいえ・緊急・解除が区別できる)
+  const vibrateMock = () => (navigator as unknown as { vibrate: ReturnType<typeof vi.fn> }).vibrate
+  const lastVibration = () => {
+    const calls = vibrateMock().mock.calls
+    return calls[calls.length - 1]?.[0]
+  }
+
+  it('Issue #13: はい(長め1回)といいえ(長め2回)を別パターンで返す', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+    vi.advanceTimersByTime(HEAD_HOLD_MS)
+    selectByLabel(container, 'いいえ')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.no)
+  })
+
+  it('Issue #13: 画面遷移(受理)は軽い短い振動、緊急は専用パターン', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '不快')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.accepted)
+    selectByLabel(container, '緊急')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.emergency)
+  })
+
+  it('Issue #13: 緊急の呼び出し中は警告音と同じ周期で振動し、解除で専用パターンが出て止まる', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急
+    vibrateMock().mockClear()
+    vi.advanceTimersByTime(3000)
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.emergencyActive)
+
+    openCaregiverMenu(container)
+    clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '緊急解除')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.cleared)
+    vibrateMock().mockClear()
+    vi.advanceTimersByTime(10000)
+    expect(vibrateMock()).not.toHaveBeenCalled()
+  })
+
+  it('Issue #13: 緊急中に本人が「はい」を選んだ直後は、周期の振動が重なって打ち消さない', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
+    selectByLabel(container, '戻る') // home へ
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+    vi.advanceTimersByTime(2900) // 周期(3秒)が来ても、直前の本人の振動を打ち消さない
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+    vi.advanceTimersByTime(3200)
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.emergencyActive) // その後は周期の振動に戻る
+  })
+
+  it('Issue #13: 設定の強さが振動パターンに反映され、OFF なら振動しない', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ hapticsStrength: 'strong' }))
+    const strong = render(() => <App />)
+    selectByLabel(strong.container, 'はい')
+    expect(lastVibration()).toEqual(feedbackPattern('yes', 'strong'))
+    strong.unmount()
+    cleanup()
+
+    window.localStorage.setItem('libra', JSON.stringify({ hapticsEnabled: false }))
+    vibrateMock().mockClear()
+    const off = render(() => <App />)
+    selectByLabel(off.container, 'はい')
+    expect(vibrateMock()).not.toHaveBeenCalled()
+  })
+
+  it('Issue #13: 触覚OFFで音声モードが「効果音だけ」のときは、従来の短い振動を出す', () => {
+    window.localStorage.setItem(
+      'libra',
+      JSON.stringify({ hapticsEnabled: false, voiceMode: 'tone' }),
+    )
+    const { container } = render(() => <App />)
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toBe(35)
+  })
+
+  it('Issue #13: 触覚ONでは、音声モード「効果音だけ」の短い振動がはい/いいえのパターンを打ち消さない', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ voiceMode: 'tone' }))
+    const { container } = render(() => <App />)
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
   })
 
   // Issue #14: モールス。押している長さが符号になる(短い=・、長い=－)
@@ -1272,11 +1356,16 @@ describe('App', () => {
       expect(second.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
       expect(second.container.querySelector('.emergency-sub')?.textContent).toContain('最新: はい')
       expect(oscillatorStartCount).toBeGreaterThan(0)
+      expect(vibrate).not.toHaveBeenCalled() // 復元の直後に、緊急発生時の振動は出さない
       vi.advanceTimersByTime(3000)
       const afterOneCycle = oscillatorStartCount
       vi.advanceTimersByTime(3000)
       expect(oscillatorStartCount).toBeGreaterThan(afterOneCycle)
-      expect(vibrate).not.toHaveBeenCalled()
+      // 呼び出し中の周期の振動(#13)だけが、警告音と同じ周期で出る
+      expect(vibrate).toHaveBeenCalled()
+      for (const call of vibrate.mock.calls) {
+        expect(call[0]).toEqual(HAPTIC_PATTERNS.emergencyActive)
+      }
       expect(speak).not.toHaveBeenCalled()
     })
 
