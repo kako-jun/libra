@@ -313,6 +313,8 @@ export default function App() {
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
+    // 解除後に緊急メッセージが履歴に残ると、解除→伝達→取り消しで赤い緊急文言が戻るため履歴を空にする
+    setMessageHistory([])
     // S2: 解除後に緊急中分の古い取り消しが復活しないようにする
     setShowUndo(false)
     undoLapsRemaining = 0
