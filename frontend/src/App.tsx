@@ -16,6 +16,7 @@ import {
   type OfflineReadyStatus,
 } from './lib/offlineReady'
 import { computeGridLayout } from './lib/gridLayout'
+import { applyHeadingFit } from './lib/fitHeading'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const ALARM_REPEAT_MS = 3000
@@ -128,6 +129,50 @@ export default function App() {
   // 緊急の詳細（苦しい/痛い等）は積み上げ式。緊急の再選択では消さない(S1)
   const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>([])
   const [message, setMessage] = createSignal(DEFAULT_MESSAGE)
+
+  // Issue #22: 上部メッセージ(h1)を 1 行に収まる最大サイズで表示する。再計算は
+  // メッセージ変更・幅変化・回転/リサイズ・文字サイズ設定変更・Web フォント読み込み後だけ
+  // (rAF でまとめる。毎フレームの DOM 測定はしない)
+  let headingEl: HTMLHeadingElement | undefined
+  let headingFitFrame: number | undefined
+  const scheduleHeadingFit = () => {
+    if (headingFitFrame !== undefined) return
+    headingFitFrame = window.requestAnimationFrame(() => {
+      headingFitFrame = undefined
+      if (headingEl) applyHeadingFit(headingEl)
+    })
+  }
+  createEffect(() => {
+    message()
+    settings().fontSize
+    scheduleHeadingFit()
+  })
+  onMount(() => {
+    const panel = headingEl?.parentElement
+    let lastWidth = panel?.clientWidth ?? 0
+    const observer =
+      panel && typeof ResizeObserver === 'function'
+        ? new ResizeObserver(() => {
+            // h1 のサイズ変更で panel の高さが変わっても再計算しない(幅の変化だけ見る)
+            if (panel.clientWidth === lastWidth) return
+            lastWidth = panel.clientWidth
+            scheduleHeadingFit()
+          })
+        : null
+    if (panel) observer?.observe(panel)
+    window.addEventListener('resize', scheduleHeadingFit)
+    window.addEventListener('orientationchange', scheduleHeadingFit)
+    const fonts = document.fonts
+    void fonts?.ready.then(scheduleHeadingFit)
+    fonts?.addEventListener?.('loadingdone', scheduleHeadingFit)
+    onCleanup(() => {
+      observer?.disconnect()
+      window.removeEventListener('resize', scheduleHeadingFit)
+      window.removeEventListener('orientationchange', scheduleHeadingFit)
+      fonts?.removeEventListener?.('loadingdone', scheduleHeadingFit)
+      if (headingFitFrame !== undefined) window.cancelAnimationFrame(headingFitFrame)
+    })
+  })
   const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
   const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>([])
   // 緊急中に選ばれた伝達（はい等）は見出しを上書きせず、この副表示にのみ出す
@@ -620,7 +665,7 @@ export default function App() {
   return (
     <main class="app-shell">
       <section class="message-panel" aria-live="polite">
-        <h1>{message()}</h1>
+        <h1 ref={headingEl}>{message()}</h1>
         <Show when={emergencyActive() && emergencyDetails().length > 0}>
           <ul class="emergency-details">
             <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
@@ -647,7 +692,7 @@ export default function App() {
             onContextMenu={(event) => event.preventDefault()}
             aria-label="介助者メニュー（2秒長押し）"
           >
-            介助
+            介助者用
           </button>
 
           <Show when={!alarmAudioRunning()}>

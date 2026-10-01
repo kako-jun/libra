@@ -22,7 +22,7 @@
 // - letters-scroll: 横向き小画面(844x390/667x375/320x568)で文字盤のスキャン対象が下段に
 //   来ても、document自体はスクロールせず(window.scrollY===0)、メッセージパネル(h1)と
 //   スキャン対象タイルの両方がビューポート内にあることを確認する
-// - no-overlap(4巡目 nit): 固定配置の「介助」ボタン・「警告音停止中」表示が、ホーム・
+// - no-overlap(4巡目 nit): 固定配置の「介助者用」ボタン・「警告音停止中」表示が、ホーム・
 //   文字盤のタイル領域と重なっていないことを844x390/390x844/1024x768で確認する
 
 import http from 'node:http'
@@ -418,7 +418,7 @@ async function checkLettersScrollLayout(chromium, port) {
 }
 
 /**
- * kako-jun 追加指示: 「介助」ボタンと「警告音停止中」表示は position:fixed をやめ、
+ * kako-jun 追加指示: 「介助者用」ボタンと「警告音停止中」表示は position:fixed をやめ、
  * メッセージ欄右上(.message-panel-controls)へ移した。下部の帯(約130px)は廃止し、
  * タイル領域は画面下端まで使う。このチェックは新配置で以下を確認する:
  * - メッセージ文字(h1)と介助ボタン・警告音停止中表示が重ならない
@@ -479,7 +479,7 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       )
     }
     if (info.h1 && info.button && rectsOverlap(info.h1, info.button)) {
-      failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助」ボタンと重なっている`)
+      failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助者用」ボタンと重なっている`)
     }
     if (info.h1 && info.hint && rectsOverlap(info.h1, info.hint)) {
       if (await isHintActuallyVisibleAt(info.h1, info.hint)) {
@@ -491,7 +491,7 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
     for (const tile of info.tiles) {
       if (info.board && !rectsOverlap(tile, info.board)) continue // スクロールアウトしている
       if (info.button && rectsOverlap(tile, info.button)) {
-        failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助」ボタンと重なっている`)
+        failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助者用」ボタンと重なっている`)
       }
       if (info.hint && rectsOverlap(tile, info.hint)) {
         if (await isHintActuallyVisibleAt(tile, info.hint)) {
