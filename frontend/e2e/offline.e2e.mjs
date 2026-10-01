@@ -22,7 +22,7 @@
 // - letters-scroll: 横向き小画面(844x390/667x375/320x568)で文字盤のスキャン対象が下段に
 //   来ても、document自体はスクロールせず(window.scrollY===0)、メッセージパネル(h1)と
 //   スキャン対象タイルの両方がビューポート内にあることを確認する
-// - no-overlap(4巡目 nit): 固定配置の「介助」ボタン・「警告音停止中」表示が、ホーム・
+// - no-overlap(4巡目 nit): 固定配置の「介助者用」ボタン・「警告音停止中」表示が、ホーム・
 //   文字盤のタイル領域と重なっていないことを844x390/390x844/1024x768で確認する
 
 import http from 'node:http'
@@ -336,11 +336,13 @@ async function checkLettersScrollLayout(chromium, port) {
       await page.keyboard.press('Space')
       await page.waitForTimeout(200)
 
-      // letters screen: 確定 が最後の項目(緊急,戻る,10文字,1字消す,確定)
-      const itemCount = await page.evaluate(
-        () => document.querySelectorAll('.grid-board .tile').length,
+      // letters screen(2 段階文字盤の行段階): 緊急,戻る,あ〜わ行,確定,1字消す,はい・いいえ。
+      // 確定は末尾ではないので、ラベルから位置を引く
+      const commitIndex = await page.evaluate(() =>
+        [...document.querySelectorAll('.grid-board .tile')].findIndex(
+          (tile) => tile.querySelector('.tile-label')?.textContent === '確定',
+        ),
       )
-      const commitIndex = itemCount - 1
       await page.waitForTimeout(3000 + (commitIndex - 1) * 1500 + 150)
 
       const info = await page.evaluate(() => {
@@ -418,7 +420,7 @@ async function checkLettersScrollLayout(chromium, port) {
 }
 
 /**
- * kako-jun 追加指示: 「介助」ボタンと「警告音停止中」表示は position:fixed をやめ、
+ * kako-jun 追加指示: 「介助者用」ボタンと「警告音停止中」表示は position:fixed をやめ、
  * メッセージ欄右上(.message-panel-controls)へ移した。下部の帯(約130px)は廃止し、
  * タイル領域は画面下端まで使う。このチェックは新配置で以下を確認する:
  * - メッセージ文字(h1)と介助ボタン・警告音停止中表示が重ならない
@@ -479,7 +481,7 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       )
     }
     if (info.h1 && info.button && rectsOverlap(info.h1, info.button)) {
-      failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助」ボタンと重なっている`)
+      failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助者用」ボタンと重なっている`)
     }
     if (info.h1 && info.hint && rectsOverlap(info.h1, info.hint)) {
       if (await isHintActuallyVisibleAt(info.h1, info.hint)) {
@@ -491,7 +493,7 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
     for (const tile of info.tiles) {
       if (info.board && !rectsOverlap(tile, info.board)) continue // スクロールアウトしている
       if (info.button && rectsOverlap(tile, info.button)) {
-        failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助」ボタンと重なっている`)
+        failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助者用」ボタンと重なっている`)
       }
       if (info.hint && rectsOverlap(tile, info.hint)) {
         if (await isHintActuallyVisibleAt(tile, info.hint)) {
@@ -516,6 +518,136 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       await checkScreen(page, name, 'letters')
 
       await context.close()
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+
+  return failures
+}
+
+/**
+ * Issue #22 (PR#23 レビュー S1/M1): 上部メッセージ(h1)が 1 行に収まる最大サイズで表示されることを、
+ * 実ブラウザの計算済みスタイル・描画行数・はみ出しで確認する。
+ * - 既定文言・緊急文言・やや長い文言: 1 行にできるときは data-fit="single" + white-space:nowrap +
+ *   描画行数 1、いずれの場合も .message-panel が横にはみ出さない(scrollWidth <= clientWidth)
+ *   (Chromium は字送りを実サイズで整数 px に丸めるため、100px 測定の線形縮尺だけだと
+ *   数 px はみ出す。候補サイズでの測り直し(M1 修正)が外れるとここで落ちる)
+ * - 既定・緊急は全 viewport で必ず data-fit="single"
+ * - 長文(DOM で h1 を直接長くして resize で再計算させる): data-fit が付かず従来の折り返し
+ */
+async function checkHeadingFit(chromium, port) {
+  const base = `http://localhost:${port}/`
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+  const viewports = [
+    ['1024x768', 1024, 768],
+    ['844x390', 844, 390],
+    ['1920x1080', 1920, 1080],
+  ]
+  const MEDIUM = '選んだ内容がここに大きく出ますよ、これは少し長めの文です'
+  const LONG = 'とても長いメッセージが入った場合は小さくしても一行に収まらないので折り返す。'.repeat(3)
+
+  const probe = (page) =>
+    page.evaluate(() => {
+      const h1 = document.querySelector('h1')
+      const panel = document.querySelector('.message-panel')
+      const range = document.createRange()
+      range.selectNodeContents(h1)
+      const tops = new Set([...range.getClientRects()].map((r) => Math.round(r.top)))
+      return {
+        text: h1.textContent,
+        fit: h1.getAttribute('data-fit'),
+        whiteSpace: getComputedStyle(h1).whiteSpace,
+        lines: tops.size,
+        fontSize: getComputedStyle(h1).fontSize,
+        scrollWidth: panel.scrollWidth,
+        clientWidth: panel.clientWidth,
+      }
+    })
+
+  const settle = async (page) => {
+    await page.evaluate(() => document.fonts.ready)
+    await page.waitForTimeout(250)
+  }
+
+  try {
+    for (const [name, width, height] of viewports) {
+      const context = await browser.newContext({ viewport: { width, height } })
+      const page = await context.newPage()
+      await page.goto(base)
+      await settle(page)
+
+      const checkNoOverflow = (label, info) => {
+        if (info.scrollWidth > info.clientWidth) {
+          failures.push(
+            `[heading-fit ${name} ${label}] .message-panel が横にはみ出している ` +
+              `(scrollWidth=${info.scrollWidth} clientWidth=${info.clientWidth} font=${info.fontSize})`,
+          )
+        }
+      }
+      const checkSingle = (label, info, required) => {
+        if (info.fit !== 'single') {
+          if (required) failures.push(`[heading-fit ${name} ${label}] data-fit="single" が付いていない`)
+          return
+        }
+        if (info.whiteSpace !== 'nowrap') {
+          failures.push(`[heading-fit ${name} ${label}] white-space が nowrap ではない(${info.whiteSpace})`)
+        }
+        if (info.lines !== 1) {
+          failures.push(`[heading-fit ${name} ${label}] 1 行ではなく ${info.lines} 行で描画されている`)
+        }
+      }
+
+      // 既定文言
+      const initial = await probe(page)
+      checkSingle('default', initial, true)
+      checkNoOverflow('default', initial)
+
+      // やや長い文言(DOM で直接差し替え、resize で再計算させる)
+      await page.evaluate((text) => {
+        document.querySelector('h1').textContent = text
+        window.dispatchEvent(new Event('resize'))
+      }, MEDIUM)
+      await settle(page)
+      const medium = await probe(page)
+      checkSingle('medium', medium, false)
+      checkNoOverflow('medium', medium)
+
+      // 長文: 下限サイズでも 1 行に収まらないので data-fit は付かない
+      await page.evaluate((text) => {
+        document.querySelector('h1').textContent = text
+        window.dispatchEvent(new Event('resize'))
+      }, LONG)
+      await settle(page)
+      const long = await probe(page)
+      if (long.fit !== null) {
+        failures.push(`[heading-fit ${name} long] 長文なのに data-fit="${long.fit}" が付いている`)
+      }
+      if (long.whiteSpace === 'nowrap') {
+        failures.push(`[heading-fit ${name} long] 長文なのに white-space: nowrap になっている`)
+      }
+      checkNoOverflow('long', long)
+      await context.close()
+
+      // 緊急文言(先頭待機中に先頭の「緊急」を実行する。既定 headHold 3000ms 内)
+      const emergencyContext = await browser.newContext({ viewport: { width, height } })
+      const emergencyPage = await emergencyContext.newPage()
+      await emergencyPage.goto(base)
+      await emergencyPage.waitForTimeout(300)
+      await emergencyPage.keyboard.press('Space')
+      await settle(emergencyPage)
+      const emergency = await probe(emergencyPage)
+      if (!emergency.text?.includes('緊急')) {
+        failures.push(`[heading-fit ${name} emergency] 緊急文言になっていない(${emergency.text})`)
+      } else {
+        checkSingle('emergency', emergency, true)
+        checkNoOverflow('emergency', emergency)
+      }
+      await emergencyContext.close()
     }
   } finally {
     await browser.close()
@@ -727,32 +859,45 @@ async function checkFontSizeMonotonicity(chromium, port) {
       }
     }
 
-    // 見出し(h1)の標準時サイズが、文字サイズ設定の影響を受けない旧来の式のとおりか確認する
-    // (3巡目 must-1: h1 は --font-scale の対象外に戻した。実測基準値は3巡目の指示どおり)
+    // 見出し(h1)のサイズが、文字サイズ設定の影響を受けないことを確認する
+    // (3巡目 must-1: h1 は --font-scale の対象外に戻した)。基準値は旧来の式(clamp の上限側)で、
+    // Issue #22 の 1 行フィットは「収まらないときだけ」これより縮めるので、
+    // 基準値の 0.9〜1.0 倍に収まり、かつ標準/大/特大で同じサイズであることを見る
     const oldH1Expected = [
       { vw: 1024, vh: 768, px: 53.76 },
       { vw: 768, vh: 1024, px: 71.68 },
       { vw: 390, vh: 844, px: 38.4 },
     ]
     for (const { vw, vh, px } of oldH1Expected) {
-      const context = await browser.newContext({ viewport: { width: vw, height: vh } })
-      const page = await context.newPage()
-      await page.addInitScript(
-        (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
-        { fontSize: 'standard', intervalMs: 5000 },
-      )
-      await page.goto(base)
-      await page.waitForTimeout(200)
-      await page.evaluate(() => document.fonts.ready)
-      const h1Size = await page.evaluate(() =>
-        parseFloat(getComputedStyle(document.querySelector('h1')).fontSize),
-      )
-      if (Math.abs(h1Size - px) > 0.5) {
+      const sizes = []
+      for (const font of FONTS) {
+        const context = await browser.newContext({ viewport: { width: vw, height: vh } })
+        const page = await context.newPage()
+        await page.addInitScript(
+          (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
+          { fontSize: font, intervalMs: 5000 },
+        )
+        await page.goto(base)
+        await page.waitForTimeout(200)
+        await page.evaluate(() => document.fonts.ready)
+        await page.waitForTimeout(250)
+        sizes.push(
+          await page.evaluate(() =>
+            parseFloat(getComputedStyle(document.querySelector('h1')).fontSize),
+          ),
+        )
+        await context.close()
+      }
+      if (sizes[0] > px + 0.5 || sizes[0] < px * 0.9) {
         failures.push(
-          `[h1-baseline ${vw}x${vh}] h1=${h1Size.toFixed(2)}px(期待 ${px}px、旧来の式からずれている)`,
+          `[h1-baseline ${vw}x${vh}] h1=${sizes[0].toFixed(2)}px(期待 ${px * 0.9}〜${px}px、旧来の式からずれている)`,
         )
       }
-      await context.close()
+      if (sizes.some((size) => Math.abs(size - sizes[0]) > 0.1)) {
+        failures.push(
+          `[h1-baseline ${vw}x${vh}] h1 のサイズが文字サイズ設定で変わる(${sizes.map((x) => x.toFixed(2)).join(' / ')})`,
+        )
+      }
     }
 
     // PR#16 5巡目 must-G: cqi/cqb係数をブレークポイントごとに戻し、--label-ratioを
@@ -855,6 +1000,16 @@ async function main() {
     overlapFailures.forEach((f) => console.error(f))
   }
   allFailures.push(...overlapFailures)
+  port += 1
+
+  console.log(`--- checking: heading-fit (port ${port}) ---`)
+  const headingFitFailures = await checkHeadingFit(chromium, port)
+  if (headingFitFailures.length === 0) {
+    console.log('[heading-fit] OK')
+  } else {
+    headingFitFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...headingFitFailures)
   port += 1
 
   console.log(`--- checking: xlarge-fit (port ${port}) ---`)

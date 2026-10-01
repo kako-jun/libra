@@ -73,6 +73,9 @@ describe('App', () => {
     // 未実装への実際の問い合わせ(非同期)が他のテストの検証タイミングに影響しないよう、
     // 既定では何もしないモックにしておく
     vi.spyOn(offlineReadyModule, 'recheckOfflineReady').mockResolvedValue(undefined)
+    // Issue #22: 見出しフィットが canvas を使う。jsdom は getContext 未実装で警告を出すので
+    // 「canvas 不可(測れない)」として黙らせる(フィット自体の検証は fitHeading のテスト側)
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
   })
 
   afterEach(() => {
@@ -252,6 +255,13 @@ describe('App', () => {
     expect(container.querySelector('.caregiver-overlay')).toBeNull()
     expect(h1Text(container)).not.toBe('緊急です。来てください')
     expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('Issue #22: 介助者ボタンは「介助者用」と表示され、aria-label は介助者メニュー（2秒長押し）', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    expect(button.textContent?.trim()).toBe('介助者用')
+    expect(button.getAttribute('aria-label')).toBe('介助者メニュー（2秒長押し）')
   })
 
   it('介助者ボタンを2秒以上長押しするとメニューが開く', () => {

@@ -373,11 +373,25 @@ button {
    40dvh の上限だけは cqi で抑える(幅の狭い画面での安全網。通常時は 7vh 側が先に
    効くため、実質的な挙動は以前の「7vh のみ」の式と変わらない) */
 h1 {
+  /* Issue #22: 1 行に収まるならその最大サイズで表示する。--h1-max/--h1-min は既存 clamp の
+     上限・下限(JS が computed で読む)。--h1-fit と data-fit は fitHeading(App.tsx)が設定する。
+     下限でも収まらない長文は data-fit なし=従来どおり 16ch で折り返す */
+  --h1-max: clamp(2.35rem, min(7vh, 14cqi), 5.4rem);
+  --h1-min: 2.35rem;
   margin: 0;
   max-width: 16ch;
-  font-size: clamp(2.35rem, min(7vh, 14cqi), 5.4rem);
+  font-size: var(--h1-max);
   line-height: 1.05;
   letter-spacing: 0;
+}
+
+h1[data-fit] {
+  max-width: none;
+}
+
+h1[data-fit='single'] {
+  font-size: var(--h1-fit);
+  white-space: nowrap;
 }
 
 /* 見出し(h1)の6割程度の大きさ。緊急の赤背景上でも読める配色にする。
@@ -765,9 +779,12 @@ h1 {
      (通常/肯定/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text、
      :root[data-message-tone]で上書き)にする */
   z-index: 20;
+  /* Issue #22: 表記を「介助者用」にしたため幅は内容に合わせる(正方形の固定幅をやめる) */
+  width: auto;
   min-width: 44px;
   min-height: 44px;
-  padding: 6px 10px;
+  padding: 6px 12px;
+  white-space: nowrap;
   color: var(--caregiver-button-text);
   background: var(--caregiver-button-bg);
   border: none;
@@ -991,7 +1008,8 @@ h1 {
 
   h1 {
     /* PR#16 3巡目 must-1(should-b 撤回。上の基本ルールと同じ理由) */
-    font-size: clamp(1.5rem, min(5.5vh, 16cqi), 2.4rem);
+    --h1-max: clamp(1.5rem, min(5.5vh, 16cqi), 2.4rem);
+    --h1-min: 1.5rem;
   }
 
   /* 狭い画面ではメッセージ列の幅を大きく削らないよう、右上の警告音停止中表示を
