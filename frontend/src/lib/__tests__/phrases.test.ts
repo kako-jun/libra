@@ -3,7 +3,9 @@ import {
   DEFAULT_PHRASES,
   MAX_PHRASES_PER_GROUP,
   PHRASE_GROUPS,
+  PHRASE_GROUP_SCREEN,
   SCREEN_ITEM_LIMIT,
+  composePainText,
   isOverItemLimit,
   newPhraseId,
   phraseProblem,
@@ -140,7 +142,11 @@ describe('緊急と取り違える項目・画面の項目数', () => {
     }
     for (const sets of [undefined, phrases]) {
       expect(
-        buildMenu(group, { showUndo: false, emergencyActive: false, phrases: sets }).length,
+        buildMenu(PHRASE_GROUP_SCREEN[group], {
+          showUndo: false,
+          emergencyActive: false,
+          phrases: sets,
+        }).length,
       ).toBe(screenItemCount(group, sets))
     }
   })
@@ -158,16 +164,20 @@ describe('編集しても緊急が先頭・戻るが2番目から外れない(�
     moodRequest: [{ id: 'emergency', label: 'はい', text: 'はい' }],
   }
 
-  it.each(['discomfort', 'discomfortOther', 'painLocation', 'moodRequest'] as const)(
-    '%s: 空・予約ラベル・上限いっぱいでも items[0]=緊急, items[1]=戻る',
-    (screen) => {
-      for (const phrases of [undefined, {}, hostile]) {
-        const items = buildMenu(screen, { showUndo: false, emergencyActive: false, phrases })
-        expect(items[0].action).toEqual({ type: 'emergency' })
-        expect(items[1].action).toEqual({ type: 'back' })
-      }
-    },
-  )
+  it.each([
+    'discomfort',
+    'discomfortOther',
+    'painLocation',
+    'moodRequest',
+    'requests',
+    'feelings',
+  ] as const)('%s: 空・予約ラベル・上限いっぱいでも items[0]=緊急, items[1]=戻る', (screen) => {
+    for (const phrases of [undefined, {}, hostile]) {
+      const items = buildMenu(screen, { showUndo: false, emergencyActive: false, phrases })
+      expect(items[0].action).toEqual({ type: 'emergency' })
+      expect(items[1].action).toEqual({ type: 'back' })
+    }
+  })
 
   it('ホームの並び(緊急→はい→いいえ→…)はフレーズ編集の影響を受けない', () => {
     const items = buildMenu('home', { showUndo: false, emergencyActive: false, phrases: hostile })
@@ -186,7 +196,27 @@ describe('編集しても緊急が先頭・戻るが2番目から外れない(�
 
   it('下位画面へ進むタイルの予告に、編集後のフレーズが反映される', () => {
     const phrases = { moodRequest: [{ id: 'a', label: 'テレビ', text: 'テレビを見たいです' }] }
-    const home = buildMenu('home', { showUndo: false, emergencyActive: false, phrases })
-    expect(home.find((i) => i.id === 'mood-nav')?.preview).toBe('テレビ…')
+    const moodRequest = buildMenu('moodRequest', {
+      showUndo: false,
+      emergencyActive: false,
+      phrases,
+    })
+    expect(moodRequest.find((i) => i.id === 'requests-nav')?.preview).toBe('テレビ…')
+  })
+})
+
+describe('composePainText(痛みの強さ)', () => {
+  it('「痛いです」の前に強さを入れる', () => {
+    expect(composePainText('胸が痛いです', 'very')).toBe('胸がとても痛いです')
+    expect(composePainText('背中・腰が痛いです', 'quite')).toBe('背中・腰がかなり痛いです')
+    expect(composePainText('頭が痛いです', 'little')).toBe('頭が少し痛いです')
+  })
+
+  it('「痛いです」を含まない(介助者が編集した)全文は、末尾に強さを足す', () => {
+    expect(composePainText('首が重い', 'very')).toBe('首が重い（とても）')
+  })
+
+  it('既定の痛い場所はすべて強さを入れられる(「痛いです」を含む)', () => {
+    for (const p of DEFAULT_PHRASES.painLocation) expect(p.text).toContain('痛いです')
   })
 })

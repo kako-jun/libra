@@ -380,7 +380,7 @@ describe('App', () => {
     const first = render(() => <App />)
     openCaregiverMenu(first.container)
     const editor = first.container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '快・要望')
+    clickButton(editor, '要望')
     clickButton(editor, 'フレーズを追加')
     const rows = editor.querySelectorAll('.phrase-row')
     const inputs = rows[rows.length - 1].querySelectorAll('input')
@@ -395,6 +395,7 @@ describe('App', () => {
 
     const second = render(() => <App />)
     selectByLabel(second.container, '快・要望')
+    selectByLabel(second.container, '要望')
     selectByLabel(second.container, 'テレビ')
     expect(h1Text(second.container)).toBe('テレビを見たいです')
   })
@@ -404,7 +405,7 @@ describe('App', () => {
     const view = render(() => <App />)
     openCaregiverMenu(view.container)
     const editor = view.container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '快・要望')
+    clickButton(editor, '要望')
     const input = editor.querySelector('.phrase-row input') as HTMLInputElement
     input.focus()
     return { ...view, input }
@@ -465,7 +466,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
     const editor = container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '快・要望')
+    clickButton(editor, '要望')
     expect(editor.querySelector('[role="note"]')?.textContent).toContain('表示されません')
   })
 
@@ -476,6 +477,7 @@ describe('App', () => {
     )
     const { container } = render(() => <App />)
     selectByLabel(container, '快・要望')
+    selectByLabel(container, '要望')
     expect(scanningLabel(container)).toBe('緊急')
     expect(tileLabels(container).slice(0, 3)).toEqual(['緊急', '戻る', 'テレビ'])
   })
@@ -488,10 +490,11 @@ describe('App', () => {
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
     const editor = container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '快・要望')
+    clickButton(editor, '要望')
     clickButton(editor, 'この画面を既定に戻す')
     clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
     selectByLabel(container, '快・要望')
+    selectByLabel(container, '要望')
     expect(tileLabels(container)).toContain('大丈夫')
     expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').phrases).toEqual({})
   })
@@ -506,7 +509,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
     const editor = container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '快・要望')
+    clickButton(editor, '要望')
     expect(editor.querySelector('[role="alert"]')?.textContent).toContain('9 項目')
   })
 
@@ -579,6 +582,62 @@ describe('App', () => {
     vi.advanceTimersByTime(100)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
     expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  // Issue #12: 痛みの強さ・快/要望・気分
+  it('Issue #12: 不快→痛い→胸→とても が「胸がとても痛いです」(緊急色)として伝わる', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '不快')
+    selectByLabel(container, '痛い')
+    selectByLabel(container, '胸')
+    expect(tileLabels(container)).toEqual(['緊急', '戻る', '場所だけ', '少し', 'かなり', 'とても'])
+    expect(h1Text(container)).not.toBe('胸がとても痛いです') // まだ伝達していない
+    selectByLabel(container, 'とても')
+    expect(h1Text(container)).toBe('胸がとても痛いです')
+    expect(document.documentElement.dataset.messageTone).toBe('urgent')
+    expect(scanningLabel(container)).toBe('緊急') // ホーム先頭に戻る
+  })
+
+  it('Issue #12: 場所だけでも伝達できる(強さを選ばなくてよい)', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '不快')
+    selectByLabel(container, '痛い')
+    selectByLabel(container, '頭')
+    selectByLabel(container, '場所だけ')
+    expect(h1Text(container)).toBe('頭が痛いです')
+  })
+
+  it('Issue #12: 強さの画面でも先頭は緊急、戻るで痛い場所へ戻れる', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '不快')
+    selectByLabel(container, '痛い')
+    selectByLabel(container, 'おなか')
+    expect(scanningLabel(container)).toBe('緊急')
+    selectByLabel(container, '戻る')
+    expect(tileLabels(container)).toContain('おなか') // 痛い場所の一覧
+  })
+
+  it('Issue #12: 快・要望の「続けて」を選ぶと伝わる', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '快・要望')
+    selectByLabel(container, '続けて')
+    expect(h1Text(container)).toBe('続けてください')
+  })
+
+  it('Issue #12: 快・要望 → 要望 → 大丈夫、快・要望 → 気分 → 不安 の2段階で伝わる', () => {
+    const first = render(() => <App />)
+    selectByLabel(first.container, '快・要望')
+    selectByLabel(first.container, '要望')
+    selectByLabel(first.container, '大丈夫')
+    expect(h1Text(first.container)).toBe('大丈夫です')
+    first.unmount()
+    cleanup()
+
+    const second = render(() => <App />)
+    selectByLabel(second.container, '快・要望')
+    selectByLabel(second.container, '気分')
+    selectByLabel(second.container, '不安')
+    expect(h1Text(second.container)).toBe('不安です')
   })
 
   // Issue #13: 本人への触覚フィードバック(はい/いいえ・緊急・解除が区別できる)

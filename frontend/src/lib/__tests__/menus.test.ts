@@ -19,6 +19,9 @@ const ALL_SCREENS: ScreenId[] = [
   'lettersRow',
   'lettersYesNo',
   'morse',
+  'painIntensity',
+  'requests',
+  'feelings',
 ]
 
 const homeOptions = { showUndo: false, emergencyActive: false }
@@ -121,7 +124,7 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
   it('快・要望タイルの予告は遷移先(moodRequest)から自動生成される', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
     const moodTile = items.find((item) => item.id === 'mood-nav')
-    expect(moodTile?.preview).toBe('大丈夫・ありがとう・眠りたい・静かにしてほしい…')
+    expect(moodTile?.preview).toBe('続けて・やめて・もっと・変えて…')
   })
 
   it('文字盤タイルの予告は遷移先(letters)から自動生成される', () => {
@@ -209,5 +212,117 @@ describe('モールス入力(Issue #14)', () => {
     const items = buildMenu('morse', homeOptions)
     expect(items.map((i) => i.action.type)).toEqual(['emergency', 'back'])
     expect(PARENT_SCREEN.morse).toBe('home')
+  })
+})
+
+describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
+  const chest = { label: '胸', text: '胸が痛いです', tone: 'urgent' as const }
+  const head = { label: '頭', text: '頭が痛いです' }
+
+  it('痛い場所を選ぶと強さの画面へ進む(場所だけでは伝達しない)', () => {
+    const items = buildMenu('painLocation', homeOptions)
+    const place = items.slice(2)
+    expect(place.length).toBeGreaterThan(0)
+    for (const item of place) expect(item.action.type).toBe('painLocation')
+    expect(items.find((i) => i.label === '胸')?.action).toEqual({
+      type: 'painLocation',
+      label: '胸',
+      text: '胸が痛いです',
+      tone: 'urgent',
+    })
+  })
+
+  it('強さの画面: 緊急→戻る→場所だけ→少し→かなり→とても(8項目以内)', () => {
+    const items = buildMenu('painIntensity', { ...homeOptions, pain: head })
+    expect(items.map((i) => i.label)).toEqual([
+      '緊急',
+      '戻る',
+      '場所だけ',
+      '少し',
+      'かなり',
+      'とても',
+    ])
+    expect(items.length).toBeLessThanOrEqual(8)
+  })
+
+  it('強さの画面の伝達文: 胸→とても = 胸がとても痛いです(緊急色)', () => {
+    const items = buildMenu('painIntensity', { ...homeOptions, pain: chest })
+    const text = (label: string) => {
+      const item = items.find((i) => i.label === label)
+      return item?.action.type === 'message' ? item.action : null
+    }
+    expect(text('とても')).toEqual({ type: 'message', text: '胸がとても痛いです', tone: 'urgent' })
+    expect(text('かなり')?.text).toBe('胸がかなり痛いです')
+    expect(text('少し')?.text).toBe('胸が少し痛いです')
+    expect(text('場所だけ')?.text).toBe('胸が痛いです')
+  })
+
+  it('「とても」は緊急色、場所の色(胸=緊急色)は少し/かなり/場所だけにも引き継ぐ', () => {
+    const head1 = buildMenu('painIntensity', { ...homeOptions, pain: head })
+    const tone = (items: typeof head1, label: string) => items.find((i) => i.label === label)?.tone
+    expect(tone(head1, 'とても')).toBe('urgent')
+    expect(tone(head1, '少し')).toBeUndefined()
+    const chest1 = buildMenu('painIntensity', { ...homeOptions, pain: chest })
+    expect(tone(chest1, '少し')).toBe('urgent')
+    expect(tone(chest1, '場所だけ')).toBe('urgent')
+  })
+
+  it('場所が未選択でも、強さの画面は緊急・戻るを持つ', () => {
+    const items = buildMenu('painIntensity', homeOptions)
+    expect(items.map((i) => i.action.type)).toEqual(['emergency', 'back'])
+  })
+
+  it('強さの画面の戻る先は痛い場所', () => {
+    expect(PARENT_SCREEN.painIntensity).toBe('painLocation')
+  })
+
+  it('快・要望: 緊急→戻る→続けて→やめて→もっと→変えて→要望→気分(8項目)', () => {
+    const items = buildMenu('moodRequest', homeOptions)
+    expect(items.map((i) => i.label)).toEqual([
+      '緊急',
+      '戻る',
+      '続けて',
+      'やめて',
+      'もっと',
+      '変えて',
+      '要望',
+      '気分',
+    ])
+    expect(items.length).toBeLessThanOrEqual(8)
+  })
+
+  it('続けて・やめて・もっと・変えて は、はい・いいえと同じく編集できない固定項目(編集内容の影響を受けない)', () => {
+    const phrases = { moodRequest: [], feelings: [] }
+    const items = buildMenu('moodRequest', { ...homeOptions, phrases })
+    expect(items.slice(2, 6).map((i) => i.label)).toEqual(['続けて', 'やめて', 'もっと', '変えて'])
+    const texts = items.slice(2, 6).map((i) => (i.action.type === 'message' ? i.action.text : null))
+    expect(texts).toEqual([
+      '続けてください',
+      'やめてください',
+      'もっとお願いします',
+      '変えてください',
+    ])
+  })
+
+  it('要望(これまでの大丈夫・ありがとう…)と気分(不安・さみしい・落ち着かない)は快・要望の下位画面', () => {
+    expect(PARENT_SCREEN.requests).toBe('moodRequest')
+    expect(PARENT_SCREEN.feelings).toBe('moodRequest')
+    expect(buildMenu('requests', homeOptions).map((i) => i.label)).toEqual([
+      '緊急',
+      '戻る',
+      '大丈夫',
+      'ありがとう',
+      '眠りたい',
+      '静かにしてほしい',
+      '家族に会いたい',
+      '話したい',
+    ])
+    expect(buildMenu('feelings', homeOptions).map((i) => i.label)).toEqual([
+      '緊急',
+      '戻る',
+      '不安',
+      'さみしい',
+      '落ち着かない',
+    ])
   })
 })

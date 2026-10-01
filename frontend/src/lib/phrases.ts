@@ -5,9 +5,14 @@
 // 遷移項目は menus.ts のビルダーが構造で固定するため、編集内容がどうであっても
 // 先頭が緊急・2番目が戻る(§4.1)は崩れない。
 
-import type { Tone } from './menus'
+import type { ScreenId, Tone } from './menus'
 
-export type PhraseGroup = 'discomfort' | 'discomfortOther' | 'painLocation' | 'moodRequest'
+export type PhraseGroup =
+  | 'discomfort'
+  | 'discomfortOther'
+  | 'painLocation'
+  | 'moodRequest'
+  | 'feelings'
 
 export interface Phrase {
   id: string
@@ -26,13 +31,25 @@ export const PHRASE_GROUPS: PhraseGroup[] = [
   'discomfortOther',
   'painLocation',
   'moodRequest',
+  'feelings',
 ]
 
 export const PHRASE_GROUP_LABELS: Record<PhraseGroup, string> = {
   discomfort: '不快',
   discomfortOther: '不快・その他',
   painLocation: '痛い場所',
-  moodRequest: '快・要望',
+  // 快・要望の中の「要望 →」。快・要望の最上位(続けて/やめて/もっと/変えて)は編集できない固定項目
+  moodRequest: '要望',
+  feelings: '気分',
+}
+
+/** 各フレーズの一覧を表示する画面 */
+export const PHRASE_GROUP_SCREEN: Record<PhraseGroup, ScreenId> = {
+  discomfort: 'discomfort',
+  discomfortOther: 'discomfortOther',
+  painLocation: 'painLocation',
+  moodRequest: 'requests',
+  feelings: 'feelings',
 }
 
 /** 1画面の項目数の目安(緊急・戻る・遷移項目を含む)。超えたら警告する(requirements.md §4.1) */
@@ -49,6 +66,7 @@ export const FIXED_ITEM_COUNT: Record<PhraseGroup, number> = {
   discomfortOther: 2,
   painLocation: 2,
   moodRequest: 2,
+  feelings: 2,
 }
 
 /** 編集で作らせない表示ラベル(応答や操作と取り違える・位置を奪うのを防ぐ) */
@@ -92,6 +110,11 @@ export const DEFAULT_PHRASES: Record<PhraseGroup, Phrase[]> = {
     { id: 'quiet', label: '静かにしてほしい', text: '静かにしてほしいです' },
     { id: 'family', label: '家族に会いたい', text: '家族に会いたいです' },
     { id: 'talk', label: '話したい', text: '話したいです' },
+  ],
+  feelings: [
+    { id: 'anxious', label: '不安', text: '不安です' },
+    { id: 'lonely', label: 'さみしい', text: 'さみしいです' },
+    { id: 'restless', label: '落ち着かない', text: '落ち着かないです' },
   ],
 }
 
@@ -180,4 +203,23 @@ export function newPhraseId(existing: Phrase[]): string {
   let n = existing.length + 1
   while (used.has(`custom-${n}`)) n += 1
   return `custom-${n}`
+}
+
+/** 痛みの強さ(Issue #12)。場所を選んだあとに選ぶ */
+export type PainIntensity = 'little' | 'quite' | 'very'
+
+export const PAIN_INTENSITY_WORDS: Record<PainIntensity, string> = {
+  little: '少し',
+  quite: 'かなり',
+  very: 'とても',
+}
+
+/**
+ * 痛い場所の全文に強さを入れる。「胸が痛いです」→「胸がとても痛いです」。
+ * 全文に「痛いです」が無い(介助者が自由に編集した)ときは、末尾に（とても）を足す。
+ */
+export function composePainText(text: string, intensity: PainIntensity): string {
+  const word = PAIN_INTENSITY_WORDS[intensity]
+  if (text.includes('痛いです')) return text.replace('痛いです', `${word}痛いです`)
+  return `${text}（${word}）`
 }

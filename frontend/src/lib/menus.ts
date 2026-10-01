@@ -2,7 +2,14 @@
 // 構造で保証するビルダー。副作用は持たない（実行そのものは ActionId を App.tsx が解釈する）。
 // 正本: docs/requirements.md §2, §4
 
-import { phrasesFor, type PhraseGroup, type PhraseSets } from './phrases'
+import {
+  PAIN_INTENSITY_WORDS,
+  composePainText,
+  phrasesFor,
+  type PainIntensity,
+  type PhraseGroup,
+  type PhraseSets,
+} from './phrases'
 
 export type Tone = 'neutral' | 'urgent' | 'calm' | 'positive'
 
@@ -12,7 +19,10 @@ export type ScreenId =
   | 'discomfort'
   | 'discomfortOther'
   | 'painLocation'
+  | 'painIntensity'
   | 'moodRequest'
+  | 'requests'
+  | 'feelings'
   | 'letters'
   | 'lettersRow'
   | 'lettersYesNo'
@@ -25,6 +35,7 @@ export type ActionId =
   | { type: 'back' }
   | { type: 'navigate'; screen: ScreenId }
   | { type: 'message'; text: string; tone?: Tone }
+  | { type: 'painLocation'; label: string; text: string; tone?: Tone }
   | { type: 'letterRow'; row: number }
   | { type: 'letterAppend'; char: string }
   | { type: 'letterBackspace' }
@@ -47,7 +58,10 @@ export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   discomfort: 'home',
   discomfortOther: 'discomfort',
   painLocation: 'discomfort',
+  painIntensity: 'painLocation',
   moodRequest: 'home',
+  requests: 'moodRequest',
+  feelings: 'moodRequest',
   letters: 'home',
   lettersRow: 'letters',
   lettersYesNo: 'letters',
@@ -60,7 +74,10 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   discomfort: '不快',
   discomfortOther: '不快・その他',
   painLocation: '痛い場所',
+  painIntensity: '痛みの強さ',
   moodRequest: '快・要望',
+  requests: '要望',
+  feelings: '気分',
   letters: '文字盤',
   lettersRow: '文字盤・文字',
   lettersYesNo: '文字盤・はい/いいえ',
@@ -118,10 +135,29 @@ function navigate(id: string, label: string, screen: ScreenId, phrases?: PhraseS
 
 /** 介助者が編集できるフレーズ項目(Issue #8)。編集内容がなければ既定値 */
 function phraseItems(group: PhraseGroup, phrases?: PhraseSets): MenuItem[] {
-  return phrasesFor(group, phrases).map((p) => message(p.id, p.label, p.text, p.tone))
+  return phrasesFor(group, phrases).map((p) =>
+    group === 'painLocation'
+      ? // 痛い場所は、選んだあとに強さを選ぶ(Issue #12)
+        {
+          id: p.id,
+          label: p.label,
+          tone: p.tone,
+          action: { type: 'painLocation', label: p.label, text: p.text, tone: p.tone },
+        }
+      : message(p.id, p.label, p.text, p.tone),
+  )
+}
+
+/** 痛い場所として選ばれた項目(強さの画面で使う) */
+export interface PainChoice {
+  label: string
+  text: string
+  tone?: Tone
 }
 
 export interface HomeMenuOptions {
+  /** 痛みの強さの画面で、直前に選んだ痛い場所(Issue #12) */
+  pain?: PainChoice
   /** モールス入力を使うか(Issue #14)。介助者が ON にしたときだけホームに入口を出す */
   morseEnabled?: boolean
   /** 介助者が編集したフレーズ(Issue #8)。省略時は既定のプリセット */
@@ -190,12 +226,56 @@ export function buildPainLocationMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen(phraseItems('painLocation', phrases))
 }
 
-// テレビ・音楽は #8（フレーズ編集）で介助者が追加できる。1画面8項目以内の枠に収めるため既定からは撤去。
+/**
+ * 痛みの強さ(Issue #12): 緊急 / 戻る / 場所だけ / 少し / かなり / とても。
+ * 「場所だけ」を先頭に置き、強さを選べない・選びたくない場合でも最短で伝えられる。
+ * 「とても」は緊急色。例: 不快→痛い→胸→とても →「胸がとても痛いです」。
+ */
+export function buildPainIntensityMenu(pain?: PainChoice): MenuItem[] {
+  if (!pain) return subScreen([])
+  const tone = (intensity?: PainIntensity): Tone | undefined =>
+    intensity === 'very' ? 'urgent' : pain.tone
+  const intensityItem = (intensity: PainIntensity): MenuItem =>
+    message(
+      `pain-${intensity}`,
+      PAIN_INTENSITY_WORDS[intensity],
+      composePainText(pain.text, intensity),
+      tone(intensity),
+    )
+  return subScreen([
+    message('pain-only', '場所だけ', pain.text, pain.tone),
+    intensityItem('little'),
+    intensityItem('quite'),
+    intensityItem('very'),
+  ])
+}
+
+/**
+ * 快・要望(Issue #12): 二値の入口「続けて・やめて」「もっと・変えて」を最上位に置き、
+ * これまでの要望は「要望 →」、気分(不安・さみしい・落ち着かない)は「気分 →」に2段階化する。
+ * 続けて/やめて/もっと/変えて は、はい・いいえと同じく編集できない固定項目。
+ */
 export function buildMoodRequestMenu(phrases?: PhraseSets): MenuItem[] {
+  return subScreen([
+    message('continue', '続けて', '続けてください', 'positive'),
+    message('stop', 'やめて', 'やめてください'),
+    message('more', 'もっと', 'もっとお願いします', 'positive'),
+    message('change', '変えて', '変えてください'),
+    navigate('requests-nav', '要望', 'requests', phrases),
+    navigate('feelings-nav', '気分', 'feelings', phrases),
+  ])
+}
+
+/** 快・要望 → 要望(大丈夫・ありがとう・眠りたい…)。介助者が編集できる */
+export function buildRequestsMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen(phraseItems('moodRequest', phrases))
 }
 
-/** 文字盤の行。清音 46 字 + 長音「ー」(requirements.md §4.6)。濁点・半濁点・小書きは置かない */
+/** 快・要望 → 気分(不安・さみしい・落ち着かない)。介助者が編集できる */
+export function buildFeelingsMenu(phrases?: PhraseSets): MenuItem[] {
+  return subScreen(phraseItems('feelings', phrases))
+}
+
 export const LETTER_ROWS: { name: string; chars: string[] }[] = [
   { name: 'あ行', chars: ['あ', 'い', 'う', 'え', 'お'] },
   { name: 'か行', chars: ['か', 'き', 'く', 'け', 'こ'] },
@@ -258,8 +338,14 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
       return buildDiscomfortOtherMenu(homeOptions.phrases)
     case 'painLocation':
       return buildPainLocationMenu(homeOptions.phrases)
+    case 'painIntensity':
+      return buildPainIntensityMenu(homeOptions.pain)
     case 'moodRequest':
       return buildMoodRequestMenu(homeOptions.phrases)
+    case 'requests':
+      return buildRequestsMenu(homeOptions.phrases)
+    case 'feelings':
+      return buildFeelingsMenu(homeOptions.phrases)
     case 'letters':
       return buildLettersMenu()
     case 'lettersRow':
