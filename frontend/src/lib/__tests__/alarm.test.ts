@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   getAlarmAudioStatus,
   initAlarmVisibilityResume,
+  playTonePattern,
   resumeAlarmAudioContext,
   startAlarm,
   stopAlarm,
@@ -15,6 +16,7 @@ let mod: {
   stopAlarm: typeof stopAlarm
   initAlarmVisibilityResume: typeof initAlarmVisibilityResume
   getAlarmAudioStatus: typeof getAlarmAudioStatus
+  playTonePattern: typeof playTonePattern
 }
 
 class MockGain {
@@ -34,15 +36,22 @@ class MockOscillator {
 }
 
 let beepCount = 0
+let lastContext: { state: string }
+const createdOscillators: MockOscillator[] = []
 
 class MockAudioContext {
   state: string = 'running'
   currentTime = 0
   destination = {}
   resume = vi.fn().mockResolvedValue(undefined)
+  constructor() {
+    lastContext = this
+  }
   createOscillator() {
     beepCount += 1
-    return new MockOscillator()
+    const oscillator = new MockOscillator()
+    createdOscillators.push(oscillator)
+    return oscillator
   }
   createGain() {
     return new MockGain()
@@ -53,6 +62,7 @@ describe('alarm', () => {
   beforeEach(async () => {
     vi.useFakeTimers()
     beepCount = 0
+    createdOscillators.length = 0
     vi.resetModules()
     ;(window as unknown as { AudioContext?: unknown }).AudioContext = MockAudioContext
     mod = await import('../alarm')
@@ -63,6 +73,34 @@ describe('alarm', () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     delete (window as unknown as { AudioContext?: unknown }).AudioContext
+  })
+
+  describe('playTonePattern (Issue #13: 振動の代替の効果音)', () => {
+    it('AudioContext が running なら、パターンの振動する区間の数だけ音を鳴らす', () => {
+      mod.resumeAlarmAudioContext() // AudioContext を作る(MockAudioContext は running)
+      mod.playTonePattern([80, 100, 80])
+      expect(beepCount).toBe(2)
+    })
+
+    it('AudioContext が無い・running でないときは何もしない(例外も出さない)', () => {
+      expect(() => mod.playTonePattern([80])).not.toThrow() // まだ作られていない
+      expect(beepCount).toBe(0)
+    })
+
+    it('AudioContext が suspended のときは何も鳴らさない', () => {
+      mod.resumeAlarmAudioContext()
+      lastContext.state = 'suspended'
+      mod.playTonePattern([80])
+      expect(beepCount).toBe(0)
+    })
+
+    it('新しい効果音は、直前の効果音を止めて置き換える(重ならない)', () => {
+      mod.resumeAlarmAudioContext()
+      mod.playTonePattern([80, 100, 80])
+      const first = createdOscillators.slice()
+      mod.playTonePattern([120])
+      for (const osc of first) expect(osc.stop).toHaveBeenCalledTimes(2) // 予約の stop と、置き換えの stop
+    })
   })
 
   it('startAlarm は即時に1回鳴らす', () => {

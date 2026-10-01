@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { PARENT_SCREEN, buildHomeMenu, buildMenu, type ScreenId } from '../menus'
+import {
+  LETTER_ROWS,
+  PARENT_SCREEN,
+  buildHomeMenu,
+  buildLettersRowMenu,
+  buildMenu,
+  type ScreenId,
+} from '../menus'
 
 const ALL_SCREENS: ScreenId[] = [
   'home',
@@ -9,6 +16,9 @@ const ALL_SCREENS: ScreenId[] = [
   'painLocation',
   'moodRequest',
   'letters',
+  'lettersRow',
+  'lettersYesNo',
+  'morse',
 ]
 
 const homeOptions = { showUndo: false, emergencyActive: false }
@@ -27,7 +37,7 @@ describe('buildMenu の共通規則', () => {
     },
   )
 
-  // letters は46字の本実装(#4)前の簡易版のため対象外。
+  // 文字盤の行段階(letters)は あ〜わ行 + 確定/1字消す/はい・いいえ で8項目を超える(§4.6)。
   it.each(ALL_SCREENS.filter((s) => s !== 'letters'))('%s: 項目数は8以内である', (screen) => {
     const items = buildMenu(screen, { showUndo: true, emergencyActive: false })
     expect(items.length).toBeLessThanOrEqual(8)
@@ -67,6 +77,10 @@ describe('戻る先(PARENT_SCREEN)', () => {
 
   it.each(['urgentDetail', 'moodRequest', 'letters'] as const)('%s の戻る先は home', (screen) => {
     expect(PARENT_SCREEN[screen]).toBe('home')
+  })
+
+  it.each(['lettersRow', 'lettersYesNo'] as const)('%s の戻る先は letters(行段階)', (screen) => {
+    expect(PARENT_SCREEN[screen]).toBe('letters')
   })
 })
 
@@ -113,7 +127,7 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
   it('文字盤タイルの予告は遷移先(letters)から自動生成される', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
     const lettersTile = items.find((item) => item.id === 'letters-nav')
-    expect(lettersTile?.preview).toBe('あ・い・う・え…')
+    expect(lettersTile?.preview).toBe('あ行・か行・さ行・た行…')
   })
 
   it('message/emergency/back/undo などの navigate 以外のアイテムは preview を持たない', () => {
@@ -123,5 +137,77 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
         expect(item.preview).toBeUndefined()
       }
     }
+  })
+})
+
+describe('文字盤(§4.6)', () => {
+  it('清音46字 + 長音「ー」を過不足なく持ち、濁点・半濁点・小書きを含まない', () => {
+    const all = LETTER_ROWS.flatMap((row) => row.chars)
+    expect(all).toHaveLength(47)
+    expect(new Set(all).size).toBe(47)
+    expect(all).toContain('ー')
+    expect(all.join('')).toBe(
+      'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんー',
+    )
+  })
+
+  it('わ行は わ・を・ん・ー', () => {
+    expect(LETTER_ROWS[9].chars).toEqual(['わ', 'を', 'ん', 'ー'])
+  })
+
+  it('行段階: 緊急→戻る→あ〜わ行→確定→1字消す→はい・いいえ', () => {
+    const labels = buildMenu('letters', homeOptions).map((item) => item.label)
+    expect(labels).toEqual([
+      '緊急',
+      '戻る',
+      ...LETTER_ROWS.map((row) => row.name),
+      '確定',
+      '1字消す',
+      'はい・いいえ',
+    ])
+  })
+
+  it('文字段階: 緊急→戻る→その行の文字(8項目以内)', () => {
+    LETTER_ROWS.forEach((row, index) => {
+      const items = buildLettersRowMenu(index)
+      expect(items.map((item) => item.label)).toEqual(['緊急', '戻る', ...row.chars])
+      expect(items.length).toBeLessThanOrEqual(8)
+    })
+  })
+
+  it('はい・いいえ画面: 緊急→戻る→はい→いいえ', () => {
+    const labels = buildMenu('lettersYesNo', homeOptions).map((item) => item.label)
+    expect(labels).toEqual(['緊急', '戻る', 'はい', 'いいえ'])
+  })
+})
+
+describe('モールス入力(Issue #14)', () => {
+  it('既定ではホームに入口を出さない', () => {
+    const items = buildMenu('home', { showUndo: false, emergencyActive: false })
+    expect(items.some((i) => i.id === 'morse-nav')).toBe(false)
+  })
+
+  it('有効にすると、文字盤の後ろ(ホームの最後)に入口が出て、緊急・はい・いいえの位置は変わらない', () => {
+    const items = buildMenu('home', { showUndo: false, emergencyActive: false, morseEnabled: true })
+    expect(items.map((i) => i.label)).toEqual([
+      '緊急',
+      'はい',
+      'いいえ',
+      '不快',
+      '快・要望',
+      '文字盤',
+      'モールス',
+    ])
+  })
+
+  it('取り消しが出ているときもホームは8項目以内', () => {
+    const items = buildMenu('home', { showUndo: true, emergencyActive: false, morseEnabled: true })
+    expect(items.length).toBeLessThanOrEqual(8)
+  })
+
+  it('モールス画面は緊急・戻るだけを構造として持ち、戻る先はホーム', () => {
+    const items = buildMenu('morse', homeOptions)
+    expect(items.map((i) => i.action.type)).toEqual(['emergency', 'back'])
+    expect(PARENT_SCREEN.morse).toBe('home')
   })
 })

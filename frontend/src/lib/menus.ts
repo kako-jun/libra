@@ -2,6 +2,8 @@
 // 構造で保証するビルダー。副作用は持たない（実行そのものは ActionId を App.tsx が解釈する）。
 // 正本: docs/requirements.md §2, §4
 
+import { phrasesFor, type PhraseGroup, type PhraseSets } from './phrases'
+
 export type Tone = 'neutral' | 'urgent' | 'calm' | 'positive'
 
 export type ScreenId =
@@ -12,6 +14,9 @@ export type ScreenId =
   | 'painLocation'
   | 'moodRequest'
   | 'letters'
+  | 'lettersRow'
+  | 'lettersYesNo'
+  | 'morse'
 
 export type ActionId =
   | { type: 'emergency' }
@@ -20,6 +25,7 @@ export type ActionId =
   | { type: 'back' }
   | { type: 'navigate'; screen: ScreenId }
   | { type: 'message'; text: string; tone?: Tone }
+  | { type: 'letterRow'; row: number }
   | { type: 'letterAppend'; char: string }
   | { type: 'letterBackspace' }
   | { type: 'letterCommit' }
@@ -43,6 +49,9 @@ export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   painLocation: 'discomfort',
   moodRequest: 'home',
   letters: 'home',
+  lettersRow: 'letters',
+  lettersYesNo: 'letters',
+  morse: 'home',
 }
 
 export const SCREEN_TITLES: Record<ScreenId, string> = {
@@ -53,6 +62,9 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   painLocation: '痛い場所',
   moodRequest: '快・要望',
   letters: '文字盤',
+  lettersRow: '文字盤・文字',
+  lettersYesNo: '文字盤・はい/いいえ',
+  morse: 'モールス入力',
 }
 
 const EMERGENCY_ITEM: MenuItem = {
@@ -86,8 +98,8 @@ const PREVIEW_ITEM_COUNT = 4
 /** 遷移先メニューの中身の予告テキストを自動生成する。緊急・戻るは除き、
  *  先頭から数項目のラベルを「・」で繋いで末尾に「…」を付ける。ハードコードしない
  *  ことで menus.ts の項目定義を変更しても自動で追従する。 */
-function buildPreview(screen: ScreenId): string {
-  const items = buildMenu(screen, { showUndo: false, emergencyActive: false })
+function buildPreview(screen: ScreenId, phrases?: PhraseSets): string {
+  const items = buildMenu(screen, { showUndo: false, emergencyActive: false, phrases })
   const contentLabels = items
     .filter((item) => item.action.type !== 'emergency' && item.action.type !== 'back')
     .map((item) => item.label)
@@ -95,16 +107,32 @@ function buildPreview(screen: ScreenId): string {
   return `${contentLabels.slice(0, PREVIEW_ITEM_COUNT).join('・')}…`
 }
 
-function navigate(id: string, label: string, screen: ScreenId): MenuItem {
-  return { id, label, action: { type: 'navigate', screen }, preview: buildPreview(screen) }
+function navigate(id: string, label: string, screen: ScreenId, phrases?: PhraseSets): MenuItem {
+  return {
+    id,
+    label,
+    action: { type: 'navigate', screen },
+    preview: buildPreview(screen, phrases),
+  }
+}
+
+/** 介助者が編集できるフレーズ項目(Issue #8)。編集内容がなければ既定値 */
+function phraseItems(group: PhraseGroup, phrases?: PhraseSets): MenuItem[] {
+  return phrasesFor(group, phrases).map((p) => message(p.id, p.label, p.text, p.tone))
 }
 
 export interface HomeMenuOptions {
+  /** モールス入力を使うか(Issue #14)。介助者が ON にしたときだけホームに入口を出す */
+  morseEnabled?: boolean
+  /** 介助者が編集したフレーズ(Issue #8)。省略時は既定のプリセット */
+  phrases?: PhraseSets
   /** 伝達直後の1周だけ true。渡された値に関わらず emergencyActive 中は無視する */
   showUndo: boolean
   /** 緊急中は取り消しを出さない（requirements.md §4.3: 本人のスイッチ入力で上書き・取り消しされない）。
    *  この判定を App 側に置かず、ここで一元的に保証する。 */
   emergencyActive: boolean
+  /** 文字盤の文字段階(lettersRow)で表示する行の添字(LETTER_ROWS)。省略時は先頭の行 */
+  letterRow?: number
 }
 
 export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
@@ -113,9 +141,11 @@ export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
     ...(showUndo ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem] : []),
     message('yes', 'はい', 'はい', 'positive'),
     message('no', 'いいえ', 'いいえ'),
-    navigate('discomfort-nav', '不快', 'discomfort'),
-    navigate('mood-nav', '快・要望', 'moodRequest'),
+    navigate('discomfort-nav', '不快', 'discomfort', options.phrases),
+    navigate('mood-nav', '快・要望', 'moodRequest', options.phrases),
     navigate('letters-nav', '文字盤', 'letters'),
+    // 上級者向けの逃げ道。文字盤より後ろ(優先度は最下位)
+    ...(options.morseEnabled ? [navigate('morse-nav', 'モールス', 'morse')] : []),
   ])
 }
 
@@ -141,65 +171,79 @@ export function buildUrgentDetailMenu(): MenuItem[] {
   )
 }
 
-// 1画面の項目数は緊急・戻るを含めて8以内(requirements.md §4.1)。
+// 1画面の項目数は緊急・戻るを含めて8以内(requirements.md §4.1)。既定はこれを満たし、
+// 介助者が編集して超える場合は介助者メニューで警告する(phrases.ts)。
 // 「その他」は暑い/寒い/喉が渇いた/かゆい/眠れないを discomfortOther へ退避する。
-export function buildDiscomfortMenu(): MenuItem[] {
+export function buildDiscomfortMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen([
-    navigate('pain-nav', '痛い', 'painLocation'),
-    message('suffering', '苦しい', '苦しいです', 'urgent'),
-    message('phlegm', '痰を取ってほしい', '痰を取ってほしいです'),
-    message('reposition', '体の向きを変えたい', '体の向きを変えたいです'),
-    message('toilet', 'トイレ', 'トイレに行きたいです'),
-    navigate('discomfort-other-nav', 'その他', 'discomfortOther'),
+    navigate('pain-nav', '痛い', 'painLocation', phrases),
+    ...phraseItems('discomfort', phrases),
+    navigate('discomfort-other-nav', 'その他', 'discomfortOther', phrases),
   ])
 }
 
-export function buildDiscomfortOtherMenu(): MenuItem[] {
-  return subScreen([
-    message('hot', '暑い', '暑いです'),
-    message('cold', '寒い', '寒いです'),
-    message('thirsty', '喉が渇いた', '喉が渇きました'),
-    message('itchy', 'かゆい', 'かゆいです'),
-    message('cant-sleep', '眠れない', '眠れません'),
-  ])
+export function buildDiscomfortOtherMenu(phrases?: PhraseSets): MenuItem[] {
+  return subScreen(phraseItems('discomfortOther', phrases))
 }
 
-export function buildPainLocationMenu(): MenuItem[] {
-  return subScreen([
-    message('head', '頭', '頭が痛いです'),
-    message('chest', '胸', '胸が痛いです', 'urgent'),
-    message('stomach', 'おなか', 'おなかが痛いです'),
-    message('back', '背中腰', '背中・腰が痛いです'),
-    message('limbs', '手足', '手足が痛いです'),
-    message('other', 'その他', 'その他の場所が痛いです'),
-  ])
+export function buildPainLocationMenu(phrases?: PhraseSets): MenuItem[] {
+  return subScreen(phraseItems('painLocation', phrases))
 }
 
-// テレビ・音楽は #8（フレーズ編集）で追加可能な位置にする。1画面8項目以内の枠に収めるため撤去。
-export function buildMoodRequestMenu(): MenuItem[] {
-  return subScreen([
-    message('fine', '大丈夫', '大丈夫です', 'positive'),
-    message('thanks', 'ありがとう', 'ありがとう', 'positive'),
-    message('sleep', '眠りたい', '眠りたいです'),
-    message('quiet', '静かにしてほしい', '静かにしてほしいです'),
-    message('family', '家族に会いたい', '家族に会いたいです'),
-    message('talk', '話したい', '話したいです'),
-  ])
+// テレビ・音楽は #8（フレーズ編集）で介助者が追加できる。1画面8項目以内の枠に収めるため既定からは撤去。
+export function buildMoodRequestMenu(phrases?: PhraseSets): MenuItem[] {
+  return subScreen(phraseItems('moodRequest', phrases))
 }
 
-export const LETTERS = ['あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ']
+/** 文字盤の行。清音 46 字 + 長音「ー」(requirements.md §4.6)。濁点・半濁点・小書きは置かない */
+export const LETTER_ROWS: { name: string; chars: string[] }[] = [
+  { name: 'あ行', chars: ['あ', 'い', 'う', 'え', 'お'] },
+  { name: 'か行', chars: ['か', 'き', 'く', 'け', 'こ'] },
+  { name: 'さ行', chars: ['さ', 'し', 'す', 'せ', 'そ'] },
+  { name: 'た行', chars: ['た', 'ち', 'つ', 'て', 'と'] },
+  { name: 'な行', chars: ['な', 'に', 'ぬ', 'ね', 'の'] },
+  { name: 'は行', chars: ['は', 'ひ', 'ふ', 'へ', 'ほ'] },
+  { name: 'ま行', chars: ['ま', 'み', 'む', 'め', 'も'] },
+  { name: 'や行', chars: ['や', 'ゆ', 'よ'] },
+  { name: 'ら行', chars: ['ら', 'り', 'る', 'れ', 'ろ'] },
+  { name: 'わ行', chars: ['わ', 'を', 'ん', 'ー'] },
+]
 
+/** 文字盤の行段階: 緊急 / 戻る / あ〜わ行 / 確定 / 1字消す / はい・いいえ → */
 export function buildLettersMenu(): MenuItem[] {
-  const letterItems: MenuItem[] = LETTERS.map((char) => ({
-    id: `letter-${char}`,
-    label: char,
-    action: { type: 'letterAppend', char },
+  const rowItems: MenuItem[] = LETTER_ROWS.map((row, index) => ({
+    id: `letter-row-${index}`,
+    label: row.name,
+    action: { type: 'letterRow', row: index },
   }))
   return subScreen([
-    ...letterItems,
-    { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
+    ...rowItems,
     { id: 'commit', label: '確定', tone: 'positive', action: { type: 'letterCommit' } },
+    { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
+    navigate('letters-yesno-nav', 'はい・いいえ', 'lettersYesNo'),
   ])
+}
+
+/** 文字盤の文字段階: 緊急 / 戻る(行段階へ) / その行の文字 */
+export function buildLettersRowMenu(row = 0): MenuItem[] {
+  const chars = LETTER_ROWS[row]?.chars ?? LETTER_ROWS[0].chars
+  return subScreen(
+    chars.map((char) => ({
+      id: `letter-${char}`,
+      label: char,
+      action: { type: 'letterAppend', char } as ActionId,
+    })),
+  )
+}
+
+/** 入力途中の文字列への先読み(「○○？」)に即答する。戻ると入力途中の文字列は保持される */
+export function buildLettersYesNoMenu(): MenuItem[] {
+  return subScreen([message('yes', 'はい', 'はい', 'positive'), message('no', 'いいえ', 'いいえ')])
+}
+
+/** モールス入力画面。符号の入力に使うので項目は選ばない。緊急・戻るだけを構造として持つ */
+export function buildMorseMenu(): MenuItem[] {
+  return subScreen([])
 }
 
 export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuItem[] {
@@ -209,14 +253,20 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
     case 'urgentDetail':
       return buildUrgentDetailMenu()
     case 'discomfort':
-      return buildDiscomfortMenu()
+      return buildDiscomfortMenu(homeOptions.phrases)
     case 'discomfortOther':
-      return buildDiscomfortOtherMenu()
+      return buildDiscomfortOtherMenu(homeOptions.phrases)
     case 'painLocation':
-      return buildPainLocationMenu()
+      return buildPainLocationMenu(homeOptions.phrases)
     case 'moodRequest':
-      return buildMoodRequestMenu()
+      return buildMoodRequestMenu(homeOptions.phrases)
     case 'letters':
       return buildLettersMenu()
+    case 'lettersRow':
+      return buildLettersRowMenu(homeOptions.letterRow)
+    case 'lettersYesNo':
+      return buildLettersYesNoMenu()
+    case 'morse':
+      return buildMorseMenu()
   }
 }

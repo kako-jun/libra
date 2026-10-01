@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } from './lib/menus'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
-import { loadSettings, saveSettings, type Settings } from './lib/settings'
+import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
 import {
   getAlarmAudioStatus,
   initAlarmVisibilityResume,
@@ -17,6 +17,17 @@ import {
 } from './lib/offlineReady'
 import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
+import PhraseEditor from './PhraseEditor'
+import { createSwitchInput } from './lib/switchInput'
+import { HAPTIC_STRENGTHS, playFeedback, type FeedbackEvent } from './lib/feedback'
+import { createMorseInput } from './lib/morseInput'
+import {
+  effectiveDashMs,
+  formatMorseCode,
+  morseNoiseMs,
+  type MorseState,
+  type MorseSymbol,
+} from './lib/morse'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
@@ -50,11 +61,13 @@ const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
   'not-ready': 'オフライン準備: 未完了',
 }
 
-function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
+function speak(mode: Settings['voiceMode'], text: string, shortText = text, legacyVibrate = false) {
   window.speechSynthesis?.cancel()
   if (mode === 'off') return
   if (mode === 'tone') {
-    navigator.vibrate?.(35)
+    // 効果音だけ(バイブ)。触覚フィードバック(#13)が有効なら、そちらの区別できるパターンを
+    // 打ち消さないよう、ここでは振動しない。触覚が OFF のときだけ従来の短い振動を出す
+    if (legacyVibrate) navigator.vibrate?.(35)
     return
   }
   const utterance = new SpeechSynthesisUtterance(mode === 'short' ? shortText : text)
@@ -62,6 +75,12 @@ function speak(mode: Settings['voiceMode'], text: string, shortText = text) {
   utterance.rate = 0.85
   utterance.pitch = 0.9
   window.speechSynthesis?.speak(utterance)
+}
+
+const HAPTIC_STRENGTH_LABELS: Record<Settings['hapticsStrength'], string> = {
+  light: '弱',
+  standard: '標準',
+  strong: '強',
 }
 
 const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
@@ -77,6 +96,31 @@ const THEME_LABELS: Record<Settings['theme'], string> = {
   dark: '夜間',
   auto: '自動',
 }
+
+/** 入力欄で文字を打つ・編集するキーか。Enter・Space(変換中以外)・Tab・メディア/音量キー等は含めない */
+function isTextEditingKey(event: KeyboardEvent): boolean {
+  if (event.isComposing || event.key === 'Process') return true
+  if (event.key.length === 1) return event.key !== ' '
+  return [
+    'Backspace',
+    'Delete',
+    'ArrowLeft',
+    'ArrowRight',
+    'ArrowUp',
+    'ArrowDown',
+    'Home',
+    'End',
+  ].includes(event.key)
+}
+
+const LETTER_SCREENS: ScreenId[] = ['letters', 'lettersRow', 'lettersYesNo']
+
+const ACTIVATE_ON_LABELS: Record<Settings['activateOn'], string> = {
+  press: '押した瞬間',
+  release: '離した瞬間',
+}
+
+const ACTIVATE_ONS: Settings['activateOn'][] = ['press', 'release']
 
 const THEMES: Settings['theme'][] = ['light', 'dark', 'auto']
 
@@ -195,6 +239,8 @@ export default function App() {
 
   const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
   const [letterText, setLetterText] = createSignal('')
+  // 文字盤の文字段階で表示している行(LETTER_ROWS の添字)
+  const [letterRow, setLetterRow] = createSignal(0)
   // 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる表示の元
   const [alarmAudioRunning, setAlarmAudioRunning] = createSignal(false)
   // Issue #5: 画面スリープ防止の状態。介助者メニューに表示する
@@ -217,7 +263,13 @@ export default function App() {
   // 表示中メニューはここでしか作らない。スキャン状態・レンダリングの双方が
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
   const currentMenu = createMemo(() =>
-    buildMenu(screen(), { showUndo: showUndo(), emergencyActive: emergencyActive() }),
+    buildMenu(screen(), {
+      showUndo: showUndo(),
+      emergencyActive: emergencyActive(),
+      letterRow: letterRow(),
+      phrases: settings().phrases,
+      morseEnabled: settings().morseEnabled,
+    }),
   )
 
   // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
@@ -240,6 +292,15 @@ export default function App() {
       labelHeightFactor: labelFactors().height,
     }),
   )
+
+  // 入力途中の文字列は折り返して大きく出し、長くなっても直近の入力(末尾)が見えるようにする
+  let letterOutputEl: HTMLOutputElement | undefined
+  createEffect(() => {
+    letterText()
+    // 文字盤を離れると入力欄ごと破棄され、戻ると作り直されて先頭へ戻るので、画面遷移でも追う
+    screen()
+    if (letterOutputEl) letterOutputEl.scrollTop = letterOutputEl.scrollHeight
+  })
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
 
@@ -269,7 +330,7 @@ export default function App() {
   let messageAnnounceGrace = false
 
   const announce = (text: string, shortText = text) => {
-    speak(settings().voiceMode, text, shortText)
+    speak(settings().voiceMode, text, shortText, !settings().hapticsEnabled)
     if (settings().auditoryScan) messageAnnounceGrace = true
   }
 
@@ -284,19 +345,85 @@ export default function App() {
     window.speechSynthesis?.speak(utterance)
   }
 
-  const showMessage = (text: string, tone: Tone = 'neutral') => {
+  // Issue #13: 本人への触覚フィードバック。パターンは lib/feedback.ts に集約している
+  // 本人の入力へのフィードバックを最後に出した時刻。緊急中の周期の振動が、直後に重なって
+  // はい/いいえなどの振動を打ち消さないよう、周期の振動はこの直後には出さない
+  let lastFeedbackAt = 0
+  const feedback = (event: FeedbackEvent) => {
+    if (event !== 'emergencyActive') lastFeedbackAt = Date.now()
+    playFeedback(event, {
+      enabled: settings().hapticsEnabled,
+      strength: settings().hapticsStrength,
+      soundWhenVoiceOff: settings().hapticSoundWhenVoiceOff,
+      soundAlso: settings().hapticSoundAlso,
+      voiceMode: settings().voiceMode,
+    })
+  }
+
+  const showMessage = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     setMessage(text)
     setMessageTone(tone)
     setMessageHistory((items) => [{ text, tone }, ...items].slice(0, 5))
     document.documentElement.dataset.messageTone = tone
-    navigator.vibrate?.(tone === 'urgent' ? [60, 40, 60] : 35)
+    feedback(event ?? (tone === 'urgent' ? 'urgentMessage' : 'message'))
     announce(text)
   }
 
   // home 以外へ遷移するときは「取り消し」の1周猶予を終わらせる(nit: 積み残した猶予が
   // 後で home に戻った際に誤って復活しないように)。home への遷移(伝達完了の帰着点)では
   // 呼び出し元が設定した showUndo/undoLapsRemaining をそのまま尊重する。
+  // Issue #14: モールス入力。確定済みの文字列は画面を出入りしても残す(伝達したら消す)
+  const [morseText, setMorseText] = createSignal('')
+  const [morseView, setMorseView] = createSignal<MorseState | null>(null)
+  const [morseHold, setMorseHold] = createSignal<MorseSymbol | null>(null)
+  const morseConfig = () => {
+    const s = settings()
+    // 押下時間の下限(#6)は雑音除去として効く。長押しの境目はそれより長くする。
+    // 語の区切りが文字の確定より長いことは、設定の保存値で保証している(settings.ts)
+    return {
+      noiseMs: morseNoiseMs(s.minHoldMs),
+      dashMs: effectiveDashMs(s.morseDashMs, s.minHoldMs),
+      letterGapMs: s.morseLetterGapMs,
+      wordGapMs: s.morseWordGapMs,
+    }
+  }
+  const morseInput = createMorseInput({
+    getConfig: morseConfig,
+    // 介助者メニューを開いている間は、裏で文字が確定したり復帰したりしないよう時間を止める
+    isPaused: caregiverMenuOpen,
+    onHold: setMorseHold,
+    onState: (state) => {
+      const previous = morseText()
+      setMorseView(state)
+      setMorseText(state.text)
+      // 確定した文字を、音声モードに応じて読む。濁点・半濁点で文字が変わったとき(か→が)も読む。
+      // 1字消したときは読まない
+      if (state.text !== previous && state.text.length >= previous.length) {
+        const added = (
+          state.text.length > previous.length
+            ? state.text.slice(previous.length)
+            : (Array.from(state.text).pop() ?? '')
+        ).trim()
+        if (added) announce(added, added)
+      }
+    },
+    onEvent: (event) => {
+      if (event.type === 'emergency') {
+        // 長押し5つの連続: 確定を待たず即緊急(モールス中でも緊急に届く)
+        // 並び順に頼らず、緊急のアクションを直接実行する
+        runAction({ id: 'emergency', label: '緊急', tone: 'urgent', action: { type: 'emergency' } })
+      } else if (event.type === 'exit') {
+        goTo('home')
+      } else {
+        setMorseText('')
+        completeTransmission(event.text, 'neutral')
+      }
+    },
+  })
+
   const goTo = (next: ScreenId) => {
+    if (next === 'morse') morseInput.start(morseText())
+    else morseInput.stop()
     if (next !== 'home' && (showUndo() || undoLapsRemaining > 0)) {
       setShowUndo(false)
       undoLapsRemaining = 0
@@ -306,25 +433,37 @@ export default function App() {
     // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常は緊急)も読む。
     // 直前の伝達読み上げが済んでいれば messageAnnounceGrace により cancel されない(S-new-1)
     if (settings().auditoryScan) {
-      const first = buildMenu(next, { showUndo: showUndo(), emergencyActive: emergencyActive() })[0]
+      const first = buildMenu(next, {
+        showUndo: showUndo(),
+        emergencyActive: emergencyActive(),
+        letterRow: letterRow(),
+        phrases: settings().phrases,
+        morseEnabled: settings().morseEnabled,
+      })[0]
       if (first) announceScanItem(first.label)
     }
   }
 
   // 通常の伝達完了。緊急中は見出し(緊急表示)を上書きせず、副表示にだけ出す
   // （requirements.md §4.3: 緊急表示は介助者が解除するまで残り、本人入力で上書きされない）。
-  const completeTransmission = (text: string, tone: Tone = 'neutral') => {
+  const completeTransmission = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     if (emergencyActive()) {
       setEmergencySubMessage(text)
-      navigator.vibrate?.(35)
+      feedback(event ?? 'message')
       announce(text)
       goTo('home')
       return
     }
-    showMessage(text, tone)
+    showMessage(text, tone, event)
     setShowUndo(true)
     undoLapsRemaining = 1
     goTo('home')
+  }
+
+  // Issue #8: 書き出した設定の取り込み。検証済みの設定で丸ごと置き換える
+  const replaceSettings = (next: Settings) => {
+    saveSettings(next)
+    setSettings(next)
   }
 
   const updateSettings = (patch: Partial<Settings>) => {
@@ -358,6 +497,7 @@ export default function App() {
     setEmergencyDetails([])
     setEmergencySubMessage(null)
     stopAlarm()
+    feedback('cleared')
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
@@ -395,7 +535,9 @@ export default function App() {
         undoLapsRemaining = 0
         if (!alreadyActive) {
           setEmergencyDetails([])
-          showMessage(EMERGENCY_MESSAGE, 'urgent')
+          showMessage(EMERGENCY_MESSAGE, 'urgent', 'emergency')
+        } else {
+          feedback('emergency')
         }
         startAlarm(ALARM_REPEAT_MS)
         goTo('urgentDetail')
@@ -406,7 +548,7 @@ export default function App() {
         setEmergencyDetails((details) =>
           details.includes(action.label) ? details : [...details, action.label],
         )
-        navigator.vibrate?.([60, 40, 60])
+        feedback('urgentMessage')
         announce(`緊急です。来てください。${action.label}`, action.label)
         setShowUndo(false)
         goTo('home')
@@ -436,12 +578,21 @@ export default function App() {
         return
       }
       case 'message': {
-        completeTransmission(action.text, action.tone ?? 'neutral')
+        // はい・いいえは、本人が他人の反応なしに区別できる専用の振動パターンで返す
+        const event: FeedbackEvent = item.id === 'yes' ? 'yes' : item.id === 'no' ? 'no' : 'message'
+        completeTransmission(action.text, action.tone ?? 'neutral', event)
+        return
+      }
+      case 'letterRow': {
+        setLetterRow(action.row)
+        goTo('lettersRow')
         return
       }
       case 'letterAppend': {
         setLetterText((text) => text + action.char)
         announce(action.char, action.char)
+        // 1字入れたら行段階へ戻る(次の文字も 行 → 文字 の2段階で選ぶ)
+        goTo('letters')
         return
       }
       case 'letterBackspace': {
@@ -467,14 +618,74 @@ export default function App() {
     runAction(item)
   }
 
-  const handleSwitchOn = (now: number) => {
+  // Issue #6: 押している間の進捗(押下時間の下限があるときだけ値が入る)
+  const [holdProgress, setHoldProgress] = createSignal<number | null>(null)
+
+  const handleSwitchOn = (
+    now: number,
+    target?: { index: number; screen: ScreenId; itemId: string | undefined },
+  ) => {
     if (caregiverMenuOpen()) return
+    // 押しっぱなし中に画面が変わった、または同じ画面でも項目の並びが変わった(例: 取り消しが
+    // 消えた)場合、押し始めの項目はもう同じ位置にない。別の項目(特に緊急)を誤って
+    // 実行しないよう無視する
+    if (
+      target &&
+      (target.screen !== screen() || currentMenu()[target.index]?.id !== target.itemId)
+    ) {
+      return
+    }
     const itemCount = currentMenu().length
     const resynced = resync(scanState(), itemCount)
-    const result = press(resynced, itemCount, now, scanConfig())
+    const result = press(resynced, itemCount, now, scanConfig(), target?.index)
     setScanState(result.state)
     if (result.activatedIndex === null) return
+    // 入力が受理されたことを、まず軽い振動で返す。この後の伝達・緊急のパターンが置き換える
+    feedback('accepted')
     activateIndex(result.activatedIndex)
+  }
+
+  // Issue #6: 押下時間の下限・離して決定。キー/タップ/Bluetooth シャッターすべてここを通す。
+  // 決定するのは押し始めにカーソルが乗っていた項目。
+  const switchInput = createSwitchInput({
+    getConfig: () => ({ minHoldMs: settings().minHoldMs, activateOn: settings().activateOn }),
+    snapshot: () => {
+      const index = resync(scanState(), currentMenu().length).index
+      return { index, screen: screen(), itemId: currentMenu()[index]?.id }
+    },
+    onActivate: (target) => handleSwitchOn(Date.now(), target),
+    onProgress: setHoldProgress,
+  })
+
+  // 緊急の呼び出し中は、警告音と同じ周期で振動も繰り返し、まだ続いていることを本人が知れるようにする
+  createEffect(() => {
+    if (!emergencyActive()) return
+    const id = window.setInterval(() => {
+      if (Date.now() - lastFeedbackAt < ALARM_REPEAT_MS) return // 本人の直前の振動を打ち消さない
+      feedback('emergencyActive')
+    }, ALARM_REPEAT_MS)
+    onCleanup(() => window.clearInterval(id))
+  })
+
+  // 本人のスイッチ入力の振り分け。モールス画面では押下の長さが符号になり、それ以外は
+  // 従来のスキャン選択(switchInput)に渡す。解放・取り消しはどちらにも渡して取りこぼさない。
+  const input = {
+    down: (sourceId: string) => {
+      if (screen() === 'morse') morseInput.down(sourceId)
+      else switchInput.down(sourceId)
+    },
+    up: (sourceId: string) => {
+      switchInput.up(sourceId)
+      morseInput.up(sourceId)
+    },
+    cancel: (sourceId: string) => {
+      switchInput.cancel(sourceId)
+      morseInput.cancel(sourceId)
+    },
+    cancelAll: () => {
+      switchInput.cancelAll()
+      morseInput.cancelAll()
+    },
   }
 
   // 緊急状態の保存。有効な間は内容の変化ごとに保存し、解除されたら保存ごと消す。
@@ -573,7 +784,8 @@ export default function App() {
     }
 
     function step() {
-      if (!caregiverMenuOpen()) {
+      // モールス入力中は押下が符号になるので、スキャンのカーソルは動かさない
+      if (!caregiverMenuOpen() && screen() !== 'morse') {
         const now = Date.now()
         const items = currentMenu()
         const previous = resync(scanState(), items.length)
@@ -621,14 +833,26 @@ export default function App() {
       }
 
       if (target?.closest('[data-caregiver-control]')) return
-      handleSwitchOn(Date.now())
+      input.down(`pointer:${event.pointerId}`)
     }
+
+    const onPointerUp = (event: PointerEvent) => input.up(`pointer:${event.pointerId}`)
+    // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
+    const onPointerCancel = (event: PointerEvent) => input.cancel(`pointer:${event.pointerId}`)
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
       resumeAlarmAudioContext()
 
       if (caregiverMenuOpen()) {
+        // Issue #8: フレーズ編集の入力欄での「文字を打つキー」では閉じない。入力欄にフォーカスが
+        // 残ったまま本人がスイッチ(Enter・音量キー・Space 等)を押しても、従来どおり閉じて
+        // 本人が取り残されないよう、文字入力・編集に使うキーだけを例外にする。無操作 60 秒の
+        // 自動クローズ(§6)は打鍵では延ばさない(入力欄のタップ・フォーカスで延びる)
+        const inField = (event.target as HTMLElement | null)?.closest?.(
+          '.caregiver-panel input, .caregiver-panel textarea',
+        )
+        if (inField && isTextEditingKey(event)) return
         // M3(b): 介助者はタッチで操作する想定。メニュー表示中の keydown は閉じて
         // ホーム先頭から再開する(その押下では項目を実行しない)
         event.preventDefault()
@@ -643,7 +867,14 @@ export default function App() {
         return
       }
       event.preventDefault()
-      handleSwitchOn(Date.now())
+      input.down(`key:${event.code || event.key}`)
+    }
+
+    const onKeyUp = (event: KeyboardEvent) => input.up(`key:${event.code || event.key}`)
+    // 画面が見えなくなった・フォーカスを失った押下は、離す動作を取りこぼすので取り消す
+    const onBlur = () => input.cancelAll()
+    const onVisibilityHidden = () => {
+      if (document.visibilityState === 'hidden') input.cancelAll()
     }
 
     // M2: タッチ端末では pointerdown だけでは AudioContext の resume が保証されないため、
@@ -655,6 +886,11 @@ export default function App() {
 
     window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerCancel)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibilityHidden)
     window.addEventListener('pointerup', onUserActivation, true)
     window.addEventListener('touchend', onUserActivation, true)
     window.addEventListener('click', onUserActivation, true)
@@ -664,12 +900,19 @@ export default function App() {
     onCleanup(() => {
       window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerCancel)
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onVisibilityHidden)
+      input.cancelAll()
       window.removeEventListener('pointerup', onUserActivation, true)
       window.removeEventListener('touchend', onUserActivation, true)
       window.removeEventListener('click', onUserActivation, true)
       window.removeEventListener('contextmenu', onContextMenu)
       stopVisibilityResume()
       clearCaregiverIdleTimer()
+      morseInput.stop()
       stopAlarm()
     })
   })
@@ -679,6 +922,7 @@ export default function App() {
     // PR#16 Opus レビュー nit: 前回分のタイマーが残っていたら先に消してから開始する
     if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
     longPressTimer = window.setTimeout(() => {
+      input.cancelAll()
       setCaregiverMenuOpen(true)
       resetCaregiverIdleTimer()
       // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
@@ -737,15 +981,46 @@ export default function App() {
         </div>
       </section>
 
-      <Show when={screen() === 'letters'}>
+      <Show when={holdProgress() !== null}>
+        <div class="hold-progress" role="progressbar" aria-label="押している間の進み具合">
+          <div class="hold-progress-bar" style={{ width: `${(holdProgress() ?? 0) * 100}%` }} />
+        </div>
+      </Show>
+
+      <Show when={LETTER_SCREENS.includes(screen())}>
         <section class="letter-strip">
-          <output>{letterText() || '文字を選んでください'}</output>
+          <output ref={letterOutputEl}>{letterText() || '文字を選んでください'}</output>
+        </section>
+      </Show>
+
+      <Show when={screen() === 'morse'}>
+        <section class="morse-panel" aria-label="モールス入力">
+          <p class="morse-code" classList={{ holding: morseHold() !== null }}>
+            {morseHold() !== null
+              ? `${formatMorseCode(morseView()?.code ?? '')} ${morseHold() === '-' ? '－' : '・'}`.trim()
+              : formatMorseCode(morseView()?.code ?? '') || '　'}
+          </p>
+          <p class="morse-text" aria-live="polite">
+            {morseText() || '短く押す＝・　長く押す＝－'}
+          </p>
+          <ul class="morse-legend">
+            <li>文字: 符号を入れて少し待つ</li>
+            <li>語の区切り: もう少し待つ</li>
+            <li>－を5回続ける: 緊急</li>
+            <li>・を5回 → 待つ: スキャンへ戻る</li>
+            <li>・を6回 → 待つ: 1字消す</li>
+            <li>・－・－・－ → 待つ: 確定して伝える</li>
+          </ul>
         </section>
       </Show>
 
       <section
         class="grid-board"
-        classList={{ 'show-numbers': showDevNumbers, 'grid-fill': gridLayout().fill }}
+        classList={{
+          'show-numbers': showDevNumbers,
+          'grid-fill': gridLayout().fill,
+          'is-hidden': screen() === 'morse',
+        }}
         style={{
           '--cols': String(gridLayout().cols),
           '--rows': String(gridLayout().rows),
@@ -780,11 +1055,7 @@ export default function App() {
               {/* Issue #3 追加指示: 下位画面へ進むタイルは矢印文字ではなく、山形アイコン+
                   中身の予告(menus.ts で自動生成)で示す。読み上げはラベルのみ(記号は読まない) */}
               <Show when={item.action.type === 'navigate'}>
-                <svg
-                  class="tile-chevron"
-                  viewBox="0 0 20 24"
-                  aria-hidden="true"
-                >
+                <svg class="tile-chevron" viewBox="0 0 20 24" aria-hidden="true">
                   <path
                     d="M5 3 L15 12 L5 21"
                     fill="none"
@@ -873,6 +1144,37 @@ export default function App() {
               />
             </label>
 
+            <label class="caregiver-field">
+              <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
+              <input
+                type="range"
+                min="0"
+                max="2000"
+                step="100"
+                value={settings().minHoldMs}
+                onInput={(event) =>
+                  updateSettings({ minHoldMs: Number(event.currentTarget.value) })
+                }
+              />
+            </label>
+
+            <div class="caregiver-field">
+              <span>決定のタイミング</span>
+              <div class="caregiver-choice-options">
+                <For each={ACTIVATE_ONS}>
+                  {(timing) => (
+                    <button
+                      type="button"
+                      classList={{ active: settings().activateOn === timing }}
+                      onClick={() => updateSettings({ activateOn: timing })}
+                    >
+                      {ACTIVATE_ON_LABELS[timing]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
             <label class="caregiver-field caregiver-checkbox">
               <input
                 type="checkbox"
@@ -881,6 +1183,79 @@ export default function App() {
               />
               <span>聴覚スキャン</span>
             </label>
+
+            <label class="caregiver-field caregiver-checkbox">
+              <input
+                type="checkbox"
+                checked={settings().morseEnabled}
+                onChange={(event) => updateSettings({ morseEnabled: event.currentTarget.checked })}
+              />
+              <span>
+                モールス入力を使う（上級者向け。押下と解放を同時に送るシャッターでは長押しが使えません）
+              </span>
+            </label>
+
+            <Show when={settings().morseEnabled}>
+              <label class="caregiver-field">
+                <span>
+                  モールス: 長押し(－)の境目 {(settings().morseDashMs / 1000).toFixed(1)} 秒
+                  {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
+                  settings().morseDashMs
+                    ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
+                    : ''}
+                </span>
+                <input
+                  type="range"
+                  min="150"
+                  max="1500"
+                  step="50"
+                  value={settings().morseDashMs}
+                  onInput={(event) =>
+                    updateSettings({ morseDashMs: Number(event.currentTarget.value) })
+                  }
+                />
+              </label>
+              <label class="caregiver-field">
+                <span>
+                  モールス: 文字の確定までの無入力 {(settings().morseLetterGapMs / 1000).toFixed(1)}{' '}
+                  秒
+                </span>
+                <input
+                  type="range"
+                  min="500"
+                  max="3000"
+                  step="100"
+                  value={settings().morseLetterGapMs}
+                  onInput={(event) => {
+                    const letterGap = Number(event.currentTarget.value)
+                    // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
+                    updateSettings({
+                      morseLetterGapMs: letterGap,
+                      morseWordGapMs: Math.max(
+                        settings().morseWordGapMs,
+                        letterGap + MORSE_WORD_GAP_MARGIN_MS,
+                      ),
+                    })
+                  }}
+                />
+              </label>
+              <label class="caregiver-field">
+                <span>
+                  モールス: 語の区切りまでの無入力 {(settings().morseWordGapMs / 1000).toFixed(1)}{' '}
+                  秒
+                </span>
+                <input
+                  type="range"
+                  min="1500"
+                  max="8000"
+                  step="100"
+                  value={settings().morseWordGapMs}
+                  onInput={(event) =>
+                    updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
+                  }
+                />
+              </label>
+            </Show>
 
             <div class="caregiver-field">
               <span>音声モード</span>
@@ -898,6 +1273,60 @@ export default function App() {
                 </For>
               </div>
             </div>
+
+            <label class="caregiver-field caregiver-checkbox">
+              <input
+                type="checkbox"
+                checked={settings().hapticsEnabled}
+                onChange={(event) =>
+                  updateSettings({ hapticsEnabled: event.currentTarget.checked })
+                }
+              />
+              <span>本人への振動フィードバック（受理・はい/いいえ・緊急）</span>
+            </label>
+
+            <Show when={settings().hapticsEnabled}>
+              <div class="caregiver-field">
+                <span>振動の強さ</span>
+                <div class="caregiver-choice-options">
+                  <For each={HAPTIC_STRENGTHS}>
+                    {(strength) => (
+                      <button
+                        type="button"
+                        classList={{ active: settings().hapticsStrength === strength }}
+                        onClick={() => updateSettings({ hapticsStrength: strength })}
+                      >
+                        {HAPTIC_STRENGTH_LABELS[strength]}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </div>
+
+              <label class="caregiver-field caregiver-checkbox">
+                <input
+                  type="checkbox"
+                  checked={settings().hapticSoundAlso}
+                  onChange={(event) =>
+                    updateSettings({ hapticSoundAlso: event.currentTarget.checked })
+                  }
+                />
+                <span>
+                  振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
+                </span>
+              </label>
+
+              <label class="caregiver-field caregiver-checkbox">
+                <input
+                  type="checkbox"
+                  checked={settings().hapticSoundWhenVoiceOff}
+                  onChange={(event) =>
+                    updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
+                  }
+                />
+                <span>振動できない端末では、音声OFFでも短い効果音で知らせる</span>
+              </label>
+            </Show>
 
             <div class="caregiver-field">
               <span>文字サイズ</span>
@@ -941,6 +1370,12 @@ export default function App() {
               />
               <span>高コントラスト</span>
             </label>
+
+            <PhraseEditor
+              settings={settings()}
+              updateSettings={updateSettings}
+              replaceSettings={replaceSettings}
+            />
 
             <button
               type="button"

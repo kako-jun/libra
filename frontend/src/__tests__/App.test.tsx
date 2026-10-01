@@ -4,6 +4,7 @@ import App from '../App'
 import * as alarmModule from '../lib/alarm'
 import * as wakeLockModule from '../lib/wakeLock'
 import * as offlineReadyModule from '../lib/offlineReady'
+import { HAPTIC_PATTERNS, feedbackPattern } from '../lib/feedback'
 
 // requirements.md 既定値: intervalMs=1500, headHoldMultiplier=2(=headHoldMs 3000), debounceMs=500
 const HEAD_HOLD_MS = 3000
@@ -130,13 +131,74 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // letters 画面へ遷移
     expect(container.querySelector('.letter-strip')).not.toBeNull()
 
-    // letters 画面: index0=緊急, index1=戻る, index2=最初の文字(letterAppend)
+    // letters 画面(行段階): index0=緊急, index1=戻る, index2=あ行
     vi.advanceTimersByTime(HEAD_HOLD_MS) // index1(戻る)
-    vi.advanceTimersByTime(INTERVAL_MS) // index2(最初の文字)
-    fireEvent.keyDown(window, { key: ' ' }) // 1回目: 文字を追加
+    vi.advanceTimersByTime(INTERVAL_MS) // index2(あ行)
+    fireEvent.keyDown(window, { key: ' ' }) // 1回目: あ行へ(文字段階)
     fireEvent.keyDown(window, { key: ' ' }) // 2回目: 連打無視区間内なので無視されるはず
+    expect(h1Text(container)).not.toBe('緊急です。来てください') // 文字段階の先頭(緊急)を実行しない
+    expect(scanningLabel(container)).toBe('緊急') // 文字段階の先頭
     const output = container.querySelector('.letter-strip output')
-    expect(output?.textContent?.length).toBe(1)
+    expect(output?.textContent).toBe('文字を選んでください')
+  })
+
+  // 文字盤(#4): Space キー1種だけで「めかね」を入力・確定できる
+  function selectByScan(container: HTMLElement, label: string) {
+    for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
+      vi.advanceTimersByTime(INTERVAL_MS)
+    }
+    expect(scanningLabel(container)).toBe(label)
+    vi.advanceTimersByTime(600) // 連打無視(0.5秒)を過ぎる
+    fireEvent.keyDown(window, { key: ' ' })
+  }
+
+  it('Issue #4: Space キーだけで「めかね」を入力・確定できる', () => {
+    const { container } = render(() => <App />)
+    selectByScan(container, '文字盤')
+    for (const [row, char] of [
+      ['ま行', 'め'],
+      ['か行', 'か'],
+      ['な行', 'ね'],
+    ]) {
+      selectByScan(container, row)
+      selectByScan(container, char)
+    }
+    expect(container.querySelector('.letter-strip output')?.textContent).toBe('めかね')
+
+    selectByScan(container, '確定')
+    expect(h1Text(container)).toBe('めかね')
+    expect(container.querySelector('.letter-strip')).toBeNull()
+    expect(scanningLabel(container)).toBe('緊急') // ホームの先頭から再開する
+  })
+
+  it('Issue #4: はい・いいえで答えて戻っても入力途中の文字列が保持される', () => {
+    const { container } = render(() => <App />)
+    selectByScan(container, '文字盤')
+    selectByScan(container, 'あ行')
+    selectByScan(container, 'あ')
+    selectByScan(container, 'はい・いいえ')
+    selectByScan(container, '戻る')
+    expect(container.querySelector('.letter-strip output')?.textContent).toBe('あ')
+
+    selectByScan(container, 'はい・いいえ')
+    selectByScan(container, 'はい')
+    expect(h1Text(container)).toBe('はい')
+    selectByScan(container, '文字盤')
+    expect(container.querySelector('.letter-strip output')?.textContent).toBe('あ')
+  })
+
+  it('Issue #4: 文字入力の途中(文字段階)でも先頭は緊急で、1周以内に届く', () => {
+    const { container } = render(() => <App />)
+    selectByScan(container, '文字盤')
+    selectByScan(container, 'わ行')
+    expect(scanningLabel(container)).toBe('緊急')
+    // 文字段階の末尾(ー)まで進めても、次の1ステップで先頭(緊急)へ戻り、そこで届く
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 4)
+    expect(scanningLabel(container)).toBe('ー')
+    vi.advanceTimersByTime(INTERVAL_MS)
+    expect(scanningLabel(container)).toBe('緊急')
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(h1Text(container)).toBe('緊急です。来てください')
   })
 
   it('緊急選択で確認なしに即「緊急です。来てください」を表示し緊急詳細画面へ遷移する', () => {
@@ -298,6 +360,458 @@ describe('App', () => {
 
     expect(container.querySelector('.emergency-sub')).toBeNull()
     expect(h1Text(container)).not.toBe('緊急です。来てください')
+  })
+
+  // Issue #8: スキャンで目的の項目まで進めて選ぶ(連打無視を過ぎてから押す)
+  function selectByLabel(container: HTMLElement, label: string) {
+    for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
+      vi.advanceTimersByTime(INTERVAL_MS)
+    }
+    expect(scanningLabel(container)).toBe(label)
+    vi.advanceTimersByTime(600)
+    fireEvent.keyDown(window, { key: ' ' })
+  }
+
+  function openCaregiverMenu(container: HTMLElement) {
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+  }
+
+  function clickButton(root: Element, text: string) {
+    const target = Array.from(root.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes(text),
+    ) as HTMLElement
+    expect(target).toBeTruthy()
+    fireEvent.click(target)
+  }
+
+  it('Issue #8: 介助者が追加したフレーズはスキャンで選べ、再読み込み後も保持される', () => {
+    const first = render(() => <App />)
+    openCaregiverMenu(first.container)
+    const editor = first.container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    clickButton(editor, 'フレーズを追加')
+    const rows = editor.querySelectorAll('.phrase-row')
+    const inputs = rows[rows.length - 1].querySelectorAll('input')
+    fireEvent.input(inputs[0], { target: { value: 'テレビ' } })
+    fireEvent.input(inputs[1], { target: { value: 'テレビを見たいです' } })
+    // 入力欄での打鍵では介助者メニューが閉じない
+    fireEvent.keyDown(inputs[0], { key: 'a' })
+    expect(first.container.querySelector('.caregiver-panel')).not.toBeNull()
+    clickButton(first.container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
+    first.unmount()
+    cleanup()
+
+    const second = render(() => <App />)
+    selectByLabel(second.container, '快・要望')
+    selectByLabel(second.container, 'テレビ')
+    expect(h1Text(second.container)).toBe('テレビを見たいです')
+  })
+
+  // 入力欄にフォーカスが残ったまま本人がスイッチを押しても、介助者メニューに取り残さない
+  function openEditorWithFocusedInput() {
+    const view = render(() => <App />)
+    openCaregiverMenu(view.container)
+    const editor = view.container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    const input = editor.querySelector('.phrase-row input') as HTMLInputElement
+    input.focus()
+    return { ...view, input }
+  }
+
+  it.each(['a', 'あ', 'Backspace', 'ArrowLeft'])(
+    'Issue #8: 入力欄で「%s」を打っても介助者メニューは閉じない',
+    (key) => {
+      const { container, input } = openEditorWithFocusedInput()
+      fireEvent.keyDown(input, { key })
+      expect(container.querySelector('.caregiver-panel')).not.toBeNull()
+    },
+  )
+
+  it.each(['Enter', ' ', 'Tab', 'AudioVolumeUp', 'Escape', 'Unidentified', 'MediaPlayPause'])(
+    'Issue #8: 入力欄にフォーカスが残っていても、本人のスイッチ(%s)でメニューは閉じる',
+    (key) => {
+      const { container, input } = openEditorWithFocusedInput()
+      fireEvent.keyDown(input, { key })
+      expect(container.querySelector('.caregiver-panel')).toBeNull()
+    },
+  )
+
+  it('Issue #8: 入力欄での打鍵では無操作60秒の自動クローズを延ばさない', () => {
+    const { container, input } = openEditorWithFocusedInput()
+    for (let i = 0; i < 8; i += 1) {
+      vi.advanceTimersByTime(10000)
+      fireEvent.keyDown(input, { key: 'a' })
+    }
+    expect(container.querySelector('.caregiver-panel')).toBeNull() // 80秒後には閉じている
+  })
+
+  it('Issue #8: 取り込みは1回目は確認、2回目で既存設定の上に反映される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 3000 }))
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    const textarea = editor.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.input(textarea, {
+      target: { value: JSON.stringify({ app: 'libra', version: 1, headHoldMultiplier: 4 }) },
+    })
+    clickButton(editor, '取り込み')
+    expect(editor.textContent).toContain('もう一度')
+    expect(
+      JSON.parse(window.localStorage.getItem('libra') ?? '{}').headHoldMultiplier,
+    ).toBeUndefined()
+    clickButton(editor, '取り込み')
+    const saved = JSON.parse(window.localStorage.getItem('libra') ?? '{}')
+    expect(saved.headHoldMultiplier).toBe(4)
+    expect(saved.intervalMs).toBe(3000) // 取り込みに無かった項目は今の値のまま
+  })
+
+  it('Issue #8: 表示されない項目には編集画面で理由が出る', () => {
+    window.localStorage.setItem(
+      'libra',
+      JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'はい', text: 'x' }] } }),
+    )
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    expect(editor.querySelector('[role="note"]')?.textContent).toContain('表示されません')
+  })
+
+  it('Issue #8: 編集してもスキャンの先頭は緊急、戻るは2番目のまま', () => {
+    window.localStorage.setItem(
+      'libra',
+      JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'テレビ', text: 'テレビ' }] } }),
+    )
+    const { container } = render(() => <App />)
+    selectByLabel(container, '快・要望')
+    expect(scanningLabel(container)).toBe('緊急')
+    expect(tileLabels(container).slice(0, 3)).toEqual(['緊急', '戻る', 'テレビ'])
+  })
+
+  it('Issue #8: 「この画面を既定に戻す」で既定のフレーズに戻る', () => {
+    window.localStorage.setItem(
+      'libra',
+      JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'テレビ', text: 'テレビ' }] } }),
+    )
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    clickButton(editor, 'この画面を既定に戻す')
+    clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
+    selectByLabel(container, '快・要望')
+    expect(tileLabels(container)).toContain('大丈夫')
+    expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').phrases).toEqual({})
+  })
+
+  it('Issue #8: 目安(8項目)を超えると警告を出す', () => {
+    const many = Array.from({ length: 7 }, (_, i) => ({
+      id: `c${i}`,
+      label: `L${i}`,
+      text: `T${i}`,
+    }))
+    window.localStorage.setItem('libra', JSON.stringify({ phrases: { moodRequest: many } }))
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    expect(editor.querySelector('[role="alert"]')?.textContent).toContain('9 項目')
+  })
+
+  it('Issue #6: 下限0.5秒で、0.2秒のキー押下は無視され0.6秒の押下は下限到達時点で決定される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 500 }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(200)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1000)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+
+    // カーソルはまだ先頭(緊急)。押し始めの項目が下限に達した時点(keyUp より前)で決定される
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(499)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    vi.advanceTimersByTime(1)
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: タップ(pointerdown/pointerup)にも同じ下限が効く', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 500 }))
+    const { container } = render(() => <App />)
+    fireEvent.pointerDown(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(200)
+    fireEvent.pointerUp(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(1000)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+
+    fireEvent.pointerDown(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(600)
+    fireEvent.pointerUp(document.body, { pointerId: 1 })
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: 離して決定モードで blur すると、離しても決定しない', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    fireEvent.blur(window)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: 押している間に項目の並びが変わったら、別の項目(緊急など)を実行せず無視する', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 1500 }))
+    const { container } = render(() => <App />)
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=はい
+    expect(scanningLabel(container)).toBe('はい')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1500)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' }) // はい → home(取り消しが1周だけ出る)
+    expect(h1Text(container)).toBe('はい')
+
+    // 取り消しを含む7項目の末尾(文字盤)で押し始める。押している間に1周して取り消しが消える
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5 + 500)
+    expect(scanningLabel(container)).toBe('文字盤')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1500)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).toBe('はい')
+    expect(container.querySelector('.letter-strip')).toBeNull()
+  })
+
+  it('Issue #6: 離して決定モードでは押下中は実行されず、離した時点で実行される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' }) // index0=緊急
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    vi.advanceTimersByTime(100)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  // Issue #13: 本人への触覚フィードバック(はい/いいえ・緊急・解除が区別できる)
+  const vibrateMock = () => (navigator as unknown as { vibrate: ReturnType<typeof vi.fn> }).vibrate
+  const lastVibration = () => {
+    const calls = vibrateMock().mock.calls
+    return calls[calls.length - 1]?.[0]
+  }
+
+  it('Issue #13: はい(長め1回)といいえ(長め2回)を別パターンで返す', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+    vi.advanceTimersByTime(HEAD_HOLD_MS)
+    selectByLabel(container, 'いいえ')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.no)
+  })
+
+  it('Issue #13: 画面遷移(受理)は軽い短い振動、緊急は専用パターン', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '不快')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.accepted)
+    selectByLabel(container, '緊急')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.emergency)
+  })
+
+  it('Issue #13: 緊急の呼び出し中は警告音と同じ周期で振動し、解除で専用パターンが出て止まる', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急
+    vibrateMock().mockClear()
+    vi.advanceTimersByTime(3000)
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.emergencyActive)
+
+    openCaregiverMenu(container)
+    clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '緊急解除')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.cleared)
+    vibrateMock().mockClear()
+    vi.advanceTimersByTime(10000)
+    expect(vibrateMock()).not.toHaveBeenCalled()
+  })
+
+  it('Issue #13: 緊急中に本人が「はい」を選んだ直後は、周期の振動が重なって打ち消さない', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
+    selectByLabel(container, '戻る') // home へ
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+    vi.advanceTimersByTime(2900) // 周期(3秒)が来ても、直前の本人の振動を打ち消さない
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+    vi.advanceTimersByTime(3200)
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.emergencyActive) // その後は周期の振動に戻る
+  })
+
+  it('Issue #13: 設定の強さが振動パターンに反映され、OFF なら振動しない', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ hapticsStrength: 'strong' }))
+    const strong = render(() => <App />)
+    selectByLabel(strong.container, 'はい')
+    expect(lastVibration()).toEqual(feedbackPattern('yes', 'strong'))
+    strong.unmount()
+    cleanup()
+
+    window.localStorage.setItem('libra', JSON.stringify({ hapticsEnabled: false }))
+    vibrateMock().mockClear()
+    const off = render(() => <App />)
+    selectByLabel(off.container, 'はい')
+    expect(vibrateMock()).not.toHaveBeenCalled()
+  })
+
+  it('Issue #13: 触覚OFFで音声モードが「効果音だけ」のときは、従来の短い振動を出す', () => {
+    window.localStorage.setItem(
+      'libra',
+      JSON.stringify({ hapticsEnabled: false, voiceMode: 'tone' }),
+    )
+    const { container } = render(() => <App />)
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toBe(35)
+  })
+
+  it('Issue #13: 触覚ONでは、音声モード「効果音だけ」の短い振動がはい/いいえのパターンを打ち消さない', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ voiceMode: 'tone' }))
+    const { container } = render(() => <App />)
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+  })
+
+  // Issue #14: モールス。押している長さが符号になる(短い=・、長い=－)
+  function tap(ms: number) {
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(ms)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(150)
+  }
+  const DOT = 100
+  const DASH = 600
+  function sendCode(code: string) {
+    for (const symbol of code) tap(symbol === '.' ? DOT : DASH)
+  }
+  function enterMorse() {
+    window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true }))
+    const view = render(() => <App />)
+    selectByLabel(view.container, 'モールス')
+    expect(view.container.querySelector('.morse-panel')).not.toBeNull()
+    return view
+  }
+  const morseTextOf = (container: HTMLElement) =>
+    container.querySelector('.morse-text')?.textContent ?? ''
+
+  it('Issue #14: 既定ではホームにモールスの入口が出ない', () => {
+    const { container } = render(() => <App />)
+    expect(tileLabels(container)).not.toContain('モールス')
+  })
+
+  it('Issue #14: ON にすると入口が出て、短押し・長押しで「めかね」を入力できる', () => {
+    const { container } = enterMorse()
+    for (const code of ['-...-', '.-..', '--.-']) {
+      sendCode(code)
+      vi.advanceTimersByTime(1600) // 文字の確定
+    }
+    expect(morseTextOf(container)).toBe('めかね')
+  })
+
+  it('Issue #14: モールス中はスキャンのカーソルが動かず、押下は項目を選ばない', () => {
+    const { container } = enterMorse()
+    const before = scanningLabel(container)
+    vi.advanceTimersByTime(10000)
+    expect(scanningLabel(container)).toBe(before) // カーソルは動かない
+    expect(container.querySelector('.grid-board.is-hidden')).not.toBeNull()
+    sendCode('.-')
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+  })
+
+  it('Issue #14: 長押し5つの連続で、確定を待たず即緊急(警告音も鳴る)', () => {
+    const { container } = enterMorse()
+    oscillatorStartCount = 0
+    sendCode('----')
+    expect(h1Text(container)).not.toBe('緊急です。来てください') // 4つではまだ
+    sendCode('-')
+    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(oscillatorStartCount).toBeGreaterThan(0)
+    expect(container.querySelector('.morse-panel')).toBeNull() // スキャンの緊急詳細へ
+    expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('Issue #14: ゆっくり押す人(0.9秒押して0.7秒空ける)でも、－5つで緊急に届く', () => {
+    const { container } = enterMorse()
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+      vi.advanceTimersByTime(900)
+      fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+      vi.advanceTimersByTime(700)
+    }
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #14: 介助者メニューを開いている間は、裏で語の区切りが入ったり自動復帰したりしない', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    openCaregiverMenu(container) // 開くまでの2秒で「い」が確定する
+    expect(morseTextOf(container)).toBe('い')
+    vi.advanceTimersByTime(40000) // 語の区切り(4秒)も無操作の復帰(30秒)も、裏では進まない
+    expect(morseTextOf(container)).toBe('い')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+  })
+
+  it('Issue #14: 直前に誤って短押しが入っていても、続けて長押し5つで緊急になる', () => {
+    const { container } = enterMorse()
+    sendCode('.')
+    sendCode('-----')
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #14: 短押し5つ+待つ でスキャンへ戻り、入力途中の文字列は残る', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    vi.advanceTimersByTime(1600)
+    expect(morseTextOf(container)).toBe('い')
+    sendCode('.....')
+    vi.advanceTimersByTime(1600)
+    expect(container.querySelector('.morse-panel')).toBeNull()
+    expect(scanningLabel(container)).toBe('緊急') // スキャンが再開している
+    selectByLabel(container, 'モールス')
+    expect(morseTextOf(container)).toBe('い')
+  })
+
+  it('Issue #14: 無操作が続くと、本人が取り残されずスキャンへ戻る', () => {
+    const { container } = enterMorse()
+    vi.advanceTimersByTime(30500)
+    expect(container.querySelector('.morse-panel')).toBeNull()
+    expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('Issue #14: 確定の符号で入力した文字列を伝達として表示しホームへ戻る', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    vi.advanceTimersByTime(1600)
+    sendCode('.-.-.-')
+    vi.advanceTimersByTime(1600)
+    expect(h1Text(container)).toBe('い')
+    expect(container.querySelector('.morse-panel')).toBeNull()
+  })
+
+  it('Issue #14: 押している間は符号の見込みを表示する', () => {
+    const { container } = enterMorse()
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(700)
+    expect(container.querySelector('.morse-code.holding')).not.toBeNull()
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(container.querySelector('.morse-code.holding')).toBeNull()
+  })
+
+  it('Issue #14: 介助者メニューにモールスの設定が出る(ON のときだけ時間の設定)', () => {
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const panel = container.querySelector('.caregiver-panel') as HTMLElement
+    expect(panel.textContent).toContain('モールス入力を使う')
+    expect(panel.textContent).not.toContain('長押し(－)の境目')
+    const checkbox = Array.from(panel.querySelectorAll('label'))
+      .find((l) => l.textContent?.includes('モールス入力を使う'))
+      ?.querySelector('input') as HTMLInputElement
+    fireEvent.click(checkbox)
+    expect(panel.textContent).toContain('長押し(－)の境目')
+    expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').morseEnabled).toBe(true)
   })
 
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
@@ -852,11 +1366,16 @@ describe('App', () => {
       expect(second.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
       expect(second.container.querySelector('.emergency-sub')?.textContent).toContain('最新: はい')
       expect(oscillatorStartCount).toBeGreaterThan(0)
+      expect(vibrate).not.toHaveBeenCalled() // 復元の直後に、緊急発生時の振動は出さない
       vi.advanceTimersByTime(3000)
       const afterOneCycle = oscillatorStartCount
       vi.advanceTimersByTime(3000)
       expect(oscillatorStartCount).toBeGreaterThan(afterOneCycle)
-      expect(vibrate).not.toHaveBeenCalled()
+      // 呼び出し中の周期の振動(#13)だけが、警告音と同じ周期で出る
+      expect(vibrate).toHaveBeenCalled()
+      for (const call of vibrate.mock.calls) {
+        expect(call[0]).toEqual(HAPTIC_PATTERNS.emergencyActive)
+      }
       expect(speak).not.toHaveBeenCalled()
     })
 

@@ -158,6 +158,9 @@
 }
 
 :root {
+  /* Issue #6: 押下進捗バー。明るい/夜間どちらの盤面でも見える色 */
+  --hold-progress-track: rgb(0 0 0 / 35%);
+  --hold-progress-fill: #ffd54a;
   color: var(--text);
   background: var(--bg);
   /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
@@ -433,14 +436,20 @@ h1[data-fit='single'] {
 }
 
 .letter-strip output {
-  min-height: 54px;
+  /* 入力途中の文字列は画面上部に大きく出す(requirements.md §4.6)。折り返し、
+     3行を超える分は先頭側を隠して末尾(直近の入力)が見えるようにする(JSで末尾へスクロール) */
+  display: block;
+  min-height: 1.3em;
+  /* box-sizing: border-box のため、上下 padding(20px)を足して内容 3 行分を確保する */
+  max-height: calc(3.9em + 20px);
   padding: 10px 14px;
   overflow: hidden;
   color: var(--text);
   background: var(--surface);
+  font-size: clamp(1.5rem, 7vmin, 3rem);
   font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 /* ===================================================================
@@ -1029,4 +1038,146 @@ h1[data-fit='single'] {
     min-height: 84px;
     padding: 14px 6px 8px;
   }
+}
+
+/* Issue #8: フレーズ編集(介助者メニュー内)。タッチ操作しやすい大きさで縦に並べる */
+.phrase-editor {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--grid-line);
+}
+
+.phrase-editor h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.phrase-note {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.phrase-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phrase-row {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--grid-line);
+  border-radius: 8px;
+}
+
+.phrase-row label {
+  display: grid;
+  gap: 2px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.phrase-row input,
+.phrase-editor textarea {
+  min-height: 44px;
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--grid-line);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.phrase-row-actions,
+.phrase-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.phrase-row-actions button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--grid-line);
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.phrase-row-actions button:disabled {
+  opacity: 0.4;
+}
+
+/* Issue #6: 押下時間の下限があるとき、押している間の進み具合を画面上端に出す。
+   入力を邪魔しないよう pointer-events:none。 */
+.hold-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  height: 12px;
+  background: var(--hold-progress-track);
+  pointer-events: none;
+}
+
+.hold-progress-bar {
+  height: 100%;
+  background: var(--hold-progress-fill);
+}
+
+/* Issue #14: モールス入力。符号と確定済みの文字列を大きく表示する。
+   モールス中は押下が符号になるため、タイルの格子は隠す(スキャンのカーソルも止める)。 */
+.grid-board.is-hidden {
+  display: none;
+}
+
+.morse-panel {
+  grid-row: 3;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px 14px;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.morse-code {
+  margin: 0;
+  min-height: 1.3em;
+  font-size: clamp(2rem, 11vmin, 4.5rem);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+}
+
+.morse-code.holding {
+  color: var(--hold-progress-fill);
+}
+
+.morse-text {
+  margin: 0;
+  min-height: 1.3em;
+  font-size: clamp(1.5rem, 7vmin, 3rem);
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.morse-legend {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  opacity: 0.85;
 }

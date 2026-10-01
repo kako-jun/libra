@@ -336,11 +336,13 @@ async function checkLettersScrollLayout(chromium, port) {
       await page.keyboard.press('Space')
       await page.waitForTimeout(200)
 
-      // letters screen: 確定 が最後の項目(緊急,戻る,10文字,1字消す,確定)
-      const itemCount = await page.evaluate(
-        () => document.querySelectorAll('.grid-board .tile').length,
+      // letters screen(2 段階文字盤の行段階): 緊急,戻る,あ〜わ行,確定,1字消す,はい・いいえ。
+      // 確定は末尾ではないので、ラベルから位置を引く
+      const commitIndex = await page.evaluate(() =>
+        [...document.querySelectorAll('.grid-board .tile')].findIndex(
+          (tile) => tile.querySelector('.tile-label')?.textContent === '確定',
+        ),
       )
-      const commitIndex = itemCount - 1
       await page.waitForTimeout(3000 + (commitIndex - 1) * 1500 + 150)
 
       const info = await page.evaluate(() => {

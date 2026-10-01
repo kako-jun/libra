@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_SETTINGS, loadSettings, normalizeSettings, saveSettings } from '../settings'
+import {
+  DEFAULT_SETTINGS,
+  exportSettingsJson,
+  loadSettings,
+  normalizeSettings,
+  parseSettingsJson,
+  saveSettings,
+} from '../settings'
 
 describe('normalizeSettings', () => {
   it('すべて正常値なら変更せず通過する', () => {
@@ -7,11 +14,22 @@ describe('normalizeSettings', () => {
       intervalMs: 2000,
       headHoldMultiplier: 3,
       debounceMs: 1000,
+      minHoldMs: 500,
+      activateOn: 'release',
       auditoryScan: true,
       voiceMode: 'short',
       fontSize: 'large',
       highContrast: true,
       theme: 'dark',
+      phrases: {},
+      hapticsEnabled: false,
+      hapticsStrength: 'strong',
+      hapticSoundWhenVoiceOff: true,
+      hapticSoundAlso: true,
+      morseEnabled: true,
+      morseDashMs: 600,
+      morseLetterGapMs: 1200,
+      morseWordGapMs: 3000,
     }
     expect(normalizeSettings(input)).toEqual(input)
   })
@@ -181,5 +199,137 @@ describe('saveSettings', () => {
       throw new Error('quota exceeded')
     })
     expect(() => saveSettings(DEFAULT_SETTINGS)).not.toThrow()
+  })
+
+  it('Issue #6: 押下時間の下限・決定タイミングを検証して丸める', () => {
+    expect(normalizeSettings({}).minHoldMs).toBe(0)
+    expect(normalizeSettings({}).activateOn).toBe('press')
+    expect(normalizeSettings({ minHoldMs: 500, activateOn: 'release' })).toMatchObject({
+      minHoldMs: 500,
+      activateOn: 'release',
+    })
+    expect(normalizeSettings({ minHoldMs: 9999, activateOn: 'x' })).toMatchObject({
+      minHoldMs: 0,
+      activateOn: 'press',
+    })
+  })
+
+  describe('Issue #8: フレーズの保存と書き出し・取り込み', () => {
+    it('フレーズを保存して再読み込みで保持する', () => {
+      const phrases = {
+        moodRequest: [{ id: 'custom-1', label: 'テレビ', text: 'テレビを見たいです' }],
+      }
+      saveSettings({ ...DEFAULT_SETTINGS, phrases })
+      expect(loadSettings().phrases).toEqual(phrases)
+    })
+
+    it('書き出した JSON を取り込むと同じ設定に戻る', () => {
+      const settings = {
+        ...DEFAULT_SETTINGS,
+        intervalMs: 2500,
+        phrases: { painLocation: [{ id: 'custom-1', label: '首', text: '首が痛いです' }] },
+      }
+      expect(parseSettingsJson(exportSettingsJson(settings))).toEqual(settings)
+    })
+
+    it('壊れた JSON・オブジェクトでない値は null(今の設定を変えない)', () => {
+      expect(parseSettingsJson('{not json')).toBeNull()
+      expect(parseSettingsJson('[1,2]')).toBeNull()
+      expect(parseSettingsJson('"x"')).toBeNull()
+      expect(parseSettingsJson('null')).toBeNull()
+    })
+
+    it('書き出しに識別子が無い・合わない JSON は取り込まない(他アプリの JSON・{} など)', () => {
+      expect(parseSettingsJson('{}')).toBeNull()
+      expect(parseSettingsJson(JSON.stringify({ intervalMs: 2000 }))).toBeNull()
+      expect(parseSettingsJson(JSON.stringify({ app: 'other', version: 1 }))).toBeNull()
+      expect(parseSettingsJson(JSON.stringify({ app: 'libra', version: 99 }))).toBeNull()
+    })
+
+    it('取り込みは今の設定を土台にし、欠けた・範囲外の項目は今の値のまま残す', () => {
+      const current = {
+        ...DEFAULT_SETTINGS,
+        intervalMs: 3000,
+        debounceMs: 1200,
+        phrases: { painLocation: [{ id: 'c1', label: '首', text: '首が痛いです' }] },
+      }
+      const next = parseSettingsJson(
+        JSON.stringify({ app: 'libra', version: 1, headHoldMultiplier: 4, intervalMs: 99999 }),
+        current,
+      )
+      expect(next?.headHoldMultiplier).toBe(4) // 取り込んだ値
+      expect(next?.intervalMs).toBe(3000) // 範囲外は今の値
+      expect(next?.debounceMs).toBe(1200) // 無い項目は今の値
+      expect(next?.phrases).toEqual(current.phrases) // フレーズが無ければ今のフレーズを残す
+    })
+
+    it('書き出しの phrases があればそれで置き換える', () => {
+      const current = {
+        ...DEFAULT_SETTINGS,
+        phrases: { painLocation: [{ id: 'c1', label: '首', text: '首が痛いです' }] },
+      }
+      const next = parseSettingsJson(
+        JSON.stringify({
+          app: 'libra',
+          version: 1,
+          phrases: { moodRequest: [{ id: 'c2', label: 'テレビ', text: 'テレビ' }] },
+        }),
+        current,
+      )
+      expect(Object.keys(next?.phrases ?? {})).toEqual(['moodRequest'])
+    })
+  })
+
+  describe('Issue #13: 触覚フィードバック設定', () => {
+    it('既定は ON・標準・音声OFFでは効果音なしで、型違いは既定値に戻す', () => {
+      expect(normalizeSettings({})).toMatchObject({
+        hapticsEnabled: true,
+        hapticsStrength: 'standard',
+        hapticSoundWhenVoiceOff: false,
+      })
+      expect(
+        normalizeSettings({
+          hapticsEnabled: 'x',
+          hapticsStrength: 'huge',
+          hapticSoundWhenVoiceOff: 1,
+        }),
+      ).toMatchObject({
+        hapticsEnabled: true,
+        hapticsStrength: 'standard',
+        hapticSoundWhenVoiceOff: false,
+      })
+    })
+  })
+
+  describe('Issue #14: モールス設定', () => {
+    it('既定は OFF で、範囲外・型違いは既定値に戻す', () => {
+      const d = normalizeSettings({})
+      expect(d).toMatchObject({
+        morseEnabled: false,
+        morseDashMs: 500,
+        morseLetterGapMs: 1500,
+        morseWordGapMs: 4000,
+      })
+      const bad = normalizeSettings({
+        morseEnabled: 'yes',
+        morseDashMs: 10,
+        morseLetterGapMs: 99999,
+        morseWordGapMs: -1,
+      })
+      expect(bad).toMatchObject({
+        morseEnabled: false,
+        morseDashMs: 500,
+        morseLetterGapMs: 1500,
+        morseWordGapMs: 4000,
+      })
+    })
+
+    it('語の区切りは文字の確定より常に 0.5 秒以上長くなる(保存値で保証)', () => {
+      const n = normalizeSettings({ morseLetterGapMs: 3000, morseWordGapMs: 1500 })
+      expect(n.morseLetterGapMs).toBe(3000)
+      expect(n.morseWordGapMs).toBe(3500)
+      const ok = normalizeSettings({ morseLetterGapMs: 1000, morseWordGapMs: 4000 })
+      expect(ok.morseWordGapMs).toBe(4000)
+    })
   })
 })
