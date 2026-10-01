@@ -784,6 +784,119 @@ describe('App', () => {
     expect(second.container.textContent).toContain('スキャン間隔: 2.5 秒')
   })
 
+  describe('libra#17: 緊急状態の保存と再起動後の復元', () => {
+    const KEY = 'libra:emergency'
+    const stored = () => {
+      const raw = window.localStorage.getItem(KEY)
+      return raw === null ? null : JSON.parse(raw)
+    }
+    const clearEmergencyViaMenu = (container: HTMLElement) => {
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const clearButton = Array.from(container.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('緊急解除'),
+      ) as HTMLElement
+      fireEvent.click(clearButton)
+    }
+
+    it('緊急を選ぶと保存され、通常起動では何も保存されない', () => {
+      const { container } = render(() => <App />)
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(stored()).toEqual({ active: true, details: [], sub: null })
+    })
+
+    it('詳細・副表示ごと再マウントで復元され、警告音が再開し、振動・読み上げは出ない', () => {
+      const first = render(() => <App />)
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index2=苦しい
+      fireEvent.keyDown(window, { key: ' ' }) // 苦しい → home
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+      fireEvent.keyDown(window, { key: ' ' }) // はい → 副表示
+      expect(stored()).toEqual({ active: true, details: ['苦しい'], sub: 'はい' })
+      first.unmount()
+      cleanup()
+
+      oscillatorStartCount = 0
+      const vibrate = vi.fn()
+      ;(navigator as unknown as { vibrate?: unknown }).vibrate = vibrate
+      const speak = vi.fn()
+      ;(window as unknown as { speechSynthesis?: unknown }).speechSynthesis = {
+        cancel: vi.fn(),
+        speak,
+      }
+
+      const second = render(() => <App />)
+      expect(h1Text(second.container)).toBe('緊急です。来てください')
+      expect(document.documentElement.dataset.messageTone).toBe('urgent')
+      expect(second.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+      expect(second.container.querySelector('.emergency-sub')?.textContent).toContain('最新: はい')
+      expect(oscillatorStartCount).toBeGreaterThan(0)
+      vi.advanceTimersByTime(3000)
+      const afterOneCycle = oscillatorStartCount
+      vi.advanceTimersByTime(3000)
+      expect(oscillatorStartCount).toBeGreaterThan(afterOneCycle)
+      expect(vibrate).not.toHaveBeenCalled()
+      expect(speak).not.toHaveBeenCalled()
+    })
+
+    it('復元後に警告音が鳴れない状態なら「警告音停止中」表示が出る', () => {
+      window.localStorage.setItem(KEY, JSON.stringify({ active: true, details: [], sub: null }))
+      vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
+      const { container } = render(() => <App />)
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(container.querySelector('.audio-status-hint')).not.toBeNull()
+    })
+
+    it('介助者メニューの緊急解除で保存が消え、再マウントで通常起動・警告音なし', () => {
+      const first = render(() => <App />)
+      fireEvent.keyDown(window, { key: ' ' })
+      expect(stored()).not.toBeNull()
+      clearEmergencyViaMenu(first.container)
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      first.unmount()
+      cleanup()
+
+      oscillatorStartCount = 0
+      const second = render(() => <App />)
+      expect(h1Text(second.container)).toBe('選んだ内容がここに大きく出ます')
+      expect(second.container.querySelector('.emergency-details')).toBeNull()
+      vi.advanceTimersByTime(10000)
+      expect(oscillatorStartCount).toBe(0)
+    })
+
+    it('壊れた保存値では通常起動する(例外で落ちない)', () => {
+      window.localStorage.setItem(KEY, '{broken')
+      const { container } = render(() => <App />)
+      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+      expect(oscillatorStartCount).toBe(0)
+    })
+
+    it('緊急の保存・解除は設定(libra)の保存と干渉しない', () => {
+      const first = render(() => <App />)
+      const button = first.container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const slider = first.container.querySelector(
+        'input[type="range"][min="500"]',
+      ) as HTMLInputElement
+      fireEvent.input(slider, { target: { value: '2500' } })
+      const settingsBefore = window.localStorage.getItem('libra')
+      expect(settingsBefore).not.toBeNull()
+      const closeButton = Array.from(first.container.querySelectorAll('button')).find(
+        (b) => b.textContent === '閉じる',
+      ) as HTMLElement
+      fireEvent.click(closeButton)
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急
+      expect(window.localStorage.getItem('libra')).toBe(settingsBefore)
+      clearEmergencyViaMenu(first.container)
+      expect(window.localStorage.getItem('libra')).toBe(settingsBefore)
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+    })
+  })
+
   describe('Issue #3 追加指示: 表示テーマ(明るい/夜間/自動)・文字サイズ・高コントラスト', () => {
     // window.matchMedia の複雑なモック。複数のクエリ(prefers-color-scheme, display-mode)を
     // 個別に扱い、addEventListener で登録されたリスナーを trigger() で発火できるようにする。
