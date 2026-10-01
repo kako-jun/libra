@@ -15,6 +15,7 @@ const base: FeedbackOptions = {
   enabled: true,
   strength: 'standard',
   soundWhenVoiceOff: false,
+  soundAlso: false,
   voiceMode: 'short',
 }
 
@@ -40,22 +41,22 @@ describe('フィードバックのパターン', () => {
   })
 
   it('強さは振動する長さだけを伸縮し、合間は変えない', () => {
-    expect(feedbackPattern('no', 'standard')).toEqual([80, 100, 80])
+    expect(feedbackPattern('no', 'standard')).toEqual([120, 100, 120])
     const light = feedbackPattern('no', 'light')
     const strong = feedbackPattern('no', 'strong')
-    expect(light[0]).toBeLessThan(80)
-    expect(strong[0]).toBeGreaterThan(80)
+    expect(light[0]).toBeLessThan(120)
+    expect(strong[0]).toBeGreaterThan(120)
     expect(light[1]).toBe(100)
     expect(strong[1]).toBe(100)
   })
 
-  it('どの強さでも、パターンは区別できるまま(弱でも重複しない・最低10ms)', () => {
+  it('どの強さでも、パターンは区別できるまま(弱でも重複しない・最低20ms)', () => {
     for (const strength of HAPTIC_STRENGTHS) {
       const keys = EVENTS.map((e) => JSON.stringify(feedbackPattern(e, strength)))
       expect(new Set(keys).size).toBe(EVENTS.length)
       for (const e of EVENTS) {
         feedbackPattern(e, strength).forEach((ms, i) => {
-          if (i % 2 === 0) expect(ms).toBeGreaterThanOrEqual(10)
+          if (i % 2 === 0) expect(ms).toBeGreaterThanOrEqual(20)
         })
       }
     }
@@ -116,5 +117,55 @@ describe('playFeedback', () => {
       playFeedback('no', { ...base, voiceMode: 'off', soundWhenVoiceOff: true })
       expect(tone).toHaveBeenCalledWith(HAPTIC_PATTERNS.no)
     })
+  })
+})
+
+describe('playFeedback: 効果音(振動モーターのない端末向け・警告音との関係)', () => {
+  const original = Object.getOwnPropertyDescriptor(navigator, 'vibrate')
+  afterEach(() => {
+    vi.restoreAllMocks()
+    if (original) Object.defineProperty(navigator, 'vibrate', original)
+    else delete (navigator as unknown as { vibrate?: unknown }).vibrate
+  })
+
+  it('振動できる端末でも「いつも効果音でも返す」を選べば、振動と効果音の両方を出す', () => {
+    const vibrate = vi.fn()
+    Object.defineProperty(navigator, 'vibrate', {
+      configurable: true,
+      writable: true,
+      value: vibrate,
+    })
+    const tone = vi.spyOn(alarm, 'playTonePattern').mockImplementation(() => {})
+    playFeedback('yes', { ...base, soundAlso: true })
+    expect(vibrate).toHaveBeenCalledWith(HAPTIC_PATTERNS.yes)
+    expect(tone).toHaveBeenCalledWith(HAPTIC_PATTERNS.yes)
+    tone.mockClear()
+    playFeedback('yes', base)
+    expect(tone).not.toHaveBeenCalled()
+  })
+
+  it('緊急・緊急の呼び出し中は、警告音と重ならないよう効果音を出さない(振動は出す)', () => {
+    const vibrate = vi.fn()
+    Object.defineProperty(navigator, 'vibrate', {
+      configurable: true,
+      writable: true,
+      value: vibrate,
+    })
+    const tone = vi.spyOn(alarm, 'playTonePattern').mockImplementation(() => {})
+    playFeedback('emergency', { ...base, soundAlso: true })
+    playFeedback('emergencyActive', { ...base, soundAlso: true })
+    expect(vibrate).toHaveBeenCalledTimes(2)
+    expect(tone).not.toHaveBeenCalled()
+  })
+
+  it('navigator.vibrate が例外を投げても落ちない', () => {
+    Object.defineProperty(navigator, 'vibrate', {
+      configurable: true,
+      writable: true,
+      value: () => {
+        throw new Error('blocked')
+      },
+    })
+    expect(() => playFeedback('cleared', base)).not.toThrow()
   })
 })

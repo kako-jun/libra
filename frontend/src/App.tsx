@@ -289,13 +289,19 @@ export default function App() {
   }
 
   // Issue #13: 本人への触覚フィードバック。パターンは lib/feedback.ts に集約している
-  const feedback = (event: FeedbackEvent) =>
+  // 本人の入力へのフィードバックを最後に出した時刻。緊急中の周期の振動が、直後に重なって
+  // はい/いいえなどの振動を打ち消さないよう、周期の振動はこの直後には出さない
+  let lastFeedbackAt = 0
+  const feedback = (event: FeedbackEvent) => {
+    if (event !== 'emergencyActive') lastFeedbackAt = Date.now()
     playFeedback(event, {
       enabled: settings().hapticsEnabled,
       strength: settings().hapticsStrength,
       soundWhenVoiceOff: settings().hapticSoundWhenVoiceOff,
+      soundAlso: settings().hapticSoundAlso,
       voiceMode: settings().voiceMode,
     })
+  }
 
   const showMessage = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     setMessage(text)
@@ -545,7 +551,10 @@ export default function App() {
   // 緊急の呼び出し中は、警告音と同じ周期で振動も繰り返し、まだ続いていることを本人が知れるようにする
   createEffect(() => {
     if (!emergencyActive()) return
-    const id = window.setInterval(() => feedback('emergencyActive'), ALARM_REPEAT_MS)
+    const id = window.setInterval(() => {
+      if (Date.now() - lastFeedbackAt < ALARM_REPEAT_MS) return // 本人の直前の振動を打ち消さない
+      feedback('emergencyActive')
+    }, ALARM_REPEAT_MS)
     onCleanup(() => window.clearInterval(id))
   })
 
@@ -1064,6 +1073,19 @@ export default function App() {
                   </For>
                 </div>
               </div>
+
+              <label class="caregiver-field caregiver-checkbox">
+                <input
+                  type="checkbox"
+                  checked={settings().hapticSoundAlso}
+                  onChange={(event) =>
+                    updateSettings({ hapticSoundAlso: event.currentTarget.checked })
+                  }
+                />
+                <span>
+                  振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
+                </span>
+              </label>
 
               <label class="caregiver-field caregiver-checkbox">
                 <input

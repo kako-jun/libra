@@ -38,26 +38,27 @@ const STRENGTH_SCALE: Record<HapticStrength, number> = {
 
 /**
  * 標準の強さでのパターン(ms。振動・休止・振動…の順)。
- * 受理は軽く短く、はい=長め1回、いいえ=長め2回、緊急は長く3回、解除は長い1回、のように
+ * 受理は軽く短く、はい=長め1回、いいえ=長め2回、緊急は長く3回、緊急の呼び出し中は小さく3回、
+ * 解除は長い1回、のように
  * どれも互いに区別できるようにする(feedback.test.ts で重複がないことを確認)。
  */
 export const HAPTIC_PATTERNS: Record<FeedbackEvent, number[]> = {
   accepted: [20],
   message: [40],
-  yes: [80],
-  no: [80, 100, 80],
+  yes: [120],
+  no: [120, 100, 120],
   urgentMessage: [60, 40, 60],
   emergency: [300, 120, 300, 120, 300],
-  emergencyActive: [150, 100, 150],
+  emergencyActive: [50, 60, 50, 60, 50],
   cleared: [500],
-  delivered: [60, 60, 60, 60, 200],
+  delivered: [100, 80, 100, 80, 100, 80, 100],
 }
 
 /** 強さに応じたパターン。振動する長さ(偶数番目)だけを伸縮し、最低 10ms を保つ */
 export function feedbackPattern(event: FeedbackEvent, strength: HapticStrength): number[] {
   const scale = STRENGTH_SCALE[strength]
   return HAPTIC_PATTERNS[event].map((ms, index) =>
-    index % 2 === 0 ? Math.max(10, Math.round(ms * scale)) : ms,
+    index % 2 === 0 ? Math.max(20, Math.round(ms * scale)) : ms,
   )
 }
 
@@ -66,6 +67,8 @@ export interface FeedbackOptions {
   strength: HapticStrength
   /** 振動が使えない端末の効果音代替を、音声モード OFF のときも鳴らすか */
   soundWhenVoiceOff: boolean
+  /** 振動に加えて、いつも短い効果音でも返すか(Vibration API があっても振動モーターのない端末向け) */
+  soundAlso: boolean
   voiceMode: VoiceMode
 }
 
@@ -74,15 +77,24 @@ function canVibrate(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
 }
 
-/** イベントに対応するフィードバックを出す。新しい呼び出しは直前の振動を置き換える。 */
+/** 警告音が鳴っている間は、警告音そのものが状態を伝えているので、効果音を重ねない */
+const SILENT_TONE_EVENTS: FeedbackEvent[] = ['emergency', 'emergencyActive']
+
+/** イベントに対応するフィードバックを出す。新しい呼び出しは直前の振動・効果音を置き換える。 */
 export function playFeedback(event: FeedbackEvent, options: FeedbackOptions): void {
   if (!options.enabled) return
   const pattern = feedbackPattern(event, options.strength)
-  if (canVibrate()) {
-    navigator.vibrate(pattern)
-    return
+  const vibratable = canVibrate()
+  if (vibratable) {
+    try {
+      navigator.vibrate(pattern)
+    } catch {
+      // 振動に失敗しても、表示・警告音など他の動作は続ける
+    }
   }
-  // 非対応端末: 効果音で代替。音声 OFF のときは、設定で許したときだけ鳴らす
-  if (options.voiceMode === 'off' && !options.soundWhenVoiceOff) return
-  playTonePattern(pattern)
+  if (SILENT_TONE_EVENTS.includes(event)) return
+  // 効果音: 振動できない端末の代替(音声 OFF のときは、設定で許したときだけ)、または
+  // 振動モーターのない端末向けに「いつも効果音でも返す」を選んだとき
+  const fallback = !vibratable && (options.voiceMode !== 'off' || options.soundWhenVoiceOff)
+  if (fallback || options.soundAlso) playTonePattern(pattern)
 }

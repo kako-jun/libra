@@ -25,6 +25,7 @@ describe('normalizeSettings', () => {
       hapticsEnabled: false,
       hapticsStrength: 'strong',
       hapticSoundWhenVoiceOff: true,
+      hapticSoundAlso: true,
     }
     expect(normalizeSettings(input)).toEqual(input)
   })

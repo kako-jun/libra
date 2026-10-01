@@ -101,10 +101,21 @@ function beep(): void {
  * 音の長さ・合間にして鳴らす。AudioContext が running でなければ何もしない
  * (待ってまとめて鳴らすことはしない。警告音とは別で、取りこぼしても致命的でない)。
  */
+let activeTones: OscillatorNode[] = []
+
 export function playTonePattern(pattern: number[], frequency = 520): void {
   const ctx = audioContext
   if (!ctx || ctx.state !== 'running') return
   try {
+    // 振動と同じく、新しい効果音が直前の効果音を置き換える(受理→はい で音が重ならない)
+    for (const previous of activeTones) {
+      try {
+        previous.stop()
+      } catch {
+        // すでに止まっている
+      }
+    }
+    activeTones = []
     let at = ctx.currentTime
     pattern.forEach((ms, index) => {
       const seconds = ms / 1000
@@ -120,6 +131,7 @@ export function playTonePattern(pattern: number[], frequency = 520): void {
         gain.connect(ctx.destination)
         oscillator.start(at)
         oscillator.stop(at + seconds + 0.02)
+        activeTones.push(oscillator)
       }
       at += seconds
     })

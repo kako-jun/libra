@@ -620,6 +620,18 @@ describe('App', () => {
     expect(vibrateMock()).not.toHaveBeenCalled()
   })
 
+  it('Issue #13: 緊急中に本人が「はい」を選んだ直後は、周期の振動が重なって打ち消さない', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
+    selectByLabel(container, '戻る') // home へ
+    selectByLabel(container, 'はい')
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+    vi.advanceTimersByTime(2900) // 周期(3秒)が来ても、直前の本人の振動を打ち消さない
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
+    vi.advanceTimersByTime(3200)
+    expect(lastVibration()).toEqual(HAPTIC_PATTERNS.emergencyActive) // その後は周期の振動に戻る
+  })
+
   it('Issue #13: 設定の強さが振動パターンに反映され、OFF なら振動しない', () => {
     window.localStorage.setItem('libra', JSON.stringify({ hapticsStrength: 'strong' }))
     const strong = render(() => <App />)

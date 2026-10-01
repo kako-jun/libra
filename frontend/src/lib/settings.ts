@@ -3,7 +3,7 @@
 
 import { normalizePhraseSets, type PhraseSets } from './phrases'
 import type { ActivateOn } from './switchInput'
-import type { HapticStrength } from './feedback'
+import { HAPTIC_STRENGTHS, type HapticStrength } from './feedback'
 
 export type VoiceMode = 'off' | 'tone' | 'short' | 'full'
 
@@ -30,6 +30,8 @@ export interface Settings {
   hapticsStrength: HapticStrength
   /** 振動できない端末の効果音代替を、音声 OFF のときも鳴らすか。既定 OFF */
   hapticSoundWhenVoiceOff: boolean
+  /** 振動に加えて、いつも短い効果音でも返すか。振動モーターのない端末向け。既定 OFF */
+  hapticSoundAlso: boolean
   /** 聴覚スキャン（カーソル移動ごとに項目名を読む）。既定 OFF */
   auditoryScan: boolean
   /** 読み上げモード。既定 OFF */
@@ -53,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hapticsEnabled: true,
   hapticsStrength: 'standard',
   hapticSoundWhenVoiceOff: false,
+  hapticSoundAlso: false,
   auditoryScan: false,
   voiceMode: 'off',
   fontSize: 'standard',
@@ -75,7 +78,6 @@ const MIN_HOLD_MS_MAX = 2000
 const VOICE_MODES: VoiceMode[] = ['off', 'tone', 'short', 'full']
 const FONT_SIZES: FontSize[] = ['standard', 'large', 'xlarge']
 const ACTIVATE_ONS: ActivateOn[] = ['press', 'release']
-const HAPTIC_STRENGTHS: HapticStrength[] = ['light', 'standard', 'strong']
 const THEMES: Theme[] = ['light', 'dark', 'auto']
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
@@ -109,6 +111,8 @@ export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTI
       typeof raw.hapticSoundWhenVoiceOff === 'boolean'
         ? raw.hapticSoundWhenVoiceOff
         : base.hapticSoundWhenVoiceOff,
+    hapticSoundAlso:
+      typeof raw.hapticSoundAlso === 'boolean' ? raw.hapticSoundAlso : base.hapticSoundAlso,
     auditoryScan: typeof raw.auditoryScan === 'boolean' ? raw.auditoryScan : base.auditoryScan,
     voiceMode: VOICE_MODES.includes(raw.voiceMode as VoiceMode)
       ? (raw.voiceMode as VoiceMode)
