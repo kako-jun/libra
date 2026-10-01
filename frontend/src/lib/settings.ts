@@ -1,6 +1,7 @@
 // 介助者設定の localStorage 読み書き・検証。
 // 正本: docs/requirements.md §3.3, §6
 
+import { normalizePhraseSets, type PhraseSets } from './phrases'
 import type { ActivateOn } from './switchInput'
 
 export type VoiceMode = 'off' | 'tone' | 'short' | 'full'
@@ -32,6 +33,8 @@ export interface Settings {
   highContrast: boolean
   /** 表示(明暗)テーマ。既定 auto(端末の設定に追従) */
   theme: Theme
+  /** Issue #8: 介助者が編集した定型フレーズ。キーが無いグループは既定のプリセット */
+  phrases: PhraseSets
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -45,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fontSize: 'standard',
   highContrast: false,
   theme: 'auto',
+  phrases: {},
 }
 
 const STORAGE_KEY = 'libra'
@@ -69,48 +73,33 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return value
 }
 
-/** 未知の値を安全な Settings へ丸める。壊れた値・範囲外は既定値にする。 */
-export function normalizeSettings(input: unknown): Settings {
+/** 未知の値を安全な Settings へ丸める。壊れた値・範囲外は base(既定では既定値)にする。 */
+export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTINGS): Settings {
   const raw = (input ?? {}) as Partial<Record<keyof Settings, unknown>>
   return {
-    intervalMs: clampNumber(
-      raw.intervalMs,
-      INTERVAL_MS_MIN,
-      INTERVAL_MS_MAX,
-      DEFAULT_SETTINGS.intervalMs,
-    ),
+    intervalMs: clampNumber(raw.intervalMs, INTERVAL_MS_MIN, INTERVAL_MS_MAX, base.intervalMs),
     headHoldMultiplier: clampNumber(
       raw.headHoldMultiplier,
       HEAD_HOLD_MULTIPLIER_MIN,
       HEAD_HOLD_MULTIPLIER_MAX,
-      DEFAULT_SETTINGS.headHoldMultiplier,
+      base.headHoldMultiplier,
     ),
-    debounceMs: clampNumber(
-      raw.debounceMs,
-      DEBOUNCE_MS_MIN,
-      DEBOUNCE_MS_MAX,
-      DEFAULT_SETTINGS.debounceMs,
-    ),
-    minHoldMs: clampNumber(
-      raw.minHoldMs,
-      MIN_HOLD_MS_MIN,
-      MIN_HOLD_MS_MAX,
-      DEFAULT_SETTINGS.minHoldMs,
-    ),
+    debounceMs: clampNumber(raw.debounceMs, DEBOUNCE_MS_MIN, DEBOUNCE_MS_MAX, base.debounceMs),
+    minHoldMs: clampNumber(raw.minHoldMs, MIN_HOLD_MS_MIN, MIN_HOLD_MS_MAX, base.minHoldMs),
     activateOn: ACTIVATE_ONS.includes(raw.activateOn as ActivateOn)
       ? (raw.activateOn as ActivateOn)
-      : DEFAULT_SETTINGS.activateOn,
-    auditoryScan:
-      typeof raw.auditoryScan === 'boolean' ? raw.auditoryScan : DEFAULT_SETTINGS.auditoryScan,
+      : base.activateOn,
+    auditoryScan: typeof raw.auditoryScan === 'boolean' ? raw.auditoryScan : base.auditoryScan,
     voiceMode: VOICE_MODES.includes(raw.voiceMode as VoiceMode)
       ? (raw.voiceMode as VoiceMode)
-      : DEFAULT_SETTINGS.voiceMode,
+      : base.voiceMode,
     fontSize: FONT_SIZES.includes(raw.fontSize as FontSize)
       ? (raw.fontSize as FontSize)
-      : DEFAULT_SETTINGS.fontSize,
-    highContrast:
-      typeof raw.highContrast === 'boolean' ? raw.highContrast : DEFAULT_SETTINGS.highContrast,
-    theme: THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : DEFAULT_SETTINGS.theme,
+      : base.fontSize,
+    highContrast: typeof raw.highContrast === 'boolean' ? raw.highContrast : base.highContrast,
+    theme: THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : base.theme,
+    // 項目が無い取り込みでは、今のフレーズを消さずに残す
+    phrases: raw.phrases === undefined ? base.phrases : normalizePhraseSets(raw.phrases),
   }
 }
 
@@ -131,5 +120,35 @@ export function saveSettings(settings: Settings): void {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
   } catch {
     // 保存できなくても既定値で動き続ける
+  }
+}
+
+/** 書き出した JSON であることを示す識別子。他アプリの JSON を取り込まないための印 */
+const EXPORT_APP = 'libra'
+const EXPORT_VERSION = 1
+
+/** Issue #8: 設定(フレーズ編集を含む)を端末の入れ替え用の JSON 文字列にする。 */
+export function exportSettingsJson(settings: Settings): string {
+  return JSON.stringify({ app: EXPORT_APP, version: EXPORT_VERSION, ...settings }, null, 2)
+}
+
+/**
+ * 書き出した JSON 文字列を設定へ戻す。libra の書き出しでない(識別子・バージョンが合わない)、
+ * JSON として読めない、オブジェクトでない場合は null(呼び出し側は今の設定を変えない)。
+ * 値は検証し、欠けている・範囲外の項目は base(今の設定)のまま残す。本人に合わせた
+ * スキャン間隔などが、取り込みで黙って既定値に戻らないようにする。
+ */
+export function parseSettingsJson(
+  text: string,
+  base: Settings = DEFAULT_SETTINGS,
+): Settings | null {
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
+    const raw = parsed as Record<string, unknown>
+    if (raw.app !== EXPORT_APP || raw.version !== EXPORT_VERSION) return null
+    return normalizeSettings(raw, base)
+  } catch {
+    return null
   }
 }
