@@ -192,6 +192,13 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('緊急')
   })
 
+  it('Issue #22: 介助者ボタンは「介助者用」と表示され、aria-label は介助者メニュー（2秒長押し）', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    expect(button.textContent?.trim()).toBe('介助者用')
+    expect(button.getAttribute('aria-label')).toBe('介助者メニュー（2秒長押し）')
+  })
+
   it('介助者ボタンを2秒以上長押しするとメニューが開く', () => {
     const { container } = render(() => <App />)
     const button = container.querySelector('.caregiver-button') as HTMLElement
