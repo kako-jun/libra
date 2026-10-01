@@ -18,6 +18,8 @@ import {
 import { computeGridLayout } from './lib/gridLayout'
 import PhraseEditor from './PhraseEditor'
 import { createSwitchInput } from './lib/switchInput'
+import { createMorseInput } from './lib/morseInput'
+import { formatMorseCode, type MorseState, type MorseSymbol } from './lib/morse'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
@@ -203,6 +205,7 @@ export default function App() {
       emergencyActive: emergencyActive(),
       letterRow: letterRow(),
       phrases: settings().phrases,
+      morseEnabled: settings().morseEnabled,
     }),
   )
 
@@ -291,7 +294,51 @@ export default function App() {
   // home 以外へ遷移するときは「取り消し」の1周猶予を終わらせる(nit: 積み残した猶予が
   // 後で home に戻った際に誤って復活しないように)。home への遷移(伝達完了の帰着点)では
   // 呼び出し元が設定した showUndo/undoLapsRemaining をそのまま尊重する。
+  // Issue #14: モールス入力。確定済みの文字列は画面を出入りしても残す(伝達したら消す)
+  const [morseText, setMorseText] = createSignal('')
+  const [morseView, setMorseView] = createSignal<MorseState | null>(null)
+  const [morseHold, setMorseHold] = createSignal<MorseSymbol | null>(null)
+  const morseConfig = () => {
+    const s = settings()
+    // 押下時間の下限(#6)は雑音除去として効く。長押しの境目はそれより長くする
+    const noiseMs = Math.max(30, s.minHoldMs)
+    return {
+      noiseMs,
+      dashMs: Math.max(s.morseDashMs, noiseMs + 100),
+      letterGapMs: s.morseLetterGapMs,
+      wordGapMs: Math.max(s.morseWordGapMs, s.morseLetterGapMs + 500),
+    }
+  }
+  const morseInput = createMorseInput({
+    getConfig: morseConfig,
+    onHold: setMorseHold,
+    onState: (state) => {
+      const previous = morseText()
+      setMorseView(state)
+      setMorseText(state.text)
+      // 確定した文字を、音声モードに応じて読む
+      if (state.text.length > previous.length) {
+        const added = state.text.slice(previous.length).trim()
+        if (added) announce(added, added)
+      }
+    },
+    onEvent: (event) => {
+      if (event.type === 'emergency') {
+        // 長押し5つの連続: 確定を待たず即緊急(モールス中でも緊急に届く)
+        const emergencyItem = currentMenu()[0]
+        if (emergencyItem) runAction(emergencyItem)
+      } else if (event.type === 'exit') {
+        goTo('home')
+      } else {
+        setMorseText('')
+        completeTransmission(event.text, 'neutral')
+      }
+    },
+  })
+
   const goTo = (next: ScreenId) => {
+    if (next === 'morse') morseInput.start(morseText())
+    else morseInput.stop()
     if (next !== 'home' && (showUndo() || undoLapsRemaining > 0)) {
       setShowUndo(false)
       undoLapsRemaining = 0
@@ -306,6 +353,7 @@ export default function App() {
         emergencyActive: emergencyActive(),
         letterRow: letterRow(),
         phrases: settings().phrases,
+        morseEnabled: settings().morseEnabled,
       })[0]
       if (first) announceScanItem(first.label)
     }
@@ -517,6 +565,27 @@ export default function App() {
     onProgress: setHoldProgress,
   })
 
+  // 本人のスイッチ入力の振り分け。モールス画面では押下の長さが符号になり、それ以外は
+  // 従来のスキャン選択(switchInput)に渡す。解放・取り消しはどちらにも渡して取りこぼさない。
+  const input = {
+    down: (sourceId: string) => {
+      if (screen() === 'morse') morseInput.down(sourceId)
+      else switchInput.down(sourceId)
+    },
+    up: (sourceId: string) => {
+      switchInput.up(sourceId)
+      morseInput.up(sourceId)
+    },
+    cancel: (sourceId: string) => {
+      switchInput.cancel(sourceId)
+      morseInput.cancel(sourceId)
+    },
+    cancelAll: () => {
+      switchInput.cancelAll()
+      morseInput.cancelAll()
+    },
+  }
+
   // 緊急状態の保存。有効な間は内容の変化ごとに保存し、解除されたら保存ごと消す。
   createEffect(() => {
     if (emergencyActive()) {
@@ -613,7 +682,8 @@ export default function App() {
     }
 
     function step() {
-      if (!caregiverMenuOpen()) {
+      // モールス入力中は押下が符号になるので、スキャンのカーソルは動かさない
+      if (!caregiverMenuOpen() && screen() !== 'morse') {
         const now = Date.now()
         const items = currentMenu()
         const previous = resync(scanState(), items.length)
@@ -661,13 +731,12 @@ export default function App() {
       }
 
       if (target?.closest('[data-caregiver-control]')) return
-      switchInput.down(`pointer:${event.pointerId}`)
+      input.down(`pointer:${event.pointerId}`)
     }
 
-    const onPointerUp = (event: PointerEvent) => switchInput.up(`pointer:${event.pointerId}`)
+    const onPointerUp = (event: PointerEvent) => input.up(`pointer:${event.pointerId}`)
     // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
-    const onPointerCancel = (event: PointerEvent) =>
-      switchInput.cancel(`pointer:${event.pointerId}`)
+    const onPointerCancel = (event: PointerEvent) => input.cancel(`pointer:${event.pointerId}`)
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
@@ -696,14 +765,14 @@ export default function App() {
         return
       }
       event.preventDefault()
-      switchInput.down(`key:${event.code || event.key}`)
+      input.down(`key:${event.code || event.key}`)
     }
 
-    const onKeyUp = (event: KeyboardEvent) => switchInput.up(`key:${event.code || event.key}`)
+    const onKeyUp = (event: KeyboardEvent) => input.up(`key:${event.code || event.key}`)
     // 画面が見えなくなった・フォーカスを失った押下は、離す動作を取りこぼすので取り消す
-    const onBlur = () => switchInput.cancelAll()
+    const onBlur = () => input.cancelAll()
     const onVisibilityHidden = () => {
-      if (document.visibilityState === 'hidden') switchInput.cancelAll()
+      if (document.visibilityState === 'hidden') input.cancelAll()
     }
 
     // M2: タッチ端末では pointerdown だけでは AudioContext の resume が保証されないため、
@@ -734,7 +803,7 @@ export default function App() {
       window.removeEventListener('pointercancel', onPointerCancel)
       window.removeEventListener('blur', onBlur)
       document.removeEventListener('visibilitychange', onVisibilityHidden)
-      switchInput.cancelAll()
+      input.cancelAll()
       window.removeEventListener('pointerup', onUserActivation, true)
       window.removeEventListener('touchend', onUserActivation, true)
       window.removeEventListener('click', onUserActivation, true)
@@ -750,7 +819,7 @@ export default function App() {
     // PR#16 Opus レビュー nit: 前回分のタイマーが残っていたら先に消してから開始する
     if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
     longPressTimer = window.setTimeout(() => {
-      switchInput.cancelAll()
+      input.cancelAll()
       setCaregiverMenuOpen(true)
       resetCaregiverIdleTimer()
       // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
@@ -821,9 +890,32 @@ export default function App() {
         </section>
       </Show>
 
+      <Show when={screen() === 'morse'}>
+        <section class="morse-panel" aria-live="polite" aria-label="モールス入力">
+          <p class="morse-code" classList={{ holding: morseHold() !== null }}>
+            {morseHold() !== null
+              ? `${formatMorseCode(morseView()?.code ?? '')} ${morseHold() === '-' ? '－' : '・'}`.trim()
+              : formatMorseCode(morseView()?.code ?? '') || '　'}
+          </p>
+          <p class="morse-text">{morseText() || '短く押す＝・　長く押す＝－'}</p>
+          <ul class="morse-legend">
+            <li>文字: 符号を入れて少し待つ</li>
+            <li>語の区切り: もう少し待つ</li>
+            <li>－を5回続ける: 緊急</li>
+            <li>・を5回 → 待つ: スキャンへ戻る</li>
+            <li>・を6回 → 待つ: 1字消す</li>
+            <li>・－・－・－ → 待つ: 確定して伝える</li>
+          </ul>
+        </section>
+      </Show>
+
       <section
         class="grid-board"
-        classList={{ 'show-numbers': showDevNumbers, 'grid-fill': gridLayout().fill }}
+        classList={{
+          'show-numbers': showDevNumbers,
+          'grid-fill': gridLayout().fill,
+          'is-hidden': screen() === 'morse',
+        }}
         style={{
           '--cols': String(gridLayout().cols),
           '--rows': String(gridLayout().rows),
@@ -986,6 +1078,65 @@ export default function App() {
               />
               <span>聴覚スキャン</span>
             </label>
+
+            <label class="caregiver-field caregiver-checkbox">
+              <input
+                type="checkbox"
+                checked={settings().morseEnabled}
+                onChange={(event) => updateSettings({ morseEnabled: event.currentTarget.checked })}
+              />
+              <span>モールス入力を使う（上級者向け）</span>
+            </label>
+
+            <Show when={settings().morseEnabled}>
+              <label class="caregiver-field">
+                <span>
+                  モールス: 長押し(－)の境目 {(settings().morseDashMs / 1000).toFixed(1)} 秒
+                </span>
+                <input
+                  type="range"
+                  min="150"
+                  max="1500"
+                  step="50"
+                  value={settings().morseDashMs}
+                  onInput={(event) =>
+                    updateSettings({ morseDashMs: Number(event.currentTarget.value) })
+                  }
+                />
+              </label>
+              <label class="caregiver-field">
+                <span>
+                  モールス: 文字の確定までの無入力 {(settings().morseLetterGapMs / 1000).toFixed(1)}{' '}
+                  秒
+                </span>
+                <input
+                  type="range"
+                  min="500"
+                  max="3000"
+                  step="100"
+                  value={settings().morseLetterGapMs}
+                  onInput={(event) =>
+                    updateSettings({ morseLetterGapMs: Number(event.currentTarget.value) })
+                  }
+                />
+              </label>
+              <label class="caregiver-field">
+                <span>
+                  モールス: 語の区切りまでの無入力 {(settings().morseWordGapMs / 1000).toFixed(1)}{' '}
+                  秒
+                </span>
+                <input
+                  type="range"
+                  min="1500"
+                  max="8000"
+                  step="100"
+                  value={settings().morseWordGapMs}
+                  onInput={(event) =>
+                    updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
+                  }
+                />
+              </label>
+            </Show>
 
             <div class="caregiver-field">
               <span>音声モード</span>

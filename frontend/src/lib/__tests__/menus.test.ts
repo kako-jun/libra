@@ -18,6 +18,7 @@ const ALL_SCREENS: ScreenId[] = [
   'letters',
   'lettersRow',
   'lettersYesNo',
+  'morse',
 ]
 
 const homeOptions = { showUndo: false, emergencyActive: false }
@@ -177,5 +178,36 @@ describe('文字盤(§4.6)', () => {
   it('はい・いいえ画面: 緊急→戻る→はい→いいえ', () => {
     const labels = buildMenu('lettersYesNo', homeOptions).map((item) => item.label)
     expect(labels).toEqual(['緊急', '戻る', 'はい', 'いいえ'])
+  })
+})
+
+describe('モールス入力(Issue #14)', () => {
+  it('既定ではホームに入口を出さない', () => {
+    const items = buildMenu('home', { showUndo: false, emergencyActive: false })
+    expect(items.some((i) => i.id === 'morse-nav')).toBe(false)
+  })
+
+  it('有効にすると、文字盤の後ろ(ホームの最後)に入口が出て、緊急・はい・いいえの位置は変わらない', () => {
+    const items = buildMenu('home', { showUndo: false, emergencyActive: false, morseEnabled: true })
+    expect(items.map((i) => i.label)).toEqual([
+      '緊急',
+      'はい',
+      'いいえ',
+      '不快',
+      '快・要望',
+      '文字盤',
+      'モールス',
+    ])
+  })
+
+  it('取り消しが出ているときもホームは8項目以内', () => {
+    const items = buildMenu('home', { showUndo: true, emergencyActive: false, morseEnabled: true })
+    expect(items.length).toBeLessThanOrEqual(8)
+  })
+
+  it('モールス画面は緊急・戻るだけを構造として持ち、戻る先はホーム', () => {
+    const items = buildMenu('morse', homeOptions)
+    expect(items.map((i) => i.action.type)).toEqual(['emergency', 'back'])
+    expect(PARENT_SCREEN.morse).toBe('home')
   })
 })

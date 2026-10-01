@@ -1,0 +1,130 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createMorseInput, type MorseInputConfig } from '../morseInput'
+import type { MorseEvent, MorseState, MorseSymbol } from '../morse'
+
+const config: MorseInputConfig = {
+  noiseMs: 30,
+  dashMs: 500,
+  letterGapMs: 1500,
+  wordGapMs: 4000,
+}
+
+function setup() {
+  const states: MorseState[] = []
+  const events: Exclude<MorseEvent, null>[] = []
+  const holds: (MorseSymbol | null)[] = []
+  const input = createMorseInput({
+    getConfig: () => config,
+    onState: (s) => states.push(s),
+    onEvent: (e) => events.push(e),
+    onHold: (h) => holds.push(h),
+  })
+  const press = (ms: number, id = 'k') => {
+    input.down(id)
+    vi.advanceTimersByTime(ms)
+    input.up(id)
+  }
+  return { input, states, events, holds, press, last: () => states[states.length - 1] }
+}
+
+describe('morseInput', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('短押しは短点、押下時間の境目以上は長点になる', () => {
+    const { input, press, last } = setup()
+    input.start('')
+    press(100)
+    expect(last().code).toBe('.')
+    vi.advanceTimersByTime(100)
+    press(499)
+    expect(last().code).toBe('..')
+    vi.advanceTimersByTime(100)
+    press(500)
+    expect(last().code).toBe('..-')
+  })
+
+  it('雑音(下限未満)の押下は符号にしない', () => {
+    const { input, press, last } = setup()
+    input.start('')
+    press(10)
+    expect(last().code).toBe('')
+  })
+
+  it('無入力が続くと文字を確定し、さらに続くと語の区切りを入れる', () => {
+    const { input, press, last } = setup()
+    input.start('')
+    press(100) // .
+    vi.advanceTimersByTime(100)
+    press(600) // -   → い
+    vi.advanceTimersByTime(1500)
+    expect(last().text).toBe('い')
+    vi.advanceTimersByTime(4000)
+    expect(last().text).toBe('い　')
+  })
+
+  it('長押し5つで緊急イベントが出る', () => {
+    const { input, press, events } = setup()
+    input.start('')
+    for (let i = 0; i < 5; i += 1) {
+      press(600)
+      vi.advanceTimersByTime(100)
+    }
+    expect(events).toEqual([{ type: 'emergency' }])
+  })
+
+  it('無操作 30 秒で exit イベントが出る', () => {
+    const { input, events } = setup()
+    input.start('')
+    vi.advanceTimersByTime(29900)
+    expect(events).toEqual([])
+    vi.advanceTimersByTime(300)
+    expect(events).toEqual([{ type: 'exit' }])
+  })
+
+  it('押している間、短点/長点の見込みを知らせ、離すと null に戻る', () => {
+    const { input, holds } = setup()
+    input.start('')
+    input.down('k')
+    vi.advanceTimersByTime(100)
+    expect(holds.at(-1)).toBe('.')
+    vi.advanceTimersByTime(500)
+    expect(holds.at(-1)).toBe('-')
+    input.up('k')
+    expect(holds.at(-1)).toBeNull()
+  })
+
+  it('cancel / cancelAll した押下は符号にしない', () => {
+    const { input, last } = setup()
+    input.start('')
+    input.down('a')
+    input.down('b')
+    vi.advanceTimersByTime(100)
+    input.cancel('a')
+    input.up('a')
+    input.cancelAll()
+    input.up('b')
+    expect(last().code).toBe('')
+  })
+
+  it('stop するとタイマーが止まり、以後の押下・時間経過は何も起こさない', () => {
+    const { input, events, states } = setup()
+    input.start('')
+    input.stop()
+    const count = states.length
+    input.down('k')
+    vi.advanceTimersByTime(60000)
+    input.up('k')
+    expect(events).toEqual([])
+    expect(states.length).toBe(count)
+  })
+
+  it('start の text を引き継ぐ', () => {
+    const { input, last } = setup()
+    input.start('めか')
+    expect(last().text).toBe('めか')
+  })
+})

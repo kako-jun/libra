@@ -22,6 +22,10 @@ describe('normalizeSettings', () => {
       highContrast: true,
       theme: 'dark',
       phrases: {},
+      morseEnabled: true,
+      morseDashMs: 600,
+      morseLetterGapMs: 1200,
+      morseWordGapMs: 3000,
     }
     expect(normalizeSettings(input)).toEqual(input)
   })
@@ -269,6 +273,30 @@ describe('saveSettings', () => {
         current,
       )
       expect(Object.keys(next?.phrases ?? {})).toEqual(['moodRequest'])
+    })
+  })
+
+  describe('Issue #14: モールス設定', () => {
+    it('既定は OFF で、範囲外・型違いは既定値に戻す', () => {
+      const d = normalizeSettings({})
+      expect(d).toMatchObject({
+        morseEnabled: false,
+        morseDashMs: 500,
+        morseLetterGapMs: 1500,
+        morseWordGapMs: 4000,
+      })
+      const bad = normalizeSettings({
+        morseEnabled: 'yes',
+        morseDashMs: 10,
+        morseLetterGapMs: 99999,
+        morseWordGapMs: -1,
+      })
+      expect(bad).toMatchObject({
+        morseEnabled: false,
+        morseDashMs: 500,
+        morseLetterGapMs: 1500,
+        morseWordGapMs: 4000,
+      })
     })
   })
 })

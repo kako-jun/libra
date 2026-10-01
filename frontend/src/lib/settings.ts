@@ -23,6 +23,14 @@ export interface Settings {
   minHoldMs: number
   /** Issue #6: 決定のタイミング。既定 press(押した瞬間) */
   activateOn: ActivateOn
+  /** Issue #14: モールス入力を使うか。既定 OFF(上級者向け。ホームに入口が出るのは ON のときだけ) */
+  morseEnabled: boolean
+  /** モールス: 長押し(－)とみなす押下時間(ms)。既定 500、範囲 150〜1500 */
+  morseDashMs: number
+  /** モールス: 無入力でこの時間が経つと1文字を確定する(ms)。既定 1500、範囲 500〜3000 */
+  morseLetterGapMs: number
+  /** モールス: 無入力でこの時間が経つと語の区切りを入れる(ms)。既定 4000、範囲 1500〜8000 */
+  morseWordGapMs: number
   /** 聴覚スキャン（カーソル移動ごとに項目名を読む）。既定 OFF */
   auditoryScan: boolean
   /** 読み上げモード。既定 OFF */
@@ -43,6 +51,10 @@ export const DEFAULT_SETTINGS: Settings = {
   debounceMs: 500,
   minHoldMs: 0,
   activateOn: 'press',
+  morseEnabled: false,
+  morseDashMs: 500,
+  morseLetterGapMs: 1500,
+  morseWordGapMs: 4000,
   auditoryScan: false,
   voiceMode: 'off',
   fontSize: 'standard',
@@ -61,6 +73,12 @@ const DEBOUNCE_MS_MIN = 0
 const DEBOUNCE_MS_MAX = 3000
 const MIN_HOLD_MS_MIN = 0
 const MIN_HOLD_MS_MAX = 2000
+const MORSE_DASH_MS_MIN = 150
+const MORSE_DASH_MS_MAX = 1500
+const MORSE_LETTER_GAP_MS_MIN = 500
+const MORSE_LETTER_GAP_MS_MAX = 3000
+const MORSE_WORD_GAP_MS_MIN = 1500
+const MORSE_WORD_GAP_MS_MAX = 8000
 
 const VOICE_MODES: VoiceMode[] = ['off', 'tone', 'short', 'full']
 const FONT_SIZES: FontSize[] = ['standard', 'large', 'xlarge']
@@ -89,6 +107,25 @@ export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTI
     activateOn: ACTIVATE_ONS.includes(raw.activateOn as ActivateOn)
       ? (raw.activateOn as ActivateOn)
       : base.activateOn,
+    morseEnabled: typeof raw.morseEnabled === 'boolean' ? raw.morseEnabled : base.morseEnabled,
+    morseDashMs: clampNumber(
+      raw.morseDashMs,
+      MORSE_DASH_MS_MIN,
+      MORSE_DASH_MS_MAX,
+      base.morseDashMs,
+    ),
+    morseLetterGapMs: clampNumber(
+      raw.morseLetterGapMs,
+      MORSE_LETTER_GAP_MS_MIN,
+      MORSE_LETTER_GAP_MS_MAX,
+      base.morseLetterGapMs,
+    ),
+    morseWordGapMs: clampNumber(
+      raw.morseWordGapMs,
+      MORSE_WORD_GAP_MS_MIN,
+      MORSE_WORD_GAP_MS_MAX,
+      base.morseWordGapMs,
+    ),
     auditoryScan: typeof raw.auditoryScan === 'boolean' ? raw.auditoryScan : base.auditoryScan,
     voiceMode: VOICE_MODES.includes(raw.voiceMode as VoiceMode)
       ? (raw.voiceMode as VoiceMode)
