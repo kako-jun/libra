@@ -17,8 +17,10 @@ import {
 } from './lib/offlineReady'
 import { computeGridLayout } from './lib/gridLayout'
 import { createSwitchInput } from './lib/switchInput'
+import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
+const EMERGENCY_MESSAGE = '緊急です。来てください'
 const ALARM_REPEAT_MS = 3000
 /** 介助者メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
@@ -132,14 +134,22 @@ export default function App() {
   }))
 
   const [screen, setScreen] = createSignal<ScreenId>('home')
-  const [emergencyActive, setEmergencyActive] = createSignal(false)
+  // 再読み込み・再起動後も、介助者が解除するまで緊急状態を復元する(requirements.md §4.3)
+  const restoredEmergency = loadEmergencyState()
+  const [emergencyActive, setEmergencyActive] = createSignal(restoredEmergency !== null)
   // 緊急の詳細（苦しい/痛い等）は積み上げ式。緊急の再選択では消さない(S1)
-  const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>([])
-  const [message, setMessage] = createSignal(DEFAULT_MESSAGE)
-  const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
+  const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>(
+    restoredEmergency?.details ?? [],
+  )
+  const [message, setMessage] = createSignal(
+    restoredEmergency ? EMERGENCY_MESSAGE : DEFAULT_MESSAGE,
+  )
+  const [messageTone, setMessageTone] = createSignal<Tone>(restoredEmergency ? 'urgent' : 'neutral')
   const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>([])
   // 緊急中に選ばれた伝達（はい等）は見出しを上書きせず、この副表示にのみ出す
-  const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(null)
+  const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(
+    restoredEmergency?.sub ?? null,
+  )
   const [showUndo, setShowUndo] = createSignal(false)
   let undoLapsRemaining = 0
 
@@ -311,6 +321,9 @@ export default function App() {
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
+    // 解除後に緊急メッセージが履歴に残ると、解除→伝達→取り消しで赤い緊急文言が戻るため履歴を空にする
+    // 緊急が無いときは解除ボタンが disabled(押せるのは緊急中のみ)なので、ここでは無条件に消してよい
+    setMessageHistory([])
     // S2: 解除後に緊急中分の古い取り消しが復活しないようにする
     setShowUndo(false)
     undoLapsRemaining = 0
@@ -342,7 +355,7 @@ export default function App() {
         undoLapsRemaining = 0
         if (!alreadyActive) {
           setEmergencyDetails([])
-          showMessage('緊急です。来てください', 'urgent')
+          showMessage(EMERGENCY_MESSAGE, 'urgent')
         }
         startAlarm(ALARM_REPEAT_MS)
         goTo('urgentDetail')
@@ -449,6 +462,24 @@ export default function App() {
     },
     onActivate: (target) => handleSwitchOn(Date.now(), target),
     onProgress: setHoldProgress,
+  })
+
+  // 緊急状態の保存。有効な間は内容の変化ごとに保存し、解除されたら保存ごと消す。
+  createEffect(() => {
+    if (emergencyActive()) {
+      saveEmergencyState({ details: emergencyDetails(), sub: emergencySubMessage() })
+    } else {
+      clearEmergencyState()
+    }
+  })
+
+  // 復元した緊急は警告音も再開する。自動再生制限で鳴らなければ
+  // 既存の「警告音停止中：画面をタップしてください」表示になる。
+  onMount(() => {
+    if (restoredEmergency) {
+      document.documentElement.dataset.messageTone = 'urgent'
+      startAlarm(ALARM_REPEAT_MS)
+    }
   })
 
   // 警告音が鳴らない状態(AudioContext が running でない)を介助者に知らせるための定期確認。
