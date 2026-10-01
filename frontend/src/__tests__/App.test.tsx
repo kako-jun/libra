@@ -290,6 +290,40 @@ describe('App', () => {
     expect(h1Text(container)).not.toBe('緊急です。来てください')
   })
 
+  it('Issue #17: 未解除の緊急は再読み込み後も赤表示と警告音で復元される', () => {
+    const first = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急選択
+    first.unmount()
+    cleanup()
+    oscillatorStartCount = 0
+
+    const { container } = render(() => <App />)
+    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(document.documentElement.dataset.messageTone).toBe('urgent')
+    expect(oscillatorStartCount).toBeGreaterThan(0)
+  })
+
+  it('Issue #17: 緊急詳細も復元され、解除後の再読み込みでは復元されない', () => {
+    const first = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急選択 → urgentDetail
+    fireEvent.keyDown(window, { key: ' ' }) // 先頭待機中: index0 = 緊急(詳細画面でも先頭は緊急)
+    first.unmount()
+    cleanup()
+
+    const second = render(() => <App />)
+    expect(h1Text(second.container)).toBe('緊急です。来てください')
+
+    const button = second.container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+    fireEvent.click(second.getByText(/緊急解除/))
+    second.unmount()
+    cleanup()
+
+    const third = render(() => <App />)
+    expect(h1Text(third.container)).not.toBe('緊急です。来てください')
+  })
+
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
     const { container } = render(() => <App />)
     // カーソルは index0(緊急)。"3"キーは index2(いいえ)への直接ジャンプではなく

@@ -16,8 +16,10 @@ import {
   type OfflineReadyStatus,
 } from './lib/offlineReady'
 import { computeGridLayout } from './lib/gridLayout'
+import { clearSavedEmergency, loadEmergency, saveEmergency } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
+const EMERGENCY_MESSAGE = '緊急です。来てください'
 const ALARM_REPEAT_MS = 3000
 /** 介助者メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
@@ -124,12 +126,19 @@ export default function App() {
   }))
 
   const [screen, setScreen] = createSignal<ScreenId>('home')
-  const [emergencyActive, setEmergencyActive] = createSignal(false)
+  // Issue #17: 再読み込み・再起動の前に未解除だった緊急は、起動時に復元する
+  const restoredEmergency = loadEmergency()
+  let emergencySince = restoredEmergency?.since ?? 0
+  const [emergencyActive, setEmergencyActive] = createSignal(restoredEmergency !== null)
   // 緊急の詳細（苦しい/痛い等）は積み上げ式。緊急の再選択では消さない(S1)
-  const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>([])
-  const [message, setMessage] = createSignal(DEFAULT_MESSAGE)
-  const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
-  const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>([])
+  const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>(
+    restoredEmergency?.details ?? [],
+  )
+  const [message, setMessage] = createSignal(restoredEmergency ? EMERGENCY_MESSAGE : DEFAULT_MESSAGE)
+  const [messageTone, setMessageTone] = createSignal<Tone>(restoredEmergency ? 'urgent' : 'neutral')
+  const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>(
+    restoredEmergency ? [{ text: EMERGENCY_MESSAGE, tone: 'urgent' }] : [],
+  )
   // 緊急中に選ばれた伝達（はい等）は見出しを上書きせず、この副表示にのみ出す
   const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(null)
   const [showUndo, setShowUndo] = createSignal(false)
@@ -300,6 +309,7 @@ export default function App() {
     setEmergencyDetails([])
     setEmergencySubMessage(null)
     stopAlarm()
+    clearSavedEmergency()
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
@@ -334,7 +344,9 @@ export default function App() {
         undoLapsRemaining = 0
         if (!alreadyActive) {
           setEmergencyDetails([])
-          showMessage('緊急です。来てください', 'urgent')
+          showMessage(EMERGENCY_MESSAGE, 'urgent')
+          emergencySince = Date.now()
+          saveEmergency({ since: emergencySince, details: [] })
         }
         startAlarm(ALARM_REPEAT_MS)
         goTo('urgentDetail')
@@ -345,6 +357,7 @@ export default function App() {
         setEmergencyDetails((details) =>
           details.includes(action.label) ? details : [...details, action.label],
         )
+        saveEmergency({ since: emergencySince, details: emergencyDetails() })
         navigator.vibrate?.([60, 40, 60])
         announce(`緊急です。来てください。${action.label}`, action.label)
         setShowUndo(false)
@@ -581,6 +594,13 @@ export default function App() {
     window.addEventListener('click', onUserActivation, true)
     window.addEventListener('contextmenu', onContextMenu)
     const stopVisibilityResume = initAlarmVisibilityResume()
+
+    // Issue #17: 復元した緊急の赤表示と警告音を再開する。自動再生制限で鳴らない場合は、
+    // 既存の「警告音停止中：画面をタップしてください」表示に落ちる
+    if (emergencyActive()) {
+      document.documentElement.dataset.messageTone = 'urgent'
+      startAlarm(ALARM_REPEAT_MS)
+    }
 
     onCleanup(() => {
       window.removeEventListener('pointerdown', onPointerDown)
