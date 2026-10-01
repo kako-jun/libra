@@ -216,10 +216,44 @@ describe('saveSettings', () => {
       expect(parseSettingsJson('null')).toBeNull()
     })
 
-    it('取り込んだ値は検証され、範囲外は既定値になる', () => {
-      const next = parseSettingsJson(JSON.stringify({ intervalMs: 99999, phrases: 'x' }))
-      expect(next?.intervalMs).toBe(DEFAULT_SETTINGS.intervalMs)
-      expect(next?.phrases).toEqual({})
+    it('書き出しに識別子が無い・合わない JSON は取り込まない(他アプリの JSON・{} など)', () => {
+      expect(parseSettingsJson('{}')).toBeNull()
+      expect(parseSettingsJson(JSON.stringify({ intervalMs: 2000 }))).toBeNull()
+      expect(parseSettingsJson(JSON.stringify({ app: 'other', version: 1 }))).toBeNull()
+      expect(parseSettingsJson(JSON.stringify({ app: 'libra', version: 99 }))).toBeNull()
+    })
+
+    it('取り込みは今の設定を土台にし、欠けた・範囲外の項目は今の値のまま残す', () => {
+      const current = {
+        ...DEFAULT_SETTINGS,
+        intervalMs: 3000,
+        debounceMs: 1200,
+        phrases: { painLocation: [{ id: 'c1', label: '首', text: '首が痛いです' }] },
+      }
+      const next = parseSettingsJson(
+        JSON.stringify({ app: 'libra', version: 1, headHoldMultiplier: 4, intervalMs: 99999 }),
+        current,
+      )
+      expect(next?.headHoldMultiplier).toBe(4) // 取り込んだ値
+      expect(next?.intervalMs).toBe(3000) // 範囲外は今の値
+      expect(next?.debounceMs).toBe(1200) // 無い項目は今の値
+      expect(next?.phrases).toEqual(current.phrases) // フレーズが無ければ今のフレーズを残す
+    })
+
+    it('書き出しの phrases があればそれで置き換える', () => {
+      const current = {
+        ...DEFAULT_SETTINGS,
+        phrases: { painLocation: [{ id: 'c1', label: '首', text: '首が痛いです' }] },
+      }
+      const next = parseSettingsJson(
+        JSON.stringify({
+          app: 'libra',
+          version: 1,
+          phrases: { moodRequest: [{ id: 'c2', label: 'テレビ', text: 'テレビ' }] },
+        }),
+        current,
+      )
+      expect(Object.keys(next?.phrases ?? {})).toEqual(['moodRequest'])
     })
   })
 })

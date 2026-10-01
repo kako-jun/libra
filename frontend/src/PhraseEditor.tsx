@@ -13,6 +13,7 @@ import {
   SCREEN_ITEM_LIMIT,
   isOverItemLimit,
   newPhraseId,
+  phraseProblem,
   phrasesFor,
   screenItemCount,
   type Phrase,
@@ -31,6 +32,9 @@ export default function PhraseEditor(props: PhraseEditorProps) {
   const [group, setGroup] = createSignal<PhraseGroup>('discomfort')
   const [backupText, setBackupText] = createSignal('')
   const [backupStatus, setBackupStatus] = createSignal('')
+  // 取り込みは今の設定を上書きするため、1回目は確認の表示だけにして2回目で実行する
+  const [importArmed, setImportArmed] = createSignal(false)
+  const overGroups = () => PHRASE_GROUPS.filter((g) => isOverItemLimit(g, props.settings.phrases))
 
   // 編集中の一覧。編集が無いグループは既定値(編集した時点で既定のコピーから始める)
   const list = () => phrasesFor(group(), props.settings.phrases)
@@ -71,19 +75,33 @@ export default function PhraseEditor(props: PhraseEditorProps) {
     const json = exportSettingsJson(props.settings)
     setBackupText(json)
     // 端末によってはクリップボードが使えない。使えなければ下の欄から手でコピーしてもらう
-    void navigator.clipboard
-      ?.writeText(json)
+    const fallback = () => setBackupStatus('書き出しました（下の欄からコピーしてください）')
+    if (!navigator.clipboard) {
+      fallback()
+      return
+    }
+    navigator.clipboard
+      .writeText(json)
       .then(() => setBackupStatus('書き出してコピーしました'))
-      .catch(() => setBackupStatus('書き出しました（下の欄からコピーしてください）'))
-    if (!navigator.clipboard) setBackupStatus('書き出しました（下の欄からコピーしてください）')
+      .catch(fallback)
   }
 
   const doImport = () => {
-    const next = parseSettingsJson(backupText())
+    // 今の設定を土台に、書き出しに含まれる検証済みの項目だけを上書きする
+    const next = parseSettingsJson(backupText(), props.settings)
     if (!next) {
-      setBackupStatus('取り込めません: 書き出した JSON を貼り付けてください')
+      setImportArmed(false)
+      setBackupStatus('取り込めません: このアプリで書き出した設定を貼り付けてください')
       return
     }
+    if (!importArmed()) {
+      setImportArmed(true)
+      setBackupStatus(
+        '取り込むと今の設定が書き換わります。よければもう一度「取り込み」を押してください',
+      )
+      return
+    }
+    setImportArmed(false)
     props.replaceSettings(next)
     setBackupStatus('取り込みました')
   }
@@ -105,11 +123,16 @@ export default function PhraseEditor(props: PhraseEditorProps) {
         </For>
       </div>
 
-      <Show when={isOverItemLimit(group(), props.settings.phrases)}>
+      <Show when={overGroups().length > 0}>
         <p class="caregiver-status warn" role="alert">
-          この画面は {screenItemCount(group(), props.settings.phrases)} 項目で、目安の{' '}
-          {SCREEN_ITEM_LIMIT} 項目を超えています。スキャンが長くなり緊急に届くまで時間がかかるため、
-          項目を減らすか、別の画面に分けてください。
+          目安の {SCREEN_ITEM_LIMIT} 項目を超えている画面があります:{' '}
+          {overGroups()
+            .map(
+              (g) =>
+                `${PHRASE_GROUP_LABELS[g]}（${screenItemCount(g, props.settings.phrases)} 項目）`,
+            )
+            .join('、')}
+          。スキャンが長くなり緊急に届くまで時間がかかるため、項目を減らしてください。
         </p>
       </Show>
 
@@ -135,6 +158,13 @@ export default function PhraseEditor(props: PhraseEditorProps) {
                   onInput={(event) => update(index, { text: event.currentTarget.value })}
                 />
               </label>
+              <Show when={phraseProblem(phrase())}>
+                {(problem) => (
+                  <p class="caregiver-status warn" role="note">
+                    この項目は表示されません: {problem()}
+                  </p>
+                )}
+              </Show>
               <div class="phrase-row-actions">
                 <button
                   type="button"
@@ -185,7 +215,10 @@ export default function PhraseEditor(props: PhraseEditorProps) {
         <textarea
           rows="4"
           value={backupText()}
-          onInput={(event) => setBackupText(event.currentTarget.value)}
+          onInput={(event) => {
+            setBackupText(event.currentTarget.value)
+            setImportArmed(false)
+          }}
           placeholder="書き出した設定の JSON をここに貼り付けて取り込みます"
         />
         <div class="phrase-actions">

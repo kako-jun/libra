@@ -6,6 +6,7 @@ import {
   SCREEN_ITEM_LIMIT,
   isOverItemLimit,
   newPhraseId,
+  phraseProblem,
   normalizePhraseSets,
   phrasesFor,
   screenItemCount,
@@ -92,6 +93,56 @@ describe('phrases', () => {
   it('newPhraseId は既存と重ならない', () => {
     expect(newPhraseId([])).toBe('custom-1')
     expect(newPhraseId([{ id: 'custom-2', label: 'a', text: 'b' }])).toBe('custom-3')
+  })
+})
+
+describe('緊急と取り違える項目・画面の項目数', () => {
+  it.each([
+    ['緊急です', 'x'],
+    ['緊急!', 'x'],
+    ['緊 急', 'x'],
+    ['緊急', 'x'],
+    ['きんきゅう', 'x'],
+    ['キンキュウ', 'x'],
+    ['戻る', 'x'],
+    ['はい', 'x'],
+    ['ｲｲｴ', ''],
+    ['テレビ', '緊急です。来てください'],
+    ['テレビ', '緊急です。来て ください'],
+  ])('ラベル「%s」/ 全文「%s」は表示に使えない', (label, text) => {
+    expect(phraseProblem({ id: 'a', label, text })).not.toBeNull()
+  })
+
+  it('全角のはい・いいえも予約ラベルとして弾く', () => {
+    expect(phraseProblem({ id: 'a', label: 'はい', text: 'x' })).not.toBeNull()
+    expect(phraseProblem({ id: 'a', label: ' いいえ ', text: 'x' })).not.toBeNull()
+  })
+
+  it('普通のフレーズは使える', () => {
+    expect(phraseProblem({ id: 'a', label: 'テレビ', text: 'テレビを見たいです' })).toBeNull()
+  })
+
+  it('長さの丸めは絵文字を途中で切らない', () => {
+    const result = normalizePhraseSets({
+      moodRequest: [{ id: 'a', label: '😀'.repeat(30), text: 'x' }],
+    })
+    expect(result.moodRequest?.[0].label).toBe('😀'.repeat(20))
+  })
+
+  // FIXED_ITEM_COUNT を手書きで持っているため、menus.ts の構造とずれたら検出する
+  it.each(PHRASE_GROUPS)('%s: screenItemCount は実際のメニューの項目数と一致する', (group) => {
+    const phrases = {
+      [group]: [
+        { id: 'a', label: 'A', text: 'A' },
+        { id: 'b', label: 'B', text: 'B' },
+        { id: 'c', label: '', text: 'C' }, // 表示されない項目は数えない
+      ],
+    }
+    for (const sets of [undefined, phrases]) {
+      expect(
+        buildMenu(group, { showUndo: false, emergencyActive: false, phrases: sets }).length,
+      ).toBe(screenItemCount(group, sets))
+    }
   })
 })
 

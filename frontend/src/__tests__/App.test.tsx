@@ -337,6 +337,76 @@ describe('App', () => {
     expect(h1Text(second.container)).toBe('テレビを見たいです')
   })
 
+  // 入力欄にフォーカスが残ったまま本人がスイッチを押しても、介助者メニューに取り残さない
+  function openEditorWithFocusedInput() {
+    const view = render(() => <App />)
+    openCaregiverMenu(view.container)
+    const editor = view.container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    const input = editor.querySelector('.phrase-row input') as HTMLInputElement
+    input.focus()
+    return { ...view, input }
+  }
+
+  it.each(['a', 'あ', 'Backspace', 'ArrowLeft'])(
+    'Issue #8: 入力欄で「%s」を打っても介助者メニューは閉じない',
+    (key) => {
+      const { container, input } = openEditorWithFocusedInput()
+      fireEvent.keyDown(input, { key })
+      expect(container.querySelector('.caregiver-panel')).not.toBeNull()
+    },
+  )
+
+  it.each(['Enter', ' ', 'Tab', 'AudioVolumeUp', 'Escape', 'Unidentified', 'MediaPlayPause'])(
+    'Issue #8: 入力欄にフォーカスが残っていても、本人のスイッチ(%s)でメニューは閉じる',
+    (key) => {
+      const { container, input } = openEditorWithFocusedInput()
+      fireEvent.keyDown(input, { key })
+      expect(container.querySelector('.caregiver-panel')).toBeNull()
+    },
+  )
+
+  it('Issue #8: 入力欄での打鍵では無操作60秒の自動クローズを延ばさない', () => {
+    const { container, input } = openEditorWithFocusedInput()
+    for (let i = 0; i < 8; i += 1) {
+      vi.advanceTimersByTime(10000)
+      fireEvent.keyDown(input, { key: 'a' })
+    }
+    expect(container.querySelector('.caregiver-panel')).toBeNull() // 80秒後には閉じている
+  })
+
+  it('Issue #8: 取り込みは1回目は確認、2回目で既存設定の上に反映される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 3000 }))
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    const textarea = editor.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.input(textarea, {
+      target: { value: JSON.stringify({ app: 'libra', version: 1, headHoldMultiplier: 4 }) },
+    })
+    clickButton(editor, '取り込み')
+    expect(editor.textContent).toContain('もう一度')
+    expect(
+      JSON.parse(window.localStorage.getItem('libra') ?? '{}').headHoldMultiplier,
+    ).toBeUndefined()
+    clickButton(editor, '取り込み')
+    const saved = JSON.parse(window.localStorage.getItem('libra') ?? '{}')
+    expect(saved.headHoldMultiplier).toBe(4)
+    expect(saved.intervalMs).toBe(3000) // 取り込みに無かった項目は今の値のまま
+  })
+
+  it('Issue #8: 表示されない項目には編集画面で理由が出る', () => {
+    window.localStorage.setItem(
+      'libra',
+      JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'はい', text: 'x' }] } }),
+    )
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    expect(editor.querySelector('[role="note"]')?.textContent).toContain('表示されません')
+  })
+
   it('Issue #8: 編集してもスキャンの先頭は緊急、戻るは2番目のまま', () => {
     window.localStorage.setItem(
       'libra',

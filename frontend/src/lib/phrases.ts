@@ -51,8 +51,17 @@ export const FIXED_ITEM_COUNT: Record<PhraseGroup, number> = {
   moodRequest: 2,
 }
 
-/** 編集で作らせない表示ラベル(緊急や応答と取り違える・位置を奪うのを防ぐ) */
-const RESERVED_LABELS = ['緊急', '戻る', 'はい', 'いいえ', '取り消し']
+/** 編集で作らせない表示ラベル(応答や操作と取り違える・位置を奪うのを防ぐ) */
+const RESERVED_LABELS = ['戻る', 'はい', 'いいえ', '取り消し']
+
+/** 緊急と取り違えさせない。ラベルにこれらを含む項目は作れない */
+const EMERGENCY_WORDS = ['緊急', 'きんきゅう', 'キンキュウ']
+const EMERGENCY_MESSAGE = '緊急です。来てください'
+
+/** 全角/半角・空白の違いで予約語を回避されないよう揃える */
+function compact(value: string): string {
+  return value.normalize('NFKC').replace(/\s+/g, '')
+}
 
 export const DEFAULT_PHRASES: Record<PhraseGroup, Phrase[]> = {
   discomfort: [
@@ -88,13 +97,23 @@ export const DEFAULT_PHRASES: Record<PhraseGroup, Phrase[]> = {
 
 const TONES: Tone[] = ['neutral', 'urgent', 'calm', 'positive']
 
-/** 表示に使える項目か(ラベルと全文が空でなく、予約語でない) */
+/** 表示に使えない理由。使える項目なら null(編集画面で理由を示すのに使う) */
+export function phraseProblem(phrase: Phrase): string | null {
+  const label = compact(phrase.label)
+  const text = compact(phrase.text)
+  if (label === '') return '表示ラベルが空です'
+  if (text === '') return '伝える文が空です'
+  if (RESERVED_LABELS.includes(label)) return `「${label}」は予約された名前です`
+  if (EMERGENCY_WORDS.some((word) => label.includes(word))) {
+    return '緊急と取り違えるため「緊急」を含むラベルは使えません'
+  }
+  if (text === compact(EMERGENCY_MESSAGE)) return '緊急の表示と同じ文は使えません'
+  return null
+}
+
+/** 表示に使える項目か */
 export function isUsablePhrase(phrase: Phrase): boolean {
-  return (
-    phrase.label.trim() !== '' &&
-    phrase.text.trim() !== '' &&
-    !RESERVED_LABELS.includes(phrase.label.trim())
-  )
+  return phraseProblem(phrase) === null
 }
 
 /** そのグループで表示するフレーズ。編集がなければ既定、編集内容のうち使えない項目は除く */
@@ -114,6 +133,11 @@ export function isOverItemLimit(group: PhraseGroup, sets?: PhraseSets): boolean 
   return screenItemCount(group, sets) > SCREEN_ITEM_LIMIT
 }
 
+/** 絵文字などのサロゲートペアを途中で切らずに、文字数で切り詰める */
+function truncate(value: string, max: number): string {
+  return Array.from(value).slice(0, max).join('')
+}
+
 function normalizePhrase(input: unknown): Phrase | null {
   if (typeof input !== 'object' || input === null) return null
   const raw = input as Record<string, unknown>
@@ -121,8 +145,8 @@ function normalizePhrase(input: unknown): Phrase | null {
   if (typeof raw.label !== 'string' || typeof raw.text !== 'string') return null
   const phrase: Phrase = {
     id: raw.id.slice(0, 64),
-    label: raw.label.slice(0, PHRASE_LABEL_MAX),
-    text: raw.text.slice(0, PHRASE_TEXT_MAX),
+    label: truncate(raw.label, PHRASE_LABEL_MAX),
+    text: truncate(raw.text, PHRASE_TEXT_MAX),
   }
   if (TONES.includes(raw.tone as Tone) && raw.tone !== 'neutral') phrase.tone = raw.tone as Tone
   return phrase

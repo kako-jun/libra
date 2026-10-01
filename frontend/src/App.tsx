@@ -78,6 +78,22 @@ const THEME_LABELS: Record<Settings['theme'], string> = {
   auto: '自動',
 }
 
+/** 入力欄で文字を打つ・編集するキーか。Enter・Space(変換中以外)・Tab・メディア/音量キー等は含めない */
+function isTextEditingKey(event: KeyboardEvent): boolean {
+  if (event.isComposing || event.key === 'Process') return true
+  if (event.key.length === 1) return event.key !== ' '
+  return [
+    'Backspace',
+    'Delete',
+    'ArrowLeft',
+    'ArrowRight',
+    'ArrowUp',
+    'ArrowDown',
+    'Home',
+    'End',
+  ].includes(event.key)
+}
+
 const THEMES: Settings['theme'][] = ['light', 'dark', 'auto']
 
 // PR#16 Opus レビュー nit: <meta name="theme-color"> をテーマに追従させる。
@@ -596,14 +612,14 @@ export default function App() {
       resumeAlarmAudioContext()
 
       if (caregiverMenuOpen()) {
-        // Issue #8: フレーズ編集の入力欄での打鍵では閉じない(Esc だけは閉じる)。無操作タイマーは延ばす
-        const typingTarget = (event.target as HTMLElement | null)?.closest?.(
+        // Issue #8: フレーズ編集の入力欄での「文字を打つキー」では閉じない。入力欄にフォーカスが
+        // 残ったまま本人がスイッチ(Enter・音量キー・Space 等)を押しても、従来どおり閉じて
+        // 本人が取り残されないよう、文字入力・編集に使うキーだけを例外にする。無操作 60 秒の
+        // 自動クローズ(§6)は打鍵では延ばさない(入力欄のタップ・フォーカスで延びる)
+        const inField = (event.target as HTMLElement | null)?.closest?.(
           '.caregiver-panel input, .caregiver-panel textarea',
         )
-        if (typingTarget && event.key !== 'Escape') {
-          resetCaregiverIdleTimer()
-          return
-        }
+        if (inField && isTextEditingKey(event)) return
         // M3(b): 介助者はタッチで操作する想定。メニュー表示中の keydown は閉じて
         // ホーム先頭から再開する(その押下では項目を実行しない)
         event.preventDefault()
