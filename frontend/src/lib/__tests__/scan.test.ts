@@ -123,6 +123,18 @@ describe('press', () => {
     const result = press(state, 3, 1100, config)
     expect(result.state.lastPressAt).toBe(1000)
   })
+
+  it('Issue #6: targetIndex を渡すとカーソルでなくその項目を実行対象にする', () => {
+    const state = { index: 2, nextAdvanceAt: 0, lastPressAt: null }
+    expect(press(state, 3, 1000, config, 1).activatedIndex).toBe(1)
+  })
+
+  it('Issue #6: targetIndex が範囲外なら何も実行しない(別項目・緊急へずらさない)', () => {
+    const state = { index: 0, nextAdvanceAt: 0, lastPressAt: null }
+    const result = press(state, 3, 1000, config, 5)
+    expect(result.activatedIndex).toBeNull()
+    expect(result.state).toBe(state)
+  })
 })
 
 describe('resync', () => {

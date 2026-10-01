@@ -128,39 +128,26 @@ export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
   ])
 }
 
+/** 緊急詳細の項目(id とラベル)。ラベルの正本。保存値の検証(emergencyState.ts)も参照する。 */
+export const URGENT_DETAIL_ITEMS = [
+  { id: 'suffering', label: '苦しい' },
+  { id: 'pain', label: '痛い' },
+  { id: 'cant-breathe', label: '息ができない' },
+  { id: 'nausea', label: '吐きそう' },
+  { id: 'chest-pain', label: '胸が痛い' },
+] as const
+
+export const URGENT_DETAIL_LABELS: readonly string[] = URGENT_DETAIL_ITEMS.map((i) => i.label)
+
 export function buildUrgentDetailMenu(): MenuItem[] {
-  return subScreen([
-    {
-      id: 'suffering',
-      label: '苦しい',
-      tone: 'urgent',
-      action: { type: 'emergencyDetail', label: '苦しい' },
-    },
-    {
-      id: 'pain',
-      label: '痛い',
-      tone: 'urgent',
-      action: { type: 'emergencyDetail', label: '痛い' },
-    },
-    {
-      id: 'cant-breathe',
-      label: '息ができない',
-      tone: 'urgent',
-      action: { type: 'emergencyDetail', label: '息ができない' },
-    },
-    {
-      id: 'nausea',
-      label: '吐きそう',
-      tone: 'urgent',
-      action: { type: 'emergencyDetail', label: '吐きそう' },
-    },
-    {
-      id: 'chest-pain',
-      label: '胸が痛い',
-      tone: 'urgent',
-      action: { type: 'emergencyDetail', label: '胸が痛い' },
-    },
-  ])
+  return subScreen(
+    URGENT_DETAIL_ITEMS.map(({ id, label }) => ({
+      id,
+      label,
+      tone: 'urgent' as const,
+      action: { type: 'emergencyDetail' as const, label },
+    })),
+  )
 }
 
 // 1画面の項目数は緊急・戻るを含めて8以内(requirements.md §4.1)。

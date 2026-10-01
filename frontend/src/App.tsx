@@ -16,8 +16,11 @@ import {
   type OfflineReadyStatus,
 } from './lib/offlineReady'
 import { computeGridLayout } from './lib/gridLayout'
+import { createSwitchInput } from './lib/switchInput'
+import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
+const EMERGENCY_MESSAGE = '緊急です。来てください'
 const ALARM_REPEAT_MS = 3000
 /** 介助者メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
@@ -77,6 +80,13 @@ const THEME_LABELS: Record<Settings['theme'], string> = {
 
 const LETTER_SCREENS: ScreenId[] = ['letters', 'lettersRow', 'lettersYesNo']
 
+const ACTIVATE_ON_LABELS: Record<Settings['activateOn'], string> = {
+  press: '押した瞬間',
+  release: '離した瞬間',
+}
+
+const ACTIVATE_ONS: Settings['activateOn'][] = ['press', 'release']
+
 const THEMES: Settings['theme'][] = ['light', 'dark', 'auto']
 
 // PR#16 Opus レビュー nit: <meta name="theme-color"> をテーマに追従させる。
@@ -126,14 +136,22 @@ export default function App() {
   }))
 
   const [screen, setScreen] = createSignal<ScreenId>('home')
-  const [emergencyActive, setEmergencyActive] = createSignal(false)
+  // 再読み込み・再起動後も、介助者が解除するまで緊急状態を復元する(requirements.md §4.3)
+  const restoredEmergency = loadEmergencyState()
+  const [emergencyActive, setEmergencyActive] = createSignal(restoredEmergency !== null)
   // 緊急の詳細（苦しい/痛い等）は積み上げ式。緊急の再選択では消さない(S1)
-  const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>([])
-  const [message, setMessage] = createSignal(DEFAULT_MESSAGE)
-  const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
+  const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>(
+    restoredEmergency?.details ?? [],
+  )
+  const [message, setMessage] = createSignal(
+    restoredEmergency ? EMERGENCY_MESSAGE : DEFAULT_MESSAGE,
+  )
+  const [messageTone, setMessageTone] = createSignal<Tone>(restoredEmergency ? 'urgent' : 'neutral')
   const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>([])
   // 緊急中に選ばれた伝達（はい等）は見出しを上書きせず、この副表示にのみ出す
-  const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(null)
+  const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(
+    restoredEmergency?.sub ?? null,
+  )
   const [showUndo, setShowUndo] = createSignal(false)
   let undoLapsRemaining = 0
 
@@ -324,6 +342,9 @@ export default function App() {
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
+    // 解除後に緊急メッセージが履歴に残ると、解除→伝達→取り消しで赤い緊急文言が戻るため履歴を空にする
+    // 緊急が無いときは解除ボタンが disabled(押せるのは緊急中のみ)なので、ここでは無条件に消してよい
+    setMessageHistory([])
     // S2: 解除後に緊急中分の古い取り消しが復活しないようにする
     setShowUndo(false)
     undoLapsRemaining = 0
@@ -355,7 +376,7 @@ export default function App() {
         undoLapsRemaining = 0
         if (!alreadyActive) {
           setEmergencyDetails([])
-          showMessage('緊急です。来てください', 'urgent')
+          showMessage(EMERGENCY_MESSAGE, 'urgent')
         }
         startAlarm(ALARM_REPEAT_MS)
         goTo('urgentDetail')
@@ -434,15 +455,60 @@ export default function App() {
     runAction(item)
   }
 
-  const handleSwitchOn = (now: number) => {
+  // Issue #6: 押している間の進捗(押下時間の下限があるときだけ値が入る)
+  const [holdProgress, setHoldProgress] = createSignal<number | null>(null)
+
+  const handleSwitchOn = (
+    now: number,
+    target?: { index: number; screen: ScreenId; itemId: string | undefined },
+  ) => {
     if (caregiverMenuOpen()) return
+    // 押しっぱなし中に画面が変わった、または同じ画面でも項目の並びが変わった(例: 取り消しが
+    // 消えた)場合、押し始めの項目はもう同じ位置にない。別の項目(特に緊急)を誤って
+    // 実行しないよう無視する
+    if (
+      target &&
+      (target.screen !== screen() || currentMenu()[target.index]?.id !== target.itemId)
+    ) {
+      return
+    }
     const itemCount = currentMenu().length
     const resynced = resync(scanState(), itemCount)
-    const result = press(resynced, itemCount, now, scanConfig())
+    const result = press(resynced, itemCount, now, scanConfig(), target?.index)
     setScanState(result.state)
     if (result.activatedIndex === null) return
     activateIndex(result.activatedIndex)
   }
+
+  // Issue #6: 押下時間の下限・離して決定。キー/タップ/Bluetooth シャッターすべてここを通す。
+  // 決定するのは押し始めにカーソルが乗っていた項目。
+  const switchInput = createSwitchInput({
+    getConfig: () => ({ minHoldMs: settings().minHoldMs, activateOn: settings().activateOn }),
+    snapshot: () => {
+      const index = resync(scanState(), currentMenu().length).index
+      return { index, screen: screen(), itemId: currentMenu()[index]?.id }
+    },
+    onActivate: (target) => handleSwitchOn(Date.now(), target),
+    onProgress: setHoldProgress,
+  })
+
+  // 緊急状態の保存。有効な間は内容の変化ごとに保存し、解除されたら保存ごと消す。
+  createEffect(() => {
+    if (emergencyActive()) {
+      saveEmergencyState({ details: emergencyDetails(), sub: emergencySubMessage() })
+    } else {
+      clearEmergencyState()
+    }
+  })
+
+  // 復元した緊急は警告音も再開する。自動再生制限で鳴らなければ
+  // 既存の「警告音停止中：画面をタップしてください」表示になる。
+  onMount(() => {
+    if (restoredEmergency) {
+      document.documentElement.dataset.messageTone = 'urgent'
+      startAlarm(ALARM_REPEAT_MS)
+    }
+  })
 
   // 警告音が鳴らない状態(AudioContext が running でない)を介助者に知らせるための定期確認。
   // ミリ秒単位の精度は不要なので、スキャンループとは別に緩い間隔でポーリングする。
@@ -570,8 +636,13 @@ export default function App() {
       }
 
       if (target?.closest('[data-caregiver-control]')) return
-      handleSwitchOn(Date.now())
+      switchInput.down(`pointer:${event.pointerId}`)
     }
+
+    const onPointerUp = (event: PointerEvent) => switchInput.up(`pointer:${event.pointerId}`)
+    // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
+    const onPointerCancel = (event: PointerEvent) =>
+      switchInput.cancel(`pointer:${event.pointerId}`)
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
@@ -592,7 +663,14 @@ export default function App() {
         return
       }
       event.preventDefault()
-      handleSwitchOn(Date.now())
+      switchInput.down(`key:${event.code || event.key}`)
+    }
+
+    const onKeyUp = (event: KeyboardEvent) => switchInput.up(`key:${event.code || event.key}`)
+    // 画面が見えなくなった・フォーカスを失った押下は、離す動作を取りこぼすので取り消す
+    const onBlur = () => switchInput.cancelAll()
+    const onVisibilityHidden = () => {
+      if (document.visibilityState === 'hidden') switchInput.cancelAll()
     }
 
     // M2: タッチ端末では pointerdown だけでは AudioContext の resume が保証されないため、
@@ -604,6 +682,11 @@ export default function App() {
 
     window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerCancel)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibilityHidden)
     window.addEventListener('pointerup', onUserActivation, true)
     window.addEventListener('touchend', onUserActivation, true)
     window.addEventListener('click', onUserActivation, true)
@@ -613,6 +696,12 @@ export default function App() {
     onCleanup(() => {
       window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerCancel)
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onVisibilityHidden)
+      switchInput.cancelAll()
       window.removeEventListener('pointerup', onUserActivation, true)
       window.removeEventListener('touchend', onUserActivation, true)
       window.removeEventListener('click', onUserActivation, true)
@@ -628,6 +717,7 @@ export default function App() {
     // PR#16 Opus レビュー nit: 前回分のタイマーが残っていたら先に消してから開始する
     if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
     longPressTimer = window.setTimeout(() => {
+      switchInput.cancelAll()
       setCaregiverMenuOpen(true)
       resetCaregiverIdleTimer()
       // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
@@ -685,6 +775,12 @@ export default function App() {
           </Show>
         </div>
       </section>
+
+      <Show when={holdProgress() !== null}>
+        <div class="hold-progress" role="progressbar" aria-label="押している間の進み具合">
+          <div class="hold-progress-bar" style={{ width: `${(holdProgress() ?? 0) * 100}%` }} />
+        </div>
+      </Show>
 
       <Show when={LETTER_SCREENS.includes(screen())}>
         <section class="letter-strip">
@@ -817,6 +913,37 @@ export default function App() {
                 }
               />
             </label>
+
+            <label class="caregiver-field">
+              <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
+              <input
+                type="range"
+                min="0"
+                max="2000"
+                step="100"
+                value={settings().minHoldMs}
+                onInput={(event) =>
+                  updateSettings({ minHoldMs: Number(event.currentTarget.value) })
+                }
+              />
+            </label>
+
+            <div class="caregiver-field">
+              <span>決定のタイミング</span>
+              <div class="caregiver-choice-options">
+                <For each={ACTIVATE_ONS}>
+                  {(timing) => (
+                    <button
+                      type="button"
+                      classList={{ active: settings().activateOn === timing }}
+                      onClick={() => updateSettings({ activateOn: timing })}
+                    >
+                      {ACTIVATE_ON_LABELS[timing]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
 
             <label class="caregiver-field caregiver-checkbox">
               <input

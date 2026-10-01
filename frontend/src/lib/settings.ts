@@ -1,6 +1,8 @@
 // 介助者設定の localStorage 読み書き・検証。
 // 正本: docs/requirements.md §3.3, §6
 
+import type { ActivateOn } from './switchInput'
+
 export type VoiceMode = 'off' | 'tone' | 'short' | 'full'
 
 /** Issue #3: 介助者設定の文字サイズ。タイル・見出しの clamp() 基準値を切り替える */
@@ -16,6 +18,10 @@ export interface Settings {
   headHoldMultiplier: number
   /** 連打無視(ms)。既定 500、範囲 0〜3000 */
   debounceMs: number
+  /** Issue #6: 押下時間の下限(ms)。この時間以上押し続けたときだけオン。既定 0、範囲 0〜2000 */
+  minHoldMs: number
+  /** Issue #6: 決定のタイミング。既定 press(押した瞬間) */
+  activateOn: ActivateOn
   /** 聴覚スキャン（カーソル移動ごとに項目名を読む）。既定 OFF */
   auditoryScan: boolean
   /** 読み上げモード。既定 OFF */
@@ -32,6 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
   intervalMs: 1500,
   headHoldMultiplier: 2,
   debounceMs: 500,
+  minHoldMs: 0,
+  activateOn: 'press',
   auditoryScan: false,
   voiceMode: 'off',
   fontSize: 'standard',
@@ -47,9 +55,12 @@ const HEAD_HOLD_MULTIPLIER_MIN = 1
 const HEAD_HOLD_MULTIPLIER_MAX = 5
 const DEBOUNCE_MS_MIN = 0
 const DEBOUNCE_MS_MAX = 3000
+const MIN_HOLD_MS_MIN = 0
+const MIN_HOLD_MS_MAX = 2000
 
 const VOICE_MODES: VoiceMode[] = ['off', 'tone', 'short', 'full']
 const FONT_SIZES: FontSize[] = ['standard', 'large', 'xlarge']
+const ACTIVATE_ONS: ActivateOn[] = ['press', 'release']
 const THEMES: Theme[] = ['light', 'dark', 'auto']
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
@@ -80,6 +91,15 @@ export function normalizeSettings(input: unknown): Settings {
       DEBOUNCE_MS_MAX,
       DEFAULT_SETTINGS.debounceMs,
     ),
+    minHoldMs: clampNumber(
+      raw.minHoldMs,
+      MIN_HOLD_MS_MIN,
+      MIN_HOLD_MS_MAX,
+      DEFAULT_SETTINGS.minHoldMs,
+    ),
+    activateOn: ACTIVATE_ONS.includes(raw.activateOn as ActivateOn)
+      ? (raw.activateOn as ActivateOn)
+      : DEFAULT_SETTINGS.activateOn,
     auditoryScan:
       typeof raw.auditoryScan === 'boolean' ? raw.auditoryScan : DEFAULT_SETTINGS.auditoryScan,
     voiceMode: VOICE_MODES.includes(raw.voiceMode as VoiceMode)

@@ -351,6 +351,77 @@ describe('App', () => {
     expect(h1Text(container)).not.toBe('緊急です。来てください')
   })
 
+  it('Issue #6: 下限0.5秒で、0.2秒のキー押下は無視され0.6秒の押下は下限到達時点で決定される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 500 }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(200)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1000)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+
+    // カーソルはまだ先頭(緊急)。押し始めの項目が下限に達した時点(keyUp より前)で決定される
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(499)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    vi.advanceTimersByTime(1)
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: タップ(pointerdown/pointerup)にも同じ下限が効く', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 500 }))
+    const { container } = render(() => <App />)
+    fireEvent.pointerDown(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(200)
+    fireEvent.pointerUp(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(1000)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+
+    fireEvent.pointerDown(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(600)
+    fireEvent.pointerUp(document.body, { pointerId: 1 })
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: 離して決定モードで blur すると、離しても決定しない', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    fireEvent.blur(window)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: 押している間に項目の並びが変わったら、別の項目(緊急など)を実行せず無視する', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 1500 }))
+    const { container } = render(() => <App />)
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=はい
+    expect(scanningLabel(container)).toBe('はい')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1500)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' }) // はい → home(取り消しが1周だけ出る)
+    expect(h1Text(container)).toBe('はい')
+
+    // 取り消しを含む7項目の末尾(文字盤)で押し始める。押している間に1周して取り消しが消える
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5 + 500)
+    expect(scanningLabel(container)).toBe('文字盤')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1500)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).toBe('はい')
+    expect(container.querySelector('.letter-strip')).toBeNull()
+  })
+
+  it('Issue #6: 離して決定モードでは押下中は実行されず、離した時点で実行される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' }) // index0=緊急
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    vi.advanceTimersByTime(100)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
     const { container } = render(() => <App />)
     // カーソルは index0(緊急)。"3"キーは index2(いいえ)への直接ジャンプではなく
@@ -843,6 +914,157 @@ describe('App', () => {
     fireEvent.pointerDown(button2)
     vi.advanceTimersByTime(2000)
     expect(second.container.textContent).toContain('スキャン間隔: 2.5 秒')
+  })
+
+  describe('libra#17: 緊急状態の保存と再起動後の復元', () => {
+    const KEY = 'libra:emergency'
+    const stored = () => {
+      const raw = window.localStorage.getItem(KEY)
+      return raw === null ? null : JSON.parse(raw)
+    }
+    const clearEmergencyViaMenu = (container: HTMLElement) => {
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const clearButton = Array.from(container.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('緊急解除'),
+      ) as HTMLElement
+      fireEvent.click(clearButton)
+    }
+    const closeCaregiverMenu = (container: HTMLElement) => {
+      const closeButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '閉じる',
+      ) as HTMLElement
+      fireEvent.click(closeButton)
+    }
+
+    it('緊急を選ぶと保存され、通常起動では何も保存されない', () => {
+      const { container } = render(() => <App />)
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(stored()).toEqual({ active: true, details: [], sub: null })
+    })
+
+    it('詳細・副表示ごと再マウントで復元され、警告音が再開し、振動・読み上げは出ない', () => {
+      const first = render(() => <App />)
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index2=苦しい
+      fireEvent.keyDown(window, { key: ' ' }) // 苦しい → home
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+      fireEvent.keyDown(window, { key: ' ' }) // はい → 副表示
+      expect(stored()).toEqual({ active: true, details: ['苦しい'], sub: 'はい' })
+      first.unmount()
+      cleanup()
+      // 復元で urgent が立つことを確認するため、前回の値を消しておく
+      delete document.documentElement.dataset.messageTone
+
+      oscillatorStartCount = 0
+      const vibrate = vi.fn()
+      ;(navigator as unknown as { vibrate?: unknown }).vibrate = vibrate
+      const speak = vi.fn()
+      ;(window as unknown as { speechSynthesis?: unknown }).speechSynthesis = {
+        cancel: vi.fn(),
+        speak,
+      }
+
+      const second = render(() => <App />)
+      expect(h1Text(second.container)).toBe('緊急です。来てください')
+      expect(document.documentElement.dataset.messageTone).toBe('urgent')
+      expect(second.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+      expect(second.container.querySelector('.emergency-sub')?.textContent).toContain('最新: はい')
+      expect(oscillatorStartCount).toBeGreaterThan(0)
+      vi.advanceTimersByTime(3000)
+      const afterOneCycle = oscillatorStartCount
+      vi.advanceTimersByTime(3000)
+      expect(oscillatorStartCount).toBeGreaterThan(afterOneCycle)
+      expect(vibrate).not.toHaveBeenCalled()
+      expect(speak).not.toHaveBeenCalled()
+    })
+
+    it('解除→伝達→取り消しでも、緊急でないのに赤い緊急文言は戻らない', () => {
+      const { container } = render(() => <App />)
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      clearEmergencyViaMenu(container)
+      closeCaregiverMenu(container)
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+      fireEvent.keyDown(window, { key: ' ' }) // はい
+      expect(h1Text(container)).toBe('はい')
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
+      fireEvent.keyDown(window, { key: ' ' }) // 取り消し
+      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+      expect(document.documentElement.dataset.messageTone).toBe('neutral')
+    })
+
+    it('緊急なしの解除ボタンは無効で、取り消し履歴は消えない(A→解除→B→取り消し→A)', () => {
+      const { container } = render(() => <App />)
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+      fireEvent.keyDown(window, { key: ' ' }) // はい (A)
+      expect(h1Text(container)).toBe('はい')
+      clearEmergencyViaMenu(container) // 緊急なしの解除ボタン(disabled で何も起きない)
+      closeCaregiverMenu(container)
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // 緊急→取り消し→はい→いいえ
+      fireEvent.keyDown(window, { key: ' ' }) // いいえ (B)
+      expect(h1Text(container)).toBe('いいえ')
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
+      fireEvent.keyDown(window, { key: ' ' }) // 取り消し
+      expect(h1Text(container)).toBe('はい')
+    })
+
+    it('復元後に警告音が鳴れない状態なら「警告音停止中」表示が出る', () => {
+      window.localStorage.setItem(KEY, JSON.stringify({ active: true, details: [], sub: null }))
+      vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
+      const { container } = render(() => <App />)
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(container.querySelector('.audio-status-hint')).not.toBeNull()
+    })
+
+    it('介助者メニューの緊急解除で保存が消え、再マウントで通常起動・警告音なし', () => {
+      const first = render(() => <App />)
+      fireEvent.keyDown(window, { key: ' ' })
+      expect(stored()).not.toBeNull()
+      clearEmergencyViaMenu(first.container)
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      first.unmount()
+      cleanup()
+
+      oscillatorStartCount = 0
+      const second = render(() => <App />)
+      expect(h1Text(second.container)).toBe('選んだ内容がここに大きく出ます')
+      expect(second.container.querySelector('.emergency-details')).toBeNull()
+      vi.advanceTimersByTime(10000)
+      expect(oscillatorStartCount).toBe(0)
+    })
+
+    it('壊れた保存値では通常起動する(例外で落ちない)', () => {
+      window.localStorage.setItem(KEY, '{broken')
+      const { container } = render(() => <App />)
+      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+      expect(oscillatorStartCount).toBe(0)
+    })
+
+    it('緊急の保存・解除は設定(libra)の保存と干渉しない', () => {
+      const first = render(() => <App />)
+      const button = first.container.querySelector('.caregiver-button') as HTMLElement
+      fireEvent.pointerDown(button)
+      vi.advanceTimersByTime(2000)
+      const slider = first.container.querySelector(
+        'input[type="range"][min="500"]',
+      ) as HTMLInputElement
+      fireEvent.input(slider, { target: { value: '2500' } })
+      const settingsBefore = window.localStorage.getItem('libra')
+      expect(settingsBefore).not.toBeNull()
+      const closeButton = Array.from(first.container.querySelectorAll('button')).find(
+        (b) => b.textContent === '閉じる',
+      ) as HTMLElement
+      fireEvent.click(closeButton)
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急
+      expect(window.localStorage.getItem('libra')).toBe(settingsBefore)
+      clearEmergencyViaMenu(first.container)
+      expect(window.localStorage.getItem('libra')).toBe(settingsBefore)
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+    })
   })
 
   describe('Issue #3 追加指示: 表示テーマ(明るい/夜間/自動)・文字サイズ・高コントラスト', () => {
