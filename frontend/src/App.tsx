@@ -16,6 +16,7 @@ import {
   type OfflineReadyStatus,
 } from './lib/offlineReady'
 import { computeGridLayout } from './lib/gridLayout'
+import PhraseEditor from './PhraseEditor'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
@@ -169,7 +170,11 @@ export default function App() {
   // 表示中メニューはここでしか作らない。スキャン状態・レンダリングの双方が
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
   const currentMenu = createMemo(() =>
-    buildMenu(screen(), { showUndo: showUndo(), emergencyActive: emergencyActive() }),
+    buildMenu(screen(), {
+      showUndo: showUndo(),
+      emergencyActive: emergencyActive(),
+      phrases: settings().phrases,
+    }),
   )
 
   // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
@@ -258,7 +263,11 @@ export default function App() {
     // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常は緊急)も読む。
     // 直前の伝達読み上げが済んでいれば messageAnnounceGrace により cancel されない(S-new-1)
     if (settings().auditoryScan) {
-      const first = buildMenu(next, { showUndo: showUndo(), emergencyActive: emergencyActive() })[0]
+      const first = buildMenu(next, {
+        showUndo: showUndo(),
+        emergencyActive: emergencyActive(),
+        phrases: settings().phrases,
+      })[0]
       if (first) announceScanItem(first.label)
     }
   }
@@ -277,6 +286,12 @@ export default function App() {
     setShowUndo(true)
     undoLapsRemaining = 1
     goTo('home')
+  }
+
+  // Issue #8: 書き出した設定の取り込み。検証済みの設定で丸ごと置き換える
+  const replaceSettings = (next: Settings) => {
+    saveSettings(next)
+    setSettings(next)
   }
 
   const updateSettings = (patch: Partial<Settings>) => {
@@ -581,6 +596,14 @@ export default function App() {
       resumeAlarmAudioContext()
 
       if (caregiverMenuOpen()) {
+        // Issue #8: フレーズ編集の入力欄での打鍵では閉じない(Esc だけは閉じる)。無操作タイマーは延ばす
+        const typingTarget = (event.target as HTMLElement | null)?.closest?.(
+          '.caregiver-panel input, .caregiver-panel textarea',
+        )
+        if (typingTarget && event.key !== 'Escape') {
+          resetCaregiverIdleTimer()
+          return
+        }
         // M3(b): 介助者はタッチで操作する想定。メニュー表示中の keydown は閉じて
         // ホーム先頭から再開する(その押下では項目を実行しない)
         event.preventDefault()
@@ -732,11 +755,7 @@ export default function App() {
               {/* Issue #3 追加指示: 下位画面へ進むタイルは矢印文字ではなく、山形アイコン+
                   中身の予告(menus.ts で自動生成)で示す。読み上げはラベルのみ(記号は読まない) */}
               <Show when={item.action.type === 'navigate'}>
-                <svg
-                  class="tile-chevron"
-                  viewBox="0 0 20 24"
-                  aria-hidden="true"
-                >
+                <svg class="tile-chevron" viewBox="0 0 20 24" aria-hidden="true">
                   <path
                     d="M5 3 L15 12 L5 21"
                     fill="none"
@@ -893,6 +912,12 @@ export default function App() {
               />
               <span>高コントラスト</span>
             </label>
+
+            <PhraseEditor
+              settings={settings()}
+              updateSettings={updateSettings}
+              replaceSettings={replaceSettings}
+            />
 
             <button
               type="button"

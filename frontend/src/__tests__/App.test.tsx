@@ -290,6 +290,94 @@ describe('App', () => {
     expect(h1Text(container)).not.toBe('緊急です。来てください')
   })
 
+  // Issue #8: スキャンで目的の項目まで進めて選ぶ(連打無視を過ぎてから押す)
+  function selectByLabel(container: HTMLElement, label: string) {
+    for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
+      vi.advanceTimersByTime(INTERVAL_MS)
+    }
+    expect(scanningLabel(container)).toBe(label)
+    vi.advanceTimersByTime(600)
+    fireEvent.keyDown(window, { key: ' ' })
+  }
+
+  function openCaregiverMenu(container: HTMLElement) {
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button)
+    vi.advanceTimersByTime(2000)
+  }
+
+  function clickButton(root: Element, text: string) {
+    const target = Array.from(root.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes(text),
+    ) as HTMLElement
+    expect(target).toBeTruthy()
+    fireEvent.click(target)
+  }
+
+  it('Issue #8: 介助者が追加したフレーズはスキャンで選べ、再読み込み後も保持される', () => {
+    const first = render(() => <App />)
+    openCaregiverMenu(first.container)
+    const editor = first.container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    clickButton(editor, 'フレーズを追加')
+    const rows = editor.querySelectorAll('.phrase-row')
+    const inputs = rows[rows.length - 1].querySelectorAll('input')
+    fireEvent.input(inputs[0], { target: { value: 'テレビ' } })
+    fireEvent.input(inputs[1], { target: { value: 'テレビを見たいです' } })
+    // 入力欄での打鍵では介助者メニューが閉じない
+    fireEvent.keyDown(inputs[0], { key: 'a' })
+    expect(first.container.querySelector('.caregiver-panel')).not.toBeNull()
+    clickButton(first.container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
+    first.unmount()
+    cleanup()
+
+    const second = render(() => <App />)
+    selectByLabel(second.container, '快・要望')
+    selectByLabel(second.container, 'テレビ')
+    expect(h1Text(second.container)).toBe('テレビを見たいです')
+  })
+
+  it('Issue #8: 編集してもスキャンの先頭は緊急、戻るは2番目のまま', () => {
+    window.localStorage.setItem(
+      'libra',
+      JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'テレビ', text: 'テレビ' }] } }),
+    )
+    const { container } = render(() => <App />)
+    selectByLabel(container, '快・要望')
+    expect(scanningLabel(container)).toBe('緊急')
+    expect(tileLabels(container).slice(0, 3)).toEqual(['緊急', '戻る', 'テレビ'])
+  })
+
+  it('Issue #8: 「この画面を既定に戻す」で既定のフレーズに戻る', () => {
+    window.localStorage.setItem(
+      'libra',
+      JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'テレビ', text: 'テレビ' }] } }),
+    )
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    clickButton(editor, 'この画面を既定に戻す')
+    clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
+    selectByLabel(container, '快・要望')
+    expect(tileLabels(container)).toContain('大丈夫')
+    expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').phrases).toEqual({})
+  })
+
+  it('Issue #8: 目安(8項目)を超えると警告を出す', () => {
+    const many = Array.from({ length: 7 }, (_, i) => ({
+      id: `c${i}`,
+      label: `L${i}`,
+      text: `T${i}`,
+    }))
+    window.localStorage.setItem('libra', JSON.stringify({ phrases: { moodRequest: many } }))
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    clickButton(editor, '快・要望')
+    expect(editor.querySelector('[role="alert"]')?.textContent).toContain('9 項目')
+  })
+
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
     const { container } = render(() => <App />)
     // カーソルは index0(緊急)。"3"キーは index2(いいえ)への直接ジャンプではなく

@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_SETTINGS, loadSettings, normalizeSettings, saveSettings } from '../settings'
+import {
+  DEFAULT_SETTINGS,
+  exportSettingsJson,
+  loadSettings,
+  normalizeSettings,
+  parseSettingsJson,
+  saveSettings,
+} from '../settings'
 
 describe('normalizeSettings', () => {
   it('すべて正常値なら変更せず通過する', () => {
@@ -12,6 +19,7 @@ describe('normalizeSettings', () => {
       fontSize: 'large',
       highContrast: true,
       theme: 'dark',
+      phrases: {},
     }
     expect(normalizeSettings(input)).toEqual(input)
   })
@@ -181,5 +189,37 @@ describe('saveSettings', () => {
       throw new Error('quota exceeded')
     })
     expect(() => saveSettings(DEFAULT_SETTINGS)).not.toThrow()
+  })
+
+  describe('Issue #8: フレーズの保存と書き出し・取り込み', () => {
+    it('フレーズを保存して再読み込みで保持する', () => {
+      const phrases = {
+        moodRequest: [{ id: 'custom-1', label: 'テレビ', text: 'テレビを見たいです' }],
+      }
+      saveSettings({ ...DEFAULT_SETTINGS, phrases })
+      expect(loadSettings().phrases).toEqual(phrases)
+    })
+
+    it('書き出した JSON を取り込むと同じ設定に戻る', () => {
+      const settings = {
+        ...DEFAULT_SETTINGS,
+        intervalMs: 2500,
+        phrases: { painLocation: [{ id: 'custom-1', label: '首', text: '首が痛いです' }] },
+      }
+      expect(parseSettingsJson(exportSettingsJson(settings))).toEqual(settings)
+    })
+
+    it('壊れた JSON・オブジェクトでない値は null(今の設定を変えない)', () => {
+      expect(parseSettingsJson('{not json')).toBeNull()
+      expect(parseSettingsJson('[1,2]')).toBeNull()
+      expect(parseSettingsJson('"x"')).toBeNull()
+      expect(parseSettingsJson('null')).toBeNull()
+    })
+
+    it('取り込んだ値は検証され、範囲外は既定値になる', () => {
+      const next = parseSettingsJson(JSON.stringify({ intervalMs: 99999, phrases: 'x' }))
+      expect(next?.intervalMs).toBe(DEFAULT_SETTINGS.intervalMs)
+      expect(next?.phrases).toEqual({})
+    })
   })
 })

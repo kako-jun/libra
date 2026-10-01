@@ -1,6 +1,8 @@
 // 介助者設定の localStorage 読み書き・検証。
 // 正本: docs/requirements.md §3.3, §6
 
+import { normalizePhraseSets, type PhraseSets } from './phrases'
+
 export type VoiceMode = 'off' | 'tone' | 'short' | 'full'
 
 /** Issue #3: 介助者設定の文字サイズ。タイル・見出しの clamp() 基準値を切り替える */
@@ -26,6 +28,8 @@ export interface Settings {
   highContrast: boolean
   /** 表示(明暗)テーマ。既定 auto(端末の設定に追従) */
   theme: Theme
+  /** Issue #8: 介助者が編集した定型フレーズ。キーが無いグループは既定のプリセット */
+  phrases: PhraseSets
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fontSize: 'standard',
   highContrast: false,
   theme: 'auto',
+  phrases: {},
 }
 
 const STORAGE_KEY = 'libra'
@@ -91,6 +96,7 @@ export function normalizeSettings(input: unknown): Settings {
     highContrast:
       typeof raw.highContrast === 'boolean' ? raw.highContrast : DEFAULT_SETTINGS.highContrast,
     theme: THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : DEFAULT_SETTINGS.theme,
+    phrases: normalizePhraseSets(raw.phrases),
   }
 }
 
@@ -111,5 +117,24 @@ export function saveSettings(settings: Settings): void {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
   } catch {
     // 保存できなくても既定値で動き続ける
+  }
+}
+
+/** Issue #8: 設定(フレーズ編集を含む)を端末の入れ替え用の JSON 文字列にする。 */
+export function exportSettingsJson(settings: Settings): string {
+  return JSON.stringify(settings, null, 2)
+}
+
+/**
+ * 書き出した JSON 文字列を設定へ戻す。JSON として読めない・オブジェクトでない場合は null
+ * (呼び出し側は今の設定を変えない)。値は normalizeSettings で検証し、範囲外は既定値にする。
+ */
+export function parseSettingsJson(text: string): Settings | null {
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
+    return normalizeSettings(parsed)
+  } catch {
+    return null
   }
 }
