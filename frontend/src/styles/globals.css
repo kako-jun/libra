@@ -158,6 +158,9 @@
 }
 
 :root {
+  /* Issue #6: 押下進捗バー。明るい/夜間どちらの盤面でも見える色 */
+  --hold-progress-track: rgb(0 0 0 / 35%);
+  --hold-progress-fill: #ffd54a;
   color: var(--text);
   background: var(--bg);
   /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
@@ -1011,4 +1014,22 @@ h1 {
     min-height: 84px;
     padding: 14px 6px 8px;
   }
+}
+
+/* Issue #6: 押下時間の下限があるとき、押している間の進み具合を画面上端に出す。
+   入力を邪魔しないよう pointer-events:none。 */
+.hold-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  height: 12px;
+  background: var(--hold-progress-track);
+  pointer-events: none;
+}
+
+.hold-progress-bar {
+  height: 100%;
+  background: var(--hold-progress-fill);
 }

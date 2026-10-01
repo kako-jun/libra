@@ -290,6 +290,77 @@ describe('App', () => {
     expect(h1Text(container)).not.toBe('緊急です。来てください')
   })
 
+  it('Issue #6: 下限0.5秒で、0.2秒のキー押下は無視され0.6秒の押下は下限到達時点で決定される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 500 }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(200)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1000)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+
+    // カーソルはまだ先頭(緊急)。押し始めの項目が下限に達した時点(keyUp より前)で決定される
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(499)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    vi.advanceTimersByTime(1)
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: タップ(pointerdown/pointerup)にも同じ下限が効く', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 500 }))
+    const { container } = render(() => <App />)
+    fireEvent.pointerDown(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(200)
+    fireEvent.pointerUp(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(1000)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+
+    fireEvent.pointerDown(document.body, { pointerId: 1 })
+    vi.advanceTimersByTime(600)
+    fireEvent.pointerUp(document.body, { pointerId: 1 })
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: 離して決定モードで blur すると、離しても決定しない', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    fireEvent.blur(window)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+  })
+
+  it('Issue #6: 押している間に項目の並びが変わったら、別の項目(緊急など)を実行せず無視する', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 1500 }))
+    const { container } = render(() => <App />)
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=はい
+    expect(scanningLabel(container)).toBe('はい')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1500)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' }) // はい → home(取り消しが1周だけ出る)
+    expect(h1Text(container)).toBe('はい')
+
+    // 取り消しを含む7項目の末尾(文字盤)で押し始める。押している間に1周して取り消しが消える
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5 + 500)
+    expect(scanningLabel(container)).toBe('文字盤')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1500)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).toBe('はい')
+    expect(container.querySelector('.letter-strip')).toBeNull()
+  })
+
+  it('Issue #6: 離して決定モードでは押下中は実行されず、離した時点で実行される', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' }) // index0=緊急
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    vi.advanceTimersByTime(100)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
     const { container } = render(() => <App />)
     // カーソルは index0(緊急)。"3"キーは index2(いいえ)への直接ジャンプではなく

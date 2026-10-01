@@ -7,6 +7,8 @@ describe('normalizeSettings', () => {
       intervalMs: 2000,
       headHoldMultiplier: 3,
       debounceMs: 1000,
+      minHoldMs: 500,
+      activateOn: 'release',
       auditoryScan: true,
       voiceMode: 'short',
       fontSize: 'large',
@@ -181,5 +183,18 @@ describe('saveSettings', () => {
       throw new Error('quota exceeded')
     })
     expect(() => saveSettings(DEFAULT_SETTINGS)).not.toThrow()
+  })
+
+  it('Issue #6: 押下時間の下限・決定タイミングを検証して丸める', () => {
+    expect(normalizeSettings({}).minHoldMs).toBe(0)
+    expect(normalizeSettings({}).activateOn).toBe('press')
+    expect(normalizeSettings({ minHoldMs: 500, activateOn: 'release' })).toMatchObject({
+      minHoldMs: 500,
+      activateOn: 'release',
+    })
+    expect(normalizeSettings({ minHoldMs: 9999, activateOn: 'x' })).toMatchObject({
+      minHoldMs: 0,
+      activateOn: 'press',
+    })
   })
 })

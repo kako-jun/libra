@@ -16,6 +16,7 @@ import {
   type OfflineReadyStatus,
 } from './lib/offlineReady'
 import { computeGridLayout } from './lib/gridLayout'
+import { createSwitchInput } from './lib/switchInput'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
@@ -76,6 +77,13 @@ const THEME_LABELS: Record<Settings['theme'], string> = {
   dark: '夜間',
   auto: '自動',
 }
+
+const ACTIVATE_ON_LABELS: Record<Settings['activateOn'], string> = {
+  press: '押した瞬間',
+  release: '離した瞬間',
+}
+
+const ACTIVATE_ONS: Settings['activateOn'][] = ['press', 'release']
 
 const THEMES: Settings['theme'][] = ['light', 'dark', 'auto']
 
@@ -419,15 +427,42 @@ export default function App() {
     runAction(item)
   }
 
-  const handleSwitchOn = (now: number) => {
+  // Issue #6: 押している間の進捗(押下時間の下限があるときだけ値が入る)
+  const [holdProgress, setHoldProgress] = createSignal<number | null>(null)
+
+  const handleSwitchOn = (
+    now: number,
+    target?: { index: number; screen: ScreenId; itemId: string | undefined },
+  ) => {
     if (caregiverMenuOpen()) return
+    // 押しっぱなし中に画面が変わった、または同じ画面でも項目の並びが変わった(例: 取り消しが
+    // 消えた)場合、押し始めの項目はもう同じ位置にない。別の項目(特に緊急)を誤って
+    // 実行しないよう無視する
+    if (
+      target &&
+      (target.screen !== screen() || currentMenu()[target.index]?.id !== target.itemId)
+    ) {
+      return
+    }
     const itemCount = currentMenu().length
     const resynced = resync(scanState(), itemCount)
-    const result = press(resynced, itemCount, now, scanConfig())
+    const result = press(resynced, itemCount, now, scanConfig(), target?.index)
     setScanState(result.state)
     if (result.activatedIndex === null) return
     activateIndex(result.activatedIndex)
   }
+
+  // Issue #6: 押下時間の下限・離して決定。キー/タップ/Bluetooth シャッターすべてここを通す。
+  // 決定するのは押し始めにカーソルが乗っていた項目。
+  const switchInput = createSwitchInput({
+    getConfig: () => ({ minHoldMs: settings().minHoldMs, activateOn: settings().activateOn }),
+    snapshot: () => {
+      const index = resync(scanState(), currentMenu().length).index
+      return { index, screen: screen(), itemId: currentMenu()[index]?.id }
+    },
+    onActivate: (target) => handleSwitchOn(Date.now(), target),
+    onProgress: setHoldProgress,
+  })
 
   // 緊急状態の保存。有効な間は内容の変化ごとに保存し、解除されたら保存ごと消す。
   createEffect(() => {
@@ -573,8 +608,13 @@ export default function App() {
       }
 
       if (target?.closest('[data-caregiver-control]')) return
-      handleSwitchOn(Date.now())
+      switchInput.down(`pointer:${event.pointerId}`)
     }
+
+    const onPointerUp = (event: PointerEvent) => switchInput.up(`pointer:${event.pointerId}`)
+    // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
+    const onPointerCancel = (event: PointerEvent) =>
+      switchInput.cancel(`pointer:${event.pointerId}`)
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
@@ -595,7 +635,14 @@ export default function App() {
         return
       }
       event.preventDefault()
-      handleSwitchOn(Date.now())
+      switchInput.down(`key:${event.code || event.key}`)
+    }
+
+    const onKeyUp = (event: KeyboardEvent) => switchInput.up(`key:${event.code || event.key}`)
+    // 画面が見えなくなった・フォーカスを失った押下は、離す動作を取りこぼすので取り消す
+    const onBlur = () => switchInput.cancelAll()
+    const onVisibilityHidden = () => {
+      if (document.visibilityState === 'hidden') switchInput.cancelAll()
     }
 
     // M2: タッチ端末では pointerdown だけでは AudioContext の resume が保証されないため、
@@ -607,6 +654,11 @@ export default function App() {
 
     window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerCancel)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibilityHidden)
     window.addEventListener('pointerup', onUserActivation, true)
     window.addEventListener('touchend', onUserActivation, true)
     window.addEventListener('click', onUserActivation, true)
@@ -616,6 +668,12 @@ export default function App() {
     onCleanup(() => {
       window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerCancel)
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onVisibilityHidden)
+      switchInput.cancelAll()
       window.removeEventListener('pointerup', onUserActivation, true)
       window.removeEventListener('touchend', onUserActivation, true)
       window.removeEventListener('click', onUserActivation, true)
@@ -631,6 +689,7 @@ export default function App() {
     // PR#16 Opus レビュー nit: 前回分のタイマーが残っていたら先に消してから開始する
     if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
     longPressTimer = window.setTimeout(() => {
+      switchInput.cancelAll()
       setCaregiverMenuOpen(true)
       resetCaregiverIdleTimer()
       // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
@@ -689,6 +748,12 @@ export default function App() {
         </div>
       </section>
 
+      <Show when={holdProgress() !== null}>
+        <div class="hold-progress" role="progressbar" aria-label="押している間の進み具合">
+          <div class="hold-progress-bar" style={{ width: `${(holdProgress() ?? 0) * 100}%` }} />
+        </div>
+      </Show>
+
       <Show when={screen() === 'letters'}>
         <section class="letter-strip">
           <output>{letterText() || '文字を選んでください'}</output>
@@ -732,11 +797,7 @@ export default function App() {
               {/* Issue #3 追加指示: 下位画面へ進むタイルは矢印文字ではなく、山形アイコン+
                   中身の予告(menus.ts で自動生成)で示す。読み上げはラベルのみ(記号は読まない) */}
               <Show when={item.action.type === 'navigate'}>
-                <svg
-                  class="tile-chevron"
-                  viewBox="0 0 20 24"
-                  aria-hidden="true"
-                >
+                <svg class="tile-chevron" viewBox="0 0 20 24" aria-hidden="true">
                   <path
                     d="M5 3 L15 12 L5 21"
                     fill="none"
@@ -824,6 +885,37 @@ export default function App() {
                 }
               />
             </label>
+
+            <label class="caregiver-field">
+              <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
+              <input
+                type="range"
+                min="0"
+                max="2000"
+                step="100"
+                value={settings().minHoldMs}
+                onInput={(event) =>
+                  updateSettings({ minHoldMs: Number(event.currentTarget.value) })
+                }
+              />
+            </label>
+
+            <div class="caregiver-field">
+              <span>決定のタイミング</span>
+              <div class="caregiver-choice-options">
+                <For each={ACTIVATE_ONS}>
+                  {(timing) => (
+                    <button
+                      type="button"
+                      classList={{ active: settings().activateOn === timing }}
+                      onClick={() => updateSettings({ activateOn: timing })}
+                    >
+                      {ACTIVATE_ON_LABELS[timing]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
 
             <label class="caregiver-field caregiver-checkbox">
               <input
