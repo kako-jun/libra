@@ -78,6 +78,8 @@ const THEME_LABELS: Record<Settings['theme'], string> = {
   auto: '自動',
 }
 
+const LETTER_SCREENS: ScreenId[] = ['letters', 'lettersRow', 'lettersYesNo']
+
 const ACTIVATE_ON_LABELS: Record<Settings['activateOn'], string> = {
   press: '押した瞬間',
   release: '離した瞬間',
@@ -155,6 +157,8 @@ export default function App() {
 
   const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
   const [letterText, setLetterText] = createSignal('')
+  // 文字盤の文字段階で表示している行(LETTER_ROWS の添字)
+  const [letterRow, setLetterRow] = createSignal(0)
   // 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる表示の元
   const [alarmAudioRunning, setAlarmAudioRunning] = createSignal(false)
   // Issue #5: 画面スリープ防止の状態。介助者メニューに表示する
@@ -177,7 +181,11 @@ export default function App() {
   // 表示中メニューはここでしか作らない。スキャン状態・レンダリングの双方が
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
   const currentMenu = createMemo(() =>
-    buildMenu(screen(), { showUndo: showUndo(), emergencyActive: emergencyActive() }),
+    buildMenu(screen(), {
+      showUndo: showUndo(),
+      emergencyActive: emergencyActive(),
+      letterRow: letterRow(),
+    }),
   )
 
   // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
@@ -200,6 +208,15 @@ export default function App() {
       labelHeightFactor: labelFactors().height,
     }),
   )
+
+  // 入力途中の文字列は折り返して大きく出し、長くなっても直近の入力(末尾)が見えるようにする
+  let letterOutputEl: HTMLOutputElement | undefined
+  createEffect(() => {
+    letterText()
+    // 文字盤を離れると入力欄ごと破棄され、戻ると作り直されて先頭へ戻るので、画面遷移でも追う
+    screen()
+    if (letterOutputEl) letterOutputEl.scrollTop = letterOutputEl.scrollHeight
+  })
 
   const [scanState, setScanState] = createSignal<ScanState>(startScan(Date.now(), scanConfig()))
 
@@ -266,7 +283,11 @@ export default function App() {
     // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常は緊急)も読む。
     // 直前の伝達読み上げが済んでいれば messageAnnounceGrace により cancel されない(S-new-1)
     if (settings().auditoryScan) {
-      const first = buildMenu(next, { showUndo: showUndo(), emergencyActive: emergencyActive() })[0]
+      const first = buildMenu(next, {
+        showUndo: showUndo(),
+        emergencyActive: emergencyActive(),
+        letterRow: letterRow(),
+      })[0]
       if (first) announceScanItem(first.label)
     }
   }
@@ -399,9 +420,16 @@ export default function App() {
         completeTransmission(action.text, action.tone ?? 'neutral')
         return
       }
+      case 'letterRow': {
+        setLetterRow(action.row)
+        goTo('lettersRow')
+        return
+      }
       case 'letterAppend': {
         setLetterText((text) => text + action.char)
         announce(action.char, action.char)
+        // 1字入れたら行段階へ戻る(次の文字も 行 → 文字 の2段階で選ぶ)
+        goTo('letters')
         return
       }
       case 'letterBackspace': {
@@ -754,9 +782,9 @@ export default function App() {
         </div>
       </Show>
 
-      <Show when={screen() === 'letters'}>
+      <Show when={LETTER_SCREENS.includes(screen())}>
         <section class="letter-strip">
-          <output>{letterText() || '文字を選んでください'}</output>
+          <output ref={letterOutputEl}>{letterText() || '文字を選んでください'}</output>
         </section>
       </Show>
 

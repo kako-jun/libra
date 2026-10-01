@@ -127,13 +127,74 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // letters 画面へ遷移
     expect(container.querySelector('.letter-strip')).not.toBeNull()
 
-    // letters 画面: index0=緊急, index1=戻る, index2=最初の文字(letterAppend)
+    // letters 画面(行段階): index0=緊急, index1=戻る, index2=あ行
     vi.advanceTimersByTime(HEAD_HOLD_MS) // index1(戻る)
-    vi.advanceTimersByTime(INTERVAL_MS) // index2(最初の文字)
-    fireEvent.keyDown(window, { key: ' ' }) // 1回目: 文字を追加
+    vi.advanceTimersByTime(INTERVAL_MS) // index2(あ行)
+    fireEvent.keyDown(window, { key: ' ' }) // 1回目: あ行へ(文字段階)
     fireEvent.keyDown(window, { key: ' ' }) // 2回目: 連打無視区間内なので無視されるはず
+    expect(h1Text(container)).not.toBe('緊急です。来てください') // 文字段階の先頭(緊急)を実行しない
+    expect(scanningLabel(container)).toBe('緊急') // 文字段階の先頭
     const output = container.querySelector('.letter-strip output')
-    expect(output?.textContent?.length).toBe(1)
+    expect(output?.textContent).toBe('文字を選んでください')
+  })
+
+  // 文字盤(#4): Space キー1種だけで「めかね」を入力・確定できる
+  function selectByScan(container: HTMLElement, label: string) {
+    for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
+      vi.advanceTimersByTime(INTERVAL_MS)
+    }
+    expect(scanningLabel(container)).toBe(label)
+    vi.advanceTimersByTime(600) // 連打無視(0.5秒)を過ぎる
+    fireEvent.keyDown(window, { key: ' ' })
+  }
+
+  it('Issue #4: Space キーだけで「めかね」を入力・確定できる', () => {
+    const { container } = render(() => <App />)
+    selectByScan(container, '文字盤')
+    for (const [row, char] of [
+      ['ま行', 'め'],
+      ['か行', 'か'],
+      ['な行', 'ね'],
+    ]) {
+      selectByScan(container, row)
+      selectByScan(container, char)
+    }
+    expect(container.querySelector('.letter-strip output')?.textContent).toBe('めかね')
+
+    selectByScan(container, '確定')
+    expect(h1Text(container)).toBe('めかね')
+    expect(container.querySelector('.letter-strip')).toBeNull()
+    expect(scanningLabel(container)).toBe('緊急') // ホームの先頭から再開する
+  })
+
+  it('Issue #4: はい・いいえで答えて戻っても入力途中の文字列が保持される', () => {
+    const { container } = render(() => <App />)
+    selectByScan(container, '文字盤')
+    selectByScan(container, 'あ行')
+    selectByScan(container, 'あ')
+    selectByScan(container, 'はい・いいえ')
+    selectByScan(container, '戻る')
+    expect(container.querySelector('.letter-strip output')?.textContent).toBe('あ')
+
+    selectByScan(container, 'はい・いいえ')
+    selectByScan(container, 'はい')
+    expect(h1Text(container)).toBe('はい')
+    selectByScan(container, '文字盤')
+    expect(container.querySelector('.letter-strip output')?.textContent).toBe('あ')
+  })
+
+  it('Issue #4: 文字入力の途中(文字段階)でも先頭は緊急で、1周以内に届く', () => {
+    const { container } = render(() => <App />)
+    selectByScan(container, '文字盤')
+    selectByScan(container, 'わ行')
+    expect(scanningLabel(container)).toBe('緊急')
+    // 文字段階の末尾(ー)まで進めても、次の1ステップで先頭(緊急)へ戻り、そこで届く
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 4)
+    expect(scanningLabel(container)).toBe('ー')
+    vi.advanceTimersByTime(INTERVAL_MS)
+    expect(scanningLabel(container)).toBe('緊急')
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(h1Text(container)).toBe('緊急です。来てください')
   })
 
   it('緊急選択で確認なしに即「緊急です。来てください」を表示し緊急詳細画面へ遷移する', () => {
