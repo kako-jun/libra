@@ -135,7 +135,10 @@ function findCandidates(
     if (emptyCells > 1) continue
     // must-E: 「帯」(cols/rowsの一方が1で、もう一方が5以上)は最小セル寸法を
     // 満たしていても除外する
-    if ((cols === 1 && rows >= BAND_MIN_LONG_SIDE) || (rows === 1 && cols >= BAND_MIN_LONG_SIDE)) {
+    if (
+      (cols === 1 && rows >= BAND_MIN_LONG_SIDE) ||
+      (rows === 1 && cols >= BAND_MIN_LONG_SIDE)
+    ) {
       continue
     }
     const cellWidth = width / cols
