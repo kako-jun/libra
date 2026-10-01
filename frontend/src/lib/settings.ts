@@ -32,6 +32,14 @@ export interface Settings {
   hapticSoundWhenVoiceOff: boolean
   /** 振動に加えて、いつも短い効果音でも返すか。振動モーターのない端末向け。既定 OFF */
   hapticSoundAlso: boolean
+  /** Issue #14: モールス入力を使うか。既定 OFF(上級者向け。ホームに入口が出るのは ON のときだけ) */
+  morseEnabled: boolean
+  /** モールス: 長押し(－)とみなす押下時間(ms)。既定 500、範囲 150〜1500 */
+  morseDashMs: number
+  /** モールス: 無入力でこの時間が経つと1文字を確定する(ms)。既定 1500、範囲 500〜3000 */
+  morseLetterGapMs: number
+  /** モールス: 無入力でこの時間が経つと語の区切りを入れる(ms)。既定 4000、範囲 1500〜8000 */
+  morseWordGapMs: number
   /** 聴覚スキャン（カーソル移動ごとに項目名を読む）。既定 OFF */
   auditoryScan: boolean
   /** 読み上げモード。既定 OFF */
@@ -56,6 +64,10 @@ export const DEFAULT_SETTINGS: Settings = {
   hapticsStrength: 'standard',
   hapticSoundWhenVoiceOff: false,
   hapticSoundAlso: false,
+  morseEnabled: false,
+  morseDashMs: 500,
+  morseLetterGapMs: 1500,
+  morseWordGapMs: 4000,
   auditoryScan: false,
   voiceMode: 'off',
   fontSize: 'standard',
@@ -74,6 +86,14 @@ const DEBOUNCE_MS_MIN = 0
 const DEBOUNCE_MS_MAX = 3000
 const MIN_HOLD_MS_MIN = 0
 const MIN_HOLD_MS_MAX = 2000
+const MORSE_DASH_MS_MIN = 150
+const MORSE_DASH_MS_MAX = 1500
+const MORSE_LETTER_GAP_MS_MIN = 500
+const MORSE_LETTER_GAP_MS_MAX = 3000
+const MORSE_WORD_GAP_MS_MIN = 1500
+const MORSE_WORD_GAP_MS_MAX = 8000
+/** 語の区切りは、文字の確定よりこれだけ長くする(ms) */
+export const MORSE_WORD_GAP_MARGIN_MS = 500
 
 const VOICE_MODES: VoiceMode[] = ['off', 'tone', 'short', 'full']
 const FONT_SIZES: FontSize[] = ['standard', 'large', 'xlarge']
@@ -89,7 +109,7 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 /** 未知の値を安全な Settings へ丸める。壊れた値・範囲外は base(既定では既定値)にする。 */
 export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTINGS): Settings {
   const raw = (input ?? {}) as Partial<Record<keyof Settings, unknown>>
-  return {
+  const result: Settings = {
     intervalMs: clampNumber(raw.intervalMs, INTERVAL_MS_MIN, INTERVAL_MS_MAX, base.intervalMs),
     headHoldMultiplier: clampNumber(
       raw.headHoldMultiplier,
@@ -113,6 +133,25 @@ export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTI
         : base.hapticSoundWhenVoiceOff,
     hapticSoundAlso:
       typeof raw.hapticSoundAlso === 'boolean' ? raw.hapticSoundAlso : base.hapticSoundAlso,
+    morseEnabled: typeof raw.morseEnabled === 'boolean' ? raw.morseEnabled : base.morseEnabled,
+    morseDashMs: clampNumber(
+      raw.morseDashMs,
+      MORSE_DASH_MS_MIN,
+      MORSE_DASH_MS_MAX,
+      base.morseDashMs,
+    ),
+    morseLetterGapMs: clampNumber(
+      raw.morseLetterGapMs,
+      MORSE_LETTER_GAP_MS_MIN,
+      MORSE_LETTER_GAP_MS_MAX,
+      base.morseLetterGapMs,
+    ),
+    morseWordGapMs: clampNumber(
+      raw.morseWordGapMs,
+      MORSE_WORD_GAP_MS_MIN,
+      MORSE_WORD_GAP_MS_MAX,
+      base.morseWordGapMs,
+    ),
     auditoryScan: typeof raw.auditoryScan === 'boolean' ? raw.auditoryScan : base.auditoryScan,
     voiceMode: VOICE_MODES.includes(raw.voiceMode as VoiceMode)
       ? (raw.voiceMode as VoiceMode)
@@ -125,6 +164,12 @@ export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTI
     // 項目が無い取り込みでは、今のフレーズを消さずに残す
     phrases: raw.phrases === undefined ? base.phrases : normalizePhraseSets(raw.phrases),
   }
+  // 語の区切りは文字の確定より常に長くする(画面の表示と実際の動作をずらさないため、保存値で保証する)
+  result.morseWordGapMs = Math.max(
+    result.morseWordGapMs,
+    result.morseLetterGapMs + MORSE_WORD_GAP_MARGIN_MS,
+  )
+  return result
 }
 
 /** localStorage から設定を読む。壊れている・例外が出る場合は既定値を返す。 */

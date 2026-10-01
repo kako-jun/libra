@@ -16,6 +16,7 @@ export type ScreenId =
   | 'letters'
   | 'lettersRow'
   | 'lettersYesNo'
+  | 'morse'
 
 export type ActionId =
   | { type: 'emergency' }
@@ -50,6 +51,7 @@ export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   letters: 'home',
   lettersRow: 'letters',
   lettersYesNo: 'letters',
+  morse: 'home',
 }
 
 export const SCREEN_TITLES: Record<ScreenId, string> = {
@@ -62,6 +64,7 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   letters: '文字盤',
   lettersRow: '文字盤・文字',
   lettersYesNo: '文字盤・はい/いいえ',
+  morse: 'モールス入力',
 }
 
 const EMERGENCY_ITEM: MenuItem = {
@@ -119,6 +122,8 @@ function phraseItems(group: PhraseGroup, phrases?: PhraseSets): MenuItem[] {
 }
 
 export interface HomeMenuOptions {
+  /** モールス入力を使うか(Issue #14)。介助者が ON にしたときだけホームに入口を出す */
+  morseEnabled?: boolean
   /** 介助者が編集したフレーズ(Issue #8)。省略時は既定のプリセット */
   phrases?: PhraseSets
   /** 伝達直後の1周だけ true。渡された値に関わらず emergencyActive 中は無視する */
@@ -139,6 +144,8 @@ export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
     navigate('discomfort-nav', '不快', 'discomfort', options.phrases),
     navigate('mood-nav', '快・要望', 'moodRequest', options.phrases),
     navigate('letters-nav', '文字盤', 'letters'),
+    // 上級者向けの逃げ道。文字盤より後ろ(優先度は最下位)
+    ...(options.morseEnabled ? [navigate('morse-nav', 'モールス', 'morse')] : []),
   ])
 }
 
@@ -234,6 +241,11 @@ export function buildLettersYesNoMenu(): MenuItem[] {
   return subScreen([message('yes', 'はい', 'はい', 'positive'), message('no', 'いいえ', 'いいえ')])
 }
 
+/** モールス入力画面。符号の入力に使うので項目は選ばない。緊急・戻るだけを構造として持つ */
+export function buildMorseMenu(): MenuItem[] {
+  return subScreen([])
+}
+
 export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuItem[] {
   switch (screen) {
     case 'home':
@@ -254,5 +266,7 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
       return buildLettersRowMenu(homeOptions.letterRow)
     case 'lettersYesNo':
       return buildLettersYesNoMenu()
+    case 'morse':
+      return buildMorseMenu()
   }
 }

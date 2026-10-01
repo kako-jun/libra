@@ -26,6 +26,10 @@ describe('normalizeSettings', () => {
       hapticsStrength: 'strong',
       hapticSoundWhenVoiceOff: true,
       hapticSoundAlso: true,
+      morseEnabled: true,
+      morseDashMs: 600,
+      morseLetterGapMs: 1200,
+      morseWordGapMs: 3000,
     }
     expect(normalizeSettings(input)).toEqual(input)
   })
@@ -294,6 +298,38 @@ describe('saveSettings', () => {
         hapticsStrength: 'standard',
         hapticSoundWhenVoiceOff: false,
       })
+    })
+  })
+
+  describe('Issue #14: モールス設定', () => {
+    it('既定は OFF で、範囲外・型違いは既定値に戻す', () => {
+      const d = normalizeSettings({})
+      expect(d).toMatchObject({
+        morseEnabled: false,
+        morseDashMs: 500,
+        morseLetterGapMs: 1500,
+        morseWordGapMs: 4000,
+      })
+      const bad = normalizeSettings({
+        morseEnabled: 'yes',
+        morseDashMs: 10,
+        morseLetterGapMs: 99999,
+        morseWordGapMs: -1,
+      })
+      expect(bad).toMatchObject({
+        morseEnabled: false,
+        morseDashMs: 500,
+        morseLetterGapMs: 1500,
+        morseWordGapMs: 4000,
+      })
+    })
+
+    it('語の区切りは文字の確定より常に 0.5 秒以上長くなる(保存値で保証)', () => {
+      const n = normalizeSettings({ morseLetterGapMs: 3000, morseWordGapMs: 1500 })
+      expect(n.morseLetterGapMs).toBe(3000)
+      expect(n.morseWordGapMs).toBe(3500)
+      const ok = normalizeSettings({ morseLetterGapMs: 1000, morseWordGapMs: 4000 })
+      expect(ok.morseWordGapMs).toBe(4000)
     })
   })
 })

@@ -664,6 +664,146 @@ describe('App', () => {
     expect(lastVibration()).toEqual(HAPTIC_PATTERNS.yes)
   })
 
+  // Issue #14: モールス。押している長さが符号になる(短い=・、長い=－)
+  function tap(ms: number) {
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(ms)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(150)
+  }
+  const DOT = 100
+  const DASH = 600
+  function sendCode(code: string) {
+    for (const symbol of code) tap(symbol === '.' ? DOT : DASH)
+  }
+  function enterMorse() {
+    window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true }))
+    const view = render(() => <App />)
+    selectByLabel(view.container, 'モールス')
+    expect(view.container.querySelector('.morse-panel')).not.toBeNull()
+    return view
+  }
+  const morseTextOf = (container: HTMLElement) =>
+    container.querySelector('.morse-text')?.textContent ?? ''
+
+  it('Issue #14: 既定ではホームにモールスの入口が出ない', () => {
+    const { container } = render(() => <App />)
+    expect(tileLabels(container)).not.toContain('モールス')
+  })
+
+  it('Issue #14: ON にすると入口が出て、短押し・長押しで「めかね」を入力できる', () => {
+    const { container } = enterMorse()
+    for (const code of ['-...-', '.-..', '--.-']) {
+      sendCode(code)
+      vi.advanceTimersByTime(1600) // 文字の確定
+    }
+    expect(morseTextOf(container)).toBe('めかね')
+  })
+
+  it('Issue #14: モールス中はスキャンのカーソルが動かず、押下は項目を選ばない', () => {
+    const { container } = enterMorse()
+    const before = scanningLabel(container)
+    vi.advanceTimersByTime(10000)
+    expect(scanningLabel(container)).toBe(before) // カーソルは動かない
+    expect(container.querySelector('.grid-board.is-hidden')).not.toBeNull()
+    sendCode('.-')
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+  })
+
+  it('Issue #14: 長押し5つの連続で、確定を待たず即緊急(警告音も鳴る)', () => {
+    const { container } = enterMorse()
+    oscillatorStartCount = 0
+    sendCode('----')
+    expect(h1Text(container)).not.toBe('緊急です。来てください') // 4つではまだ
+    sendCode('-')
+    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(oscillatorStartCount).toBeGreaterThan(0)
+    expect(container.querySelector('.morse-panel')).toBeNull() // スキャンの緊急詳細へ
+    expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('Issue #14: ゆっくり押す人(0.9秒押して0.7秒空ける)でも、－5つで緊急に届く', () => {
+    const { container } = enterMorse()
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+      vi.advanceTimersByTime(900)
+      fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+      vi.advanceTimersByTime(700)
+    }
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #14: 介助者メニューを開いている間は、裏で語の区切りが入ったり自動復帰したりしない', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    openCaregiverMenu(container) // 開くまでの2秒で「い」が確定する
+    expect(morseTextOf(container)).toBe('い')
+    vi.advanceTimersByTime(40000) // 語の区切り(4秒)も無操作の復帰(30秒)も、裏では進まない
+    expect(morseTextOf(container)).toBe('い')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+  })
+
+  it('Issue #14: 直前に誤って短押しが入っていても、続けて長押し5つで緊急になる', () => {
+    const { container } = enterMorse()
+    sendCode('.')
+    sendCode('-----')
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #14: 短押し5つ+待つ でスキャンへ戻り、入力途中の文字列は残る', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    vi.advanceTimersByTime(1600)
+    expect(morseTextOf(container)).toBe('い')
+    sendCode('.....')
+    vi.advanceTimersByTime(1600)
+    expect(container.querySelector('.morse-panel')).toBeNull()
+    expect(scanningLabel(container)).toBe('緊急') // スキャンが再開している
+    selectByLabel(container, 'モールス')
+    expect(morseTextOf(container)).toBe('い')
+  })
+
+  it('Issue #14: 無操作が続くと、本人が取り残されずスキャンへ戻る', () => {
+    const { container } = enterMorse()
+    vi.advanceTimersByTime(30500)
+    expect(container.querySelector('.morse-panel')).toBeNull()
+    expect(scanningLabel(container)).toBe('緊急')
+  })
+
+  it('Issue #14: 確定の符号で入力した文字列を伝達として表示しホームへ戻る', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    vi.advanceTimersByTime(1600)
+    sendCode('.-.-.-')
+    vi.advanceTimersByTime(1600)
+    expect(h1Text(container)).toBe('い')
+    expect(container.querySelector('.morse-panel')).toBeNull()
+  })
+
+  it('Issue #14: 押している間は符号の見込みを表示する', () => {
+    const { container } = enterMorse()
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(700)
+    expect(container.querySelector('.morse-code.holding')).not.toBeNull()
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(container.querySelector('.morse-code.holding')).toBeNull()
+  })
+
+  it('Issue #14: 介助者メニューにモールスの設定が出る(ON のときだけ時間の設定)', () => {
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    const panel = container.querySelector('.caregiver-panel') as HTMLElement
+    expect(panel.textContent).toContain('モールス入力を使う')
+    expect(panel.textContent).not.toContain('長押し(－)の境目')
+    const checkbox = Array.from(panel.querySelectorAll('label'))
+      .find((l) => l.textContent?.includes('モールス入力を使う'))
+      ?.querySelector('input') as HTMLInputElement
+    fireEvent.click(checkbox)
+    expect(panel.textContent).toContain('長押し(－)の境目')
+    expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').morseEnabled).toBe(true)
+  })
+
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
     const { container } = render(() => <App />)
     // カーソルは index0(緊急)。"3"キーは index2(いいえ)への直接ジャンプではなく
