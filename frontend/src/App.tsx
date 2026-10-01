@@ -1,5 +1,12 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
-import { buildMenu, PARENT_SCREEN, SCREEN_TITLES, type ScreenId, type Tone } from './lib/menus'
+import {
+  buildMenu,
+  PARENT_SCREEN,
+  SCREEN_TITLES,
+  type PainChoice,
+  type ScreenId,
+  type Tone,
+} from './lib/menus'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
 import {
@@ -191,6 +198,8 @@ export default function App() {
 
   const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
   const [letterText, setLetterText] = createSignal('')
+  // 痛みの強さの画面で使う、直前に選んだ痛い場所(Issue #12)
+  const [painChoice, setPainChoice] = createSignal<PainChoice | undefined>(undefined)
   // 文字盤の文字段階で表示している行(LETTER_ROWS の添字)
   const [letterRow, setLetterRow] = createSignal(0)
   // 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる表示の元
@@ -221,6 +230,7 @@ export default function App() {
       letterRow: letterRow(),
       phrases: settings().phrases,
       morseEnabled: settings().morseEnabled,
+      pain: painChoice(),
     }),
   )
 
@@ -391,6 +401,7 @@ export default function App() {
         letterRow: letterRow(),
         phrases: settings().phrases,
         morseEnabled: settings().morseEnabled,
+        pain: painChoice(),
       })[0]
       if (first) announceScanItem(first.label)
     }
@@ -533,6 +544,12 @@ export default function App() {
         // はい・いいえは、本人が他人の反応なしに区別できる専用の振動パターンで返す
         const event: FeedbackEvent = item.id === 'yes' ? 'yes' : item.id === 'no' ? 'no' : 'message'
         completeTransmission(action.text, action.tone ?? 'neutral', event)
+        return
+      }
+      case 'painLocation': {
+        // 痛い場所を選んだら、強さ(場所だけ/少し/かなり/とても)を選ぶ画面へ
+        setPainChoice({ label: action.label, text: action.text, tone: action.tone })
+        goTo('painIntensity')
         return
       }
       case 'letterRow': {

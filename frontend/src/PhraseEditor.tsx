@@ -123,6 +123,13 @@ export default function PhraseEditor(props: PhraseEditorProps) {
         </For>
       </div>
 
+      <Show when={group() === 'painLocation'}>
+        <p class="phrase-note">
+          痛い場所を選ぶと、続けて強さ（場所だけ / 少し / かなり / とても）を選びます。伝える文に
+          「痛いです」を含めると「胸がとても痛いです」のように強さが入ります（含まない文は末尾に（とても）が付きます）。
+        </p>
+      </Show>
+
       <Show when={overGroups().length > 0}>
         <p class="caregiver-status warn" role="alert">
           目安の {SCREEN_ITEM_LIMIT} 項目を超えている画面があります:{' '}
