@@ -11,6 +11,12 @@ export interface FitHeadingInput {
   maxSize: number
   /** 既存 clamp の下限側の解決値(px)。ここでも収まらなければ折り返す */
   minSize: number
+  /**
+   * 指定サイズ(px)で実際に測った文字列幅(px)。渡されたときは、線形縮尺で出した候補を
+   * このサイズで測り直し、usable 以下になるまで 0.1px ずつ下げる(Chromium は字送りを
+   * 実サイズで整数 px に丸めるため、100px の測定結果の線形縮尺は実幅とずれる)
+   */
+  measureWidthAt?: (size: number) => number
 }
 
 export interface FitHeadingResult {
@@ -23,8 +29,11 @@ export interface FitHeadingResult {
 /** 丸め誤差・字形の張り出しで 1px はみ出して折り返すのを避ける余白(px) */
 const SAFETY_PX = 2
 
+/** 測り直しで下げる最大回数(0.1px 刻み。線形推定とのずれは数 px 以内なので十分) */
+const MAX_REFINE_STEPS = 200
+
 export function fitHeadingSize(input: FitHeadingInput): FitHeadingResult {
-  const { textWidthPerPx, availableWidth, maxSize, minSize } = input
+  const { textWidthPerPx, availableWidth, maxSize, minSize, measureWidthAt } = input
   const usable = availableWidth - SAFETY_PX
   if (!(textWidthPerPx > 0) || !(usable > 0) || !(maxSize > 0)) {
     // 測れない(空文字・未描画)ときは何も変えない
@@ -33,13 +42,24 @@ export function fitHeadingSize(input: FitHeadingInput): FitHeadingResult {
   const fitting = Math.floor((usable / textWidthPerPx) * 10) / 10
   const lower = Math.min(minSize, maxSize)
   if (fitting < lower) return { singleLine: false, size: maxSize }
-  return { singleLine: true, size: Math.min(maxSize, fitting) }
+  let size = Math.min(maxSize, fitting)
+  if (measureWidthAt) {
+    // 0.1px 刻みで下げる。下限 lower を割る(または上限回数)なら 1 行にしない
+    for (let i = 0; i < MAX_REFINE_STEPS; i += 1) {
+      const width = measureWidthAt(size)
+      if (!Number.isFinite(width)) return { singleLine: false, size: maxSize }
+      if (width <= usable) return { singleLine: true, size }
+      size = Math.round((size - 0.1) * 10) / 10
+      if (size < lower) return { singleLine: false, size: maxSize }
+    }
+    return { singleLine: false, size: maxSize }
+  }
+  return { singleLine: true, size }
 }
 
 let measureCtx: CanvasRenderingContext2D | null | undefined
 
-/** 100px 指定でのテキスト幅 / 100(= 1px あたりの幅)。canvas が使えなければ null */
-export function measureTextWidthPerPx(text: string, weight: string, family: string): number | null {
+function getMeasureCtx(): CanvasRenderingContext2D | null {
   if (measureCtx === undefined) {
     try {
       measureCtx = document.createElement('canvas').getContext('2d')
@@ -47,10 +67,27 @@ export function measureTextWidthPerPx(text: string, weight: string, family: stri
       measureCtx = null
     }
   }
-  if (!measureCtx) return null
-  measureCtx.font = `${weight} 100px ${family}`
-  const width = measureCtx.measureText(text).width
-  return Number.isFinite(width) ? width / 100 : null
+  return measureCtx
+}
+
+/** 指定サイズ(px)でのテキスト幅(px)。canvas が使えなければ null */
+export function measureTextWidthAt(
+  text: string,
+  weight: string,
+  family: string,
+  size: number,
+): number | null {
+  const ctx = getMeasureCtx()
+  if (!ctx) return null
+  ctx.font = `${weight} ${size}px ${family}`
+  const width = ctx.measureText(text).width
+  return Number.isFinite(width) ? width : null
+}
+
+/** 100px 指定でのテキスト幅 / 100(= 1px あたりの幅)。canvas が使えなければ null */
+export function measureTextWidthPerPx(text: string, weight: string, family: string): number | null {
+  const width = measureTextWidthAt(text, weight, family, 100)
+  return width === null ? null : width / 100
 }
 
 /**
@@ -73,7 +110,15 @@ export function applyHeadingFit(h1: HTMLElement): void {
   h1.removeAttribute('data-fit')
   const perPx = measureTextWidthPerPx(text, cs.fontWeight, cs.fontFamily)
   if (perPx === null) return
-  const result = fitHeadingSize({ textWidthPerPx: perPx, availableWidth, maxSize, minSize })
+  const result = fitHeadingSize({
+    textWidthPerPx: perPx,
+    availableWidth,
+    maxSize,
+    minSize,
+    // 候補サイズで測り直す(字送りの整数丸めで 100px 測定の縮尺とずれるため)
+    measureWidthAt: (size) =>
+      measureTextWidthAt(text, cs.fontWeight, cs.fontFamily, size) ?? Number.NaN,
+  })
   if (!result.singleLine) return
   h1.style.setProperty('--h1-fit', `${result.size}px`)
   h1.setAttribute('data-fit', 'single')

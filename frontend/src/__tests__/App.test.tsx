@@ -72,6 +72,9 @@ describe('App', () => {
     // 未実装への実際の問い合わせ(非同期)が他のテストの検証タイミングに影響しないよう、
     // 既定では何もしないモックにしておく
     vi.spyOn(offlineReadyModule, 'recheckOfflineReady').mockResolvedValue(undefined)
+    // Issue #22: 見出しフィットが canvas を使う。jsdom は getContext 未実装で警告を出すので
+    // 「canvas 不可(測れない)」として黙らせる(フィット自体の検証は fitHeading のテスト側)
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
   })
 
   afterEach(() => {
