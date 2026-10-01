@@ -52,4 +52,25 @@ describe('App: 見出しの 1 行フィット配線 (Issue #22)', () => {
     vi.advanceTimersByTime(FRAME_MS * 4)
     expect(applyHeadingFit).not.toHaveBeenCalled()
   })
+
+  it('document.fonts.ready の解決がアンマウント後なら再計算を予約しない', async () => {
+    let resolveReady: () => void = () => {}
+    const ready = new Promise<void>((resolve) => {
+      resolveReady = resolve
+    })
+    Object.defineProperty(document, 'fonts', { configurable: true, value: { ready } })
+    try {
+      render(() => <App />)
+      vi.advanceTimersByTime(FRAME_MS * 2)
+      cleanup()
+      vi.mocked(applyHeadingFit).mockClear()
+      resolveReady()
+      await ready
+      await Promise.resolve()
+      vi.advanceTimersByTime(FRAME_MS * 4)
+      expect(applyHeadingFit).not.toHaveBeenCalled()
+    } finally {
+      delete (document as unknown as { fonts?: unknown }).fonts
+    }
+  })
 })

@@ -3,7 +3,10 @@
  * DOM には触らない。測定値(1px あたりの文字列幅など)は呼び出し側が渡す。
  */
 export interface FitHeadingInput {
-  /** フォントサイズ 1px あたりの文字列の幅(px)。measureText(100px 指定の幅) / 100 */
+  /**
+   * フォントサイズ 1px あたりの文字列の幅(px)。measureText(100px 指定の幅) / 100。
+   * `measureWidthAt` を渡した場合は初期推定にしか使わない
+   */
   textWidthPerPx: number
   /** h1 が使える幅(px)。max-width 制約を外した列幅 */
   availableWidth: number
@@ -32,6 +35,10 @@ const SAFETY_PX = 2
 /** 測り直しで下げる最大回数(0.1px 刻み。線形推定とのずれは数 px 以内なので十分) */
 const MAX_REFINE_STEPS = 200
 
+/**
+ * 1 行に収まる最大サイズを決める。測り直しは下げる方向にしか動かない
+ * (線形推定が実幅より広く見積もった場合は本来より少し小さく表示されるが、安全側)。
+ */
 export function fitHeadingSize(input: FitHeadingInput): FitHeadingResult {
   const { textWidthPerPx, availableWidth, maxSize, minSize, measureWidthAt } = input
   const usable = availableWidth - SAFETY_PX

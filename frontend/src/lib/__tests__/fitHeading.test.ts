@@ -99,12 +99,16 @@ describe('fitHeadingSize 測り直し(字送りの整数丸め)', () => {
     }
     expect(single).toBeGreaterThan(100)
   })
-  it('測り直しても下限に収まらなければ折り返し', () => {
-    // 線形では 38px で収まる(≈541)が、丸めた実幅(15 * 36 = 540 → 下限 38 で 540)より狭い
+  it('線形推定では下限で収まるが、測り直すと下限でも収まらなければ折り返し', () => {
+    // 実幅 = size * 15 + 20(線形縮尺に乗らない固定幅つき)。usable = 590 - 2 = 588
+    // 線形推定: 588 / 15 = 39.2 >= 下限 38 なので線形の段階では弾かれず測り直しに入る
+    // 測り直し: 39.2 → 608、下限 38 でも 590 > 588 で収まらず、37.9 は下限割れ → 折り返し
     const r = fitHeadingSize({
-      ...rounding,
-      availableWidth: 530,
-      measureWidthAt: roundedWidth,
+      textWidthPerPx: 15,
+      maxSize: 54,
+      minSize: 38,
+      availableWidth: 590,
+      measureWidthAt: (s) => s * 15 + 20,
     })
     expect(r.singleLine).toBe(false)
   })
