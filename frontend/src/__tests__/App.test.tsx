@@ -132,6 +132,7 @@ describe('App', () => {
     vi.advanceTimersByTime(INTERVAL_MS) // index2(あ行)
     fireEvent.keyDown(window, { key: ' ' }) // 1回目: あ行へ(文字段階)
     fireEvent.keyDown(window, { key: ' ' }) // 2回目: 連打無視区間内なので無視されるはず
+    expect(h1Text(container)).not.toBe('緊急です。来てください') // 文字段階の先頭(緊急)を実行しない
     expect(scanningLabel(container)).toBe('緊急') // 文字段階の先頭
     const output = container.querySelector('.letter-strip output')
     expect(output?.textContent).toBe('文字を選んでください')
@@ -163,6 +164,7 @@ describe('App', () => {
     selectByScan(container, '確定')
     expect(h1Text(container)).toBe('めかね')
     expect(container.querySelector('.letter-strip')).toBeNull()
+    expect(scanningLabel(container)).toBe('緊急') // ホームの先頭から再開する
   })
 
   it('Issue #4: はい・いいえで答えて戻っても入力途中の文字列が保持される', () => {
@@ -186,7 +188,12 @@ describe('App', () => {
     selectByScan(container, '文字盤')
     selectByScan(container, 'わ行')
     expect(scanningLabel(container)).toBe('緊急')
-    selectByScan(container, '緊急')
+    // 文字段階の末尾(ー)まで進めても、次の1ステップで先頭(緊急)へ戻り、そこで届く
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 4)
+    expect(scanningLabel(container)).toBe('ー')
+    vi.advanceTimersByTime(INTERVAL_MS)
+    expect(scanningLabel(container)).toBe('緊急')
+    fireEvent.keyDown(window, { key: ' ' })
     expect(h1Text(container)).toBe('緊急です。来てください')
   })
 

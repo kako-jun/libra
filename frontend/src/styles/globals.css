@@ -423,7 +423,8 @@ h1 {
      3行を超える分は先頭側を隠して末尾(直近の入力)が見えるようにする(JSで末尾へスクロール) */
   display: block;
   min-height: 1.3em;
-  max-height: 3.9em;
+  /* box-sizing: border-box のため、上下 padding(20px)を足して内容 3 行分を確保する */
+  max-height: calc(3.9em + 20px);
   padding: 10px 14px;
   overflow: hidden;
   color: var(--text);

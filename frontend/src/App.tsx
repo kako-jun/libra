@@ -195,6 +195,8 @@ export default function App() {
   let letterOutputEl: HTMLOutputElement | undefined
   createEffect(() => {
     letterText()
+    // 文字盤を離れると入力欄ごと破棄され、戻ると作り直されて先頭へ戻るので、画面遷移でも追う
+    screen()
     if (letterOutputEl) letterOutputEl.scrollTop = letterOutputEl.scrollHeight
   })
 
