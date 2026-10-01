@@ -1,6 +1,7 @@
 // 介助者メニューのフレーズ編集(Issue #8)。
-// 編集できるのは不快・不快その他・痛い場所・快/要望の「伝達メッセージ」項目だけ。
-// 緊急・戻る・はい・いいえ・下位画面への遷移項目は menus.ts が構造で固定するため、
+// 編集できるのは不快・不快その他・痛い場所・要望・気分の「伝達メッセージ」項目だけ。
+// 緊急・戻る・はい・いいえ・続けて/やめて/もっと/変えて・下位画面への遷移項目・痛みの強さは
+// menus.ts が構造で固定するため、
 // ここからは触れない(先頭緊急規則 §4.1 を編集で崩さない)。
 
 import { For, Index, Show, createSignal } from 'solid-js'
@@ -110,7 +111,8 @@ export default function PhraseEditor(props: PhraseEditorProps) {
     <section class="phrase-editor" aria-label="フレーズ編集">
       <h3>フレーズ編集</h3>
       <p class="phrase-note">
-        緊急・戻る・はい・いいえの位置と内容は変えられません。ここで編集できるのは下の定型文だけです。
+        緊急・戻る・はい・いいえ・続けて/やめて/もっと/変えて
+        の位置と内容は変えられません。ここで編集できるのは下の定型文だけです。
       </p>
 
       <div class="caregiver-choice-options">
@@ -165,6 +167,17 @@ export default function PhraseEditor(props: PhraseEditorProps) {
                   onInput={(event) => update(index, { text: event.currentTarget.value })}
                 />
               </label>
+              <Show
+                when={
+                  group() === 'painLocation' &&
+                  phrase().text.trim() !== '' &&
+                  !phrase().text.includes('痛いです')
+                }
+              >
+                <p class="phrase-note" role="note">
+                  この文には「痛いです」が無いので、強さは末尾に（とても）の形で付きます。
+                </p>
+              </Show>
               <Show when={phraseProblem(phrase())}>
                 {(problem) => (
                   <p class="caregiver-status warn" role="note">

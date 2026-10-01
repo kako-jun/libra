@@ -607,6 +607,29 @@ describe('App', () => {
     expect(h1Text(container)).toBe('頭が痛いです')
   })
 
+  it('Issue #12: 痛みを伝えた直後は「取り消し」で戻せる', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '不快')
+    selectByLabel(container, '痛い')
+    selectByLabel(container, '頭')
+    selectByLabel(container, '少し')
+    expect(h1Text(container)).toBe('頭が少し痛いです')
+    selectByLabel(container, '取り消し')
+    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+  })
+
+  it('Issue #12: 緊急中に痛みを伝えても見出しは緊急のまま、副表示に出る', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急
+    selectByLabel(container, '戻る') // home へ
+    selectByLabel(container, '不快')
+    selectByLabel(container, '痛い')
+    selectByLabel(container, '胸')
+    selectByLabel(container, 'とても')
+    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(container.querySelector('.emergency-sub')?.textContent).toContain('胸がとても痛いです')
+  })
+
   it('Issue #12: 強さの画面でも先頭は緊急、戻るで痛い場所へ戻れる', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, '不快')

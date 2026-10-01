@@ -276,6 +276,7 @@ export function buildFeelingsMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen(phraseItems('feelings', phrases))
 }
 
+/** 文字盤の行。清音 46 字 + 長音「ー」(requirements.md §4.6)。濁点・半濁点・小書きは置かない */
 export const LETTER_ROWS: { name: string; chars: string[] }[] = [
   { name: 'あ行', chars: ['あ', 'い', 'う', 'え', 'お'] },
   { name: 'か行', chars: ['か', 'き', 'く', 'け', 'こ'] },
