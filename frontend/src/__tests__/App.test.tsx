@@ -818,6 +818,8 @@ describe('App', () => {
       expect(stored()).toEqual({ active: true, details: ['苦しい'], sub: 'はい' })
       first.unmount()
       cleanup()
+      // 復元で urgent が立つことを確認するため、前回の値を消しておく
+      delete document.documentElement.dataset.messageTone
 
       oscillatorStartCount = 0
       const vibrate = vi.fn()
@@ -840,6 +842,24 @@ describe('App', () => {
       expect(oscillatorStartCount).toBeGreaterThan(afterOneCycle)
       expect(vibrate).not.toHaveBeenCalled()
       expect(speak).not.toHaveBeenCalled()
+    })
+
+    it('解除→伝達→取り消しでも、緊急でないのに赤い緊急文言は戻らない', () => {
+      const { container } = render(() => <App />)
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      clearEmergencyViaMenu(container)
+      const closeButton = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent === '閉じる',
+      )
+      if (closeButton) fireEvent.click(closeButton)
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+      fireEvent.keyDown(window, { key: ' ' }) // はい
+      expect(h1Text(container)).toBe('はい')
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
+      fireEvent.keyDown(window, { key: ' ' }) // 取り消し
+      expect(h1Text(container)).not.toBe('緊急です。来てください')
+      expect(document.documentElement.dataset.messageTone).toBe('neutral')
     })
 
     it('復元後に警告音が鳴れない状態なら「警告音停止中」表示が出る', () => {

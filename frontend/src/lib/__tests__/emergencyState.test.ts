@@ -23,13 +23,23 @@ describe('emergencyState', () => {
     expect(loadEmergencyState()).toBeNull()
     expect(normalizeEmergencyState({ active: 'yes' })).toBeNull()
     expect(normalizeEmergencyState(null)).toBeNull()
-    expect(normalizeEmergencyState({ active: true, details: [1, '痛い', '痛い'], sub: 3 })).toEqual(
-      {
+    expect(
+      normalizeEmergencyState({ active: true, details: [1, '痛い', '痛い', 'ふめい'], sub: 3 }),
+    ).toEqual({
+      active: true,
+      details: ['痛い'],
+      sub: null,
+    })
+  })
+
+  it('details は緊急詳細の既知ラベルだけ残し、未知の文字列は捨てる', () => {
+    expect(
+      normalizeEmergencyState({
         active: true,
-        details: ['痛い'],
+        details: ['苦しい', '<script>', '', '胸が痛い', '息ができない', 'はい'],
         sub: null,
-      },
-    )
+      })?.details,
+    ).toEqual(['苦しい', '胸が痛い', '息ができない'])
   })
 
   it('保存形式は libra:emergency に {active:true, details, sub} で、設定キー libra とは別', () => {
