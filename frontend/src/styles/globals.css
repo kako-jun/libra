@@ -471,7 +471,7 @@ h1[data-fit='single'] {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   /* PR#16 3巡目 should-a: sticky 緊急タイルの高さぶん、他のタイルの scroll-margin-top
      に使う(下の .tile 側の宣言参照)。grid-auto-rows の minmax 下限と同じ値にしておけば、
-     緊急タイル(先頭行)もほぼ同じ高さのため近似として十分機能する */
+     緊急タイルもほぼ同じ高さのため近似として十分機能する */
   --scroll-row-min: calc(var(--font-scale) * 126px);
   grid-auto-rows: minmax(var(--scroll-row-min), 1fr);
   gap: 0;
