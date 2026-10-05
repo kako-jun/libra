@@ -878,6 +878,11 @@ export default function App() {
       resumeAlarmAudioContext()
       const target = event.target as HTMLElement | null
 
+      // 通常タップで開く介助者ボタン自身の pointerdown は、ボタンのハンドラだけで
+      // 処理する。メニューを開いた直後にウィンドウ側が「パネル外タップ」として
+      // 閉じないよう、介助者メニュー表示中かどうかより先に除外する。
+      if (target?.closest('.caregiver-button')) return
+
       if (caregiverMenuOpen()) {
         // M3(b): パネル内のタップは通常の介助者操作。パネル外(オーバーレイ背景)へのタップは
         // メニューを閉じてスキャンをホーム先頭から再開する。この押下自体では項目を実行しない
@@ -917,6 +922,12 @@ export default function App() {
         return
       }
 
+      // 介助者ボタンへフォーカスしている間の Enter / Space だけは、ブラウザ標準の
+      // button activation に任せる。ほかの任意キーは本人のスイッチ入力として扱う。
+      const caregiverControl = (event.target as HTMLElement | null)?.closest?.(
+        '[data-caregiver-control]',
+      )
+      if (caregiverControl && (event.key === 'Enter' || event.key === ' ')) return
       if (showDevNumbers && /^[1-9]$/.test(event.key)) {
         // 開発補助(?dev限定): 数字キーで先頭9項目を直接実行する。スイッチ扱いより先に処理し二重実行しない
         event.preventDefault()
@@ -974,28 +985,15 @@ export default function App() {
     })
   })
 
-  let longPressTimer: number | undefined
-  const onCaregiverButtonDown = () => {
-    // PR#16 Opus レビュー nit: 前回分のタイマーが残っていたら先に消してから開始する
-    if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
-    longPressTimer = window.setTimeout(() => {
-      input.cancelAll()
-      setCaregiverMenuOpen(true)
-      resetCaregiverIdleTimer()
-      // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
-      // 未完了ならSWの更新チェックも試みる(recheckOfflineReady内部で判定)
-      void recheckOfflineReady(setOfflineReadyStatus)
-    }, 2000)
+  const openCaregiverMenu = () => {
+    if (caregiverMenuOpen()) return
+    input.cancelAll()
+    setCaregiverMenuOpen(true)
+    resetCaregiverIdleTimer()
+    // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
+    // 未完了ならSWの更新チェックも試みる(recheckOfflineReady内部で判定)
+    void recheckOfflineReady(setOfflineReadyStatus)
   }
-  const onCaregiverButtonUp = () => {
-    if (longPressTimer !== undefined) {
-      window.clearTimeout(longPressTimer)
-      longPressTimer = undefined
-    }
-  }
-  onCleanup(() => {
-    if (longPressTimer !== undefined) window.clearTimeout(longPressTimer)
-  })
 
   return (
     <main class="app-shell">
@@ -1038,12 +1036,10 @@ export default function App() {
             type="button"
             class="caregiver-button"
             data-caregiver-control
-            onPointerDown={onCaregiverButtonDown}
-            onPointerUp={onCaregiverButtonUp}
-            onPointerLeave={onCaregiverButtonUp}
-            onPointerCancel={onCaregiverButtonUp}
+            onPointerDown={openCaregiverMenu}
+            onClick={openCaregiverMenu}
             onContextMenu={(event) => event.preventDefault()}
-            aria-label="介助者メニュー（2秒長押し）"
+            aria-label="介助者メニューを開く"
           >
             介助者用
           </button>

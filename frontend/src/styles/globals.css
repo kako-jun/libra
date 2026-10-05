@@ -788,7 +788,7 @@ h1[data-fit='single'] {
   border-radius: 8px;
   font-size: 0.8rem;
   font-weight: 800;
-  /* S3: 長押し中にスクロール/選択/callout メニューが割り込まないようにする */
+  /* タップ時のスクロール/選択/callout メニューが割り込まないようにする */
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;

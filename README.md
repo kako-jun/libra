@@ -15,7 +15,7 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 - **Message display** — The selected phrase is shown in large type so the person nearby can read it.
 - **Location and selection confirmation** — A short home-to-screen breadcrumb stays visible, and the last accepted navigation/character choice is confirmed without adding a switch press or delay. Completed transmissions and emergency details remain in their own areas.
 - **Emergency alarm** — Selecting Emergency shows a red banner with no confirmation step and sounds a Web Audio alarm (works even with speech OFF) until a caregiver clears it. Emergency is restored after a reload or restart until a caregiver clears it.
-- **Caregiver menu** — A 2-second long-press on the "介助者用" (caregiver) button at the top-right of the message panel (not a floating bottom bar), opens scan interval / head-hold / debounce / auditory-scan / speech-mode / font-size / theme / high-contrast settings and emergency clear. Settings persist to localStorage.
+- **Caregiver menu** — A regular click or tap on the "介助者用" (caregiver) button at the top-right of the message panel (not a floating bottom bar) opens scan interval / head-hold / debounce / auditory-scan / speech-mode / font-size / theme / high-contrast settings and emergency clear. Enter or Space on the focused button opens it too, separately from the person's switch input. Settings persist to localStorage.
 - **Light/dark theme** — A caregiver setting (light / dark / auto, default auto) instead of a URL query; auto follows the device's `prefers-color-scheme` live. High contrast layers on top of either theme. The tile grid is a seamless, gap-less board (no rounded corners, cells separated only by a thin divider line) that always fills its screen area edge to edge — column/row count is computed from the item count and the grid area's own aspect ratio, never leaving empty cells or a blank strip. The current scan target gets a thick yellow ring drawn just inside its own cell (no scale-up, so it never overlaps a neighboring cell).
 - **Speech modes** — Off, vibration/tone only, short speech, and full speech.
 - **PWA-ready structure** — Same frontend/backend/release shape as Esuna.
@@ -31,7 +31,7 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 | Discomfort / mood / pain location                                      | Working                                                              |
 | Letter board                                                           | Prototype (simplified entry; full 2-stage kana keyboard is planned)  |
 | Speech mode                                                            | Working                                                              |
-| Caregiver menu (long-press settings)                                   | Working                                                              |
+| Caregiver menu (settings)                                              | Working                                                              |
 | Offline (Service Worker precache)                                      | Working                                                              |
 | Screen Wake Lock                                                       | Working                                                              |
 | Custom phrase editing                                                  | Planned                                                              |
