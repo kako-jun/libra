@@ -481,7 +481,9 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       )
     }
     if (info.h1 && info.button && rectsOverlap(info.h1, info.button)) {
-      failures.push(`[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助者用」ボタンと重なっている`)
+      failures.push(
+        `[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助者用」ボタンと重なっている`,
+      )
     }
     if (info.h1 && info.hint && rectsOverlap(info.h1, info.hint)) {
       if (await isHintActuallyVisibleAt(info.h1, info.hint)) {
@@ -497,7 +499,9 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       }
       if (info.hint && rectsOverlap(tile, info.hint)) {
         if (await isHintActuallyVisibleAt(tile, info.hint)) {
-          failures.push(`[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`)
+          failures.push(
+            `[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`,
+          )
         }
       }
     }
@@ -530,12 +534,13 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
 /**
  * Issue #22 (PR#23 レビュー S1/M1): 上部メッセージ(h1)が 1 行に収まる最大サイズで表示されることを、
  * 実ブラウザの計算済みスタイル・描画行数・はみ出しで確認する。
- * - 既定文言・緊急文言・やや長い文言: 1 行にできるときは data-fit="single" + white-space:nowrap +
+ * - 通常の伝達結果・やや長い文言: 1 行にできるときは data-fit="single" + white-space:nowrap +
  *   描画行数 1、いずれの場合も .message-panel が横にはみ出さない(scrollWidth <= clientWidth)
  *   (Chromium は字送りを実サイズで整数 px に丸めるため、100px 測定の線形縮尺だけだと
  *   数 px はみ出す。候補サイズでの測り直し(M1 修正)が外れるとここで落ちる)
- * - 既定・緊急は全 viewport で必ず data-fit="single"
+ * - 短い通常伝達は全 viewport で必ず data-fit="single"
  * - 長文(DOM で h1 を直接長くして resize で再計算させる): data-fit が付かず従来の折り返し
+ * - Issue #44: 未解除の緊急主文は h1 へ混ぜず、専用 .emergency-status 内に表示する
  */
 async function checkHeadingFit(chromium, port) {
   const base = `http://localhost:${port}/`
@@ -549,7 +554,8 @@ async function checkHeadingFit(chromium, port) {
     ['1920x1080', 1920, 1080],
   ]
   const MEDIUM = '選んだ内容がここに大きく出ますよ、これは少し長めの文です'
-  const LONG = 'とても長いメッセージが入った場合は小さくしても一行に収まらないので折り返す。'.repeat(3)
+  const LONG =
+    'とても長いメッセージが入った場合は小さくしても一行に収まらないので折り返す。'.repeat(3)
 
   const probe = (page) =>
     page.evaluate(() => {
@@ -578,7 +584,9 @@ async function checkHeadingFit(chromium, port) {
     for (const [name, width, height] of viewports) {
       const context = await browser.newContext({ viewport: { width, height } })
       const page = await context.newPage()
-      await page.goto(base)
+      await page.goto(`${base}?dev`)
+      await page.waitForTimeout(300)
+      await page.keyboard.press('2') // 「はい」を伝達し、結果パネルを表示する
       await settle(page)
 
       const checkNoOverflow = (label, info) => {
@@ -591,21 +599,26 @@ async function checkHeadingFit(chromium, port) {
       }
       const checkSingle = (label, info, required) => {
         if (info.fit !== 'single') {
-          if (required) failures.push(`[heading-fit ${name} ${label}] data-fit="single" が付いていない`)
+          if (required)
+            failures.push(`[heading-fit ${name} ${label}] data-fit="single" が付いていない`)
           return
         }
         if (info.whiteSpace !== 'nowrap') {
-          failures.push(`[heading-fit ${name} ${label}] white-space が nowrap ではない(${info.whiteSpace})`)
+          failures.push(
+            `[heading-fit ${name} ${label}] white-space が nowrap ではない(${info.whiteSpace})`,
+          )
         }
         if (info.lines !== 1) {
-          failures.push(`[heading-fit ${name} ${label}] 1 行ではなく ${info.lines} 行で描画されている`)
+          failures.push(
+            `[heading-fit ${name} ${label}] 1 行ではなく ${info.lines} 行で描画されている`,
+          )
         }
       }
 
-      // 既定文言
+      // 短い通常伝達
       const initial = await probe(page)
-      checkSingle('default', initial, true)
-      checkNoOverflow('default', initial)
+      checkSingle('transmission', initial, true)
+      checkNoOverflow('transmission', initial)
 
       // やや長い文言(DOM で直接差し替え、resize で再計算させる)
       await page.evaluate((text) => {
@@ -633,19 +646,32 @@ async function checkHeadingFit(chromium, port) {
       checkNoOverflow('long', long)
       await context.close()
 
-      // 緊急文言(先頭待機中に先頭の「緊急」を実行する。既定 headHold 3000ms 内)
+      // Issue #44: 緊急主文は通常伝達の h1 ではなく専用状態領域に出る
       const emergencyContext = await browser.newContext({ viewport: { width, height } })
       const emergencyPage = await emergencyContext.newPage()
       await emergencyPage.goto(base)
       await emergencyPage.waitForTimeout(300)
       await emergencyPage.keyboard.press('Space')
       await settle(emergencyPage)
-      const emergency = await probe(emergencyPage)
-      if (!emergency.text?.includes('緊急')) {
-        failures.push(`[heading-fit ${name} emergency] 緊急文言になっていない(${emergency.text})`)
-      } else {
-        checkSingle('emergency', emergency, true)
-        checkNoOverflow('emergency', emergency)
+      const emergency = await emergencyPage.evaluate(() => {
+        const status = document.querySelector('.emergency-status')
+        const message = status?.querySelector('.emergency-status-message')
+        return {
+          text: message?.textContent,
+          scrollWidth: status?.scrollWidth ?? 0,
+          clientWidth: status?.clientWidth ?? 0,
+          ordinaryMessageVisible: getComputedStyle(document.querySelector('.message-panel'))
+            .display,
+        }
+      })
+      if (emergency.text !== '緊急です。来てください') {
+        failures.push(`[heading-fit ${name} emergency] 専用緊急状態に主文がない(${emergency.text})`)
+      }
+      if (emergency.scrollWidth > emergency.clientWidth) {
+        failures.push(`[heading-fit ${name} emergency] 専用緊急状態が横にはみ出している`)
+      }
+      if (emergency.ordinaryMessageVisible !== 'none') {
+        failures.push(`[heading-fit ${name} emergency] 未伝達の通常結果パネルが表示されている`)
       }
       await emergencyContext.close()
     }

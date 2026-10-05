@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount }
 import {
   buildMenu,
   PARENT_SCREEN,
+  SCREEN_GUIDANCE,
   SCREEN_TITLES,
   type PainChoice,
   type ScreenId,
@@ -185,10 +186,10 @@ export default function App() {
   const [emergencyDetails, setEmergencyDetails] = createSignal<string[]>(
     restoredEmergency?.details ?? [],
   )
-  const [message, setMessage] = createSignal(
-    restoredEmergency ? EMERGENCY_MESSAGE : DEFAULT_MESSAGE,
-  )
-  const [messageTone, setMessageTone] = createSignal<Tone>(restoredEmergency ? 'urgent' : 'neutral')
+  // 緊急状態は message へ入れず、専用の emergency-status に表示する。
+  // 緊急中の後続伝達だけは、通常の選択結果と同じ message 領域へ明示的に分離して出す。
+  const [message, setMessage] = createSignal(restoredEmergency?.sub ?? DEFAULT_MESSAGE)
+  const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
 
   // Issue #22: 上部メッセージ(h1)を 1 行に収まる最大サイズで表示する。再計算は
   // メッセージ変更・幅変化・回転/リサイズ・Web フォント読み込み後だけ(h1 は文字サイズ設定の対象外)
@@ -237,7 +238,8 @@ export default function App() {
     })
   })
   const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>([])
-  // 緊急中に選ばれた伝達（はい等）は見出しを上書きせず、この副表示にのみ出す
+  // 緊急中に選ばれた直前の伝達。保存形式の互換性のため emergencyState の sub を使うが、
+  // 表示は曖昧な「最新」ではなく、独立した「直前に伝えたこと」領域へ出す。
   const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(
     restoredEmergency?.sub ?? null,
   )
@@ -275,12 +277,20 @@ export default function App() {
     buildMenu(screen(), {
       showUndo: showUndo(),
       emergencyActive: emergencyActive(),
+      emergencyDetails: emergencyDetails(),
       letterRow: letterRow(),
       phrases: settings().phrases,
       morseEnabled: settings().morseEnabled,
       pain: painChoice(),
     }),
   )
+
+  const currentScreenGuidance = createMemo(() => {
+    if (screen() === 'painIntensity' && painChoice()) {
+      return `${painChoice()?.label}の痛みの強さを選んでください。`
+    }
+    return SCREEN_GUIDANCE[screen()]
+  })
 
   // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
   // ResizeObserver で追従するので、回転・キャレギバー設定変更後の再計算も自動で効く。
@@ -446,6 +456,7 @@ export default function App() {
       const first = buildMenu(next, {
         showUndo: showUndo(),
         emergencyActive: emergencyActive(),
+        emergencyDetails: emergencyDetails(),
         letterRow: letterRow(),
         phrases: settings().phrases,
         morseEnabled: settings().morseEnabled,
@@ -455,11 +466,13 @@ export default function App() {
     }
   }
 
-  // 通常の伝達完了。緊急中は見出し(緊急表示)を上書きせず、副表示にだけ出す
-  // （requirements.md §4.3: 緊急表示は介助者が解除するまで残り、本人入力で上書きされない）。
+  // 通常の伝達完了。緊急状態は専用領域に残したまま、後続伝達を別の結果領域へ出す。
   const completeTransmission = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     if (emergencyActive()) {
       setEmergencySubMessage(text)
+      setMessage(text)
+      setMessageTone(tone)
+      document.documentElement.dataset.messageTone = tone
       feedback(event ?? 'message')
       announce(text)
       goTo('home')
@@ -538,7 +551,7 @@ export default function App() {
     const action = item.action
     switch (action.type) {
       case 'emergency': {
-        // S1: 緊急の再選択は詳細を消さずアラーム再開のみ。初回選択時だけ見出しを立てる
+        // S1: 緊急の再選択は詳細を消さずアラーム再開のみ。緊急主文は専用領域に立てる
         const alreadyActive = emergencyActive()
         setEmergencyActive(true)
         // S2: 緊急発生時は取り消しの猶予を必ず終わらせる
@@ -546,7 +559,12 @@ export default function App() {
         undoLapsRemaining = 0
         if (!alreadyActive) {
           setEmergencyDetails([])
-          showMessage(EMERGENCY_MESSAGE, 'urgent', 'emergency')
+          setEmergencySubMessage(null)
+          setMessage(DEFAULT_MESSAGE)
+          setMessageTone('neutral')
+          document.documentElement.dataset.messageTone = 'neutral'
+          feedback('emergency')
+          announce(EMERGENCY_MESSAGE)
         } else {
           feedback('emergency')
         }
@@ -718,7 +736,7 @@ export default function App() {
   // 既存の「警告音停止中：画面をタップしてください」表示になる。
   onMount(() => {
     if (restoredEmergency) {
-      document.documentElement.dataset.messageTone = 'urgent'
+      document.documentElement.dataset.messageTone = 'neutral'
       startAlarm(ALARM_REPEAT_MS)
     }
   })
@@ -959,23 +977,27 @@ export default function App() {
 
   return (
     <main class="app-shell">
-      <section class="message-panel" aria-live="polite">
-        <h1 ref={headingEl}>{message()}</h1>
-        <Show when={emergencyActive() && emergencyDetails().length > 0}>
-          <ul class="emergency-details">
-            <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
-          </ul>
-        </Show>
-        <Show when={emergencyActive() && emergencySubMessage()}>
-          <p class="emergency-sub">最新: {emergencySubMessage()}</p>
-        </Show>
+      <Show when={emergencyActive()}>
+        <section class="emergency-status" role="status" aria-label="未解除の緊急状態">
+          <p class="emergency-status-message">{EMERGENCY_MESSAGE}</p>
+          <Show when={emergencyDetails().length > 0}>
+            <div class="emergency-detail-status">
+              <span class="emergency-detail-label">伝えた状態:</span>
+              <ul class="emergency-details">
+                <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
+              </ul>
+            </div>
+          </Show>
+        </section>
+      </Show>
 
-        {/* kako-jun 追加指示: 下部の帯(介助ボタン・警告音停止中)を廃止し、タイル領域を
-            画面下端まで使う。両方ともメッセージ欄右上、文字と重ならない位置へ移す */}
+      <section class="screen-guide" aria-label="現在の画面">
+        <div class="screen-guide-copy">
+          <p class="screen-name">{SCREEN_TITLES[screen()]}</p>
+          <h2>{currentScreenGuidance()}</h2>
+        </div>
+
         <div class="message-panel-controls">
-          {/* PR#16 Opus レビュー should-6: 警告音停止中表示の有無でボタン位置が
-              跳ねないよう、介助ボタンを先頭固定にする(常に同じ位置)。表示が
-              現れる/消えるのはボタンの下だけ */}
           <button
             type="button"
             class="caregiver-button"
@@ -991,11 +1013,19 @@ export default function App() {
           </button>
 
           <Show when={!alarmAudioRunning()}>
-            {/* S-new-4: data-caregiver-control を外し pointer-events:none にする。
-                本人のタップは下のタイルへ届き、通常のスイッチ入力として扱われる(resumeも走る) */}
             <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
           </Show>
         </div>
+      </section>
+
+      <section
+        class="message-panel"
+        classList={{ 'is-empty': message() === DEFAULT_MESSAGE }}
+        aria-live="polite"
+        aria-label="直前に伝えたこと"
+      >
+        <p class="message-panel-label">直前に伝えたこと</p>
+        <h1 ref={headingEl}>{message()}</h1>
       </section>
 
       <Show when={holdProgress() !== null}>

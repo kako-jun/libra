@@ -1181,3 +1181,130 @@ h1[data-fit='single'] {
   font-size: 0.85rem;
   opacity: 0.85;
 }
+
+/* ===================================================================
+   Issue #44: 緊急状態・画面案内・選択結果を別々の意味領域に分離する。
+   =================================================================== */
+.app-shell {
+  grid-template-rows: auto auto auto auto 1fr;
+}
+
+.emergency-status {
+  grid-row: 1;
+  display: grid;
+  gap: 4px;
+  padding: 10px 18px;
+  color: var(--urgent-text);
+  background: var(--urgent-bg);
+  border-bottom: var(--grid-line-width) solid var(--grid-line);
+}
+
+.emergency-status-message {
+  margin: 0;
+  font-size: clamp(1.45rem, 4.2vh, 2.8rem);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.emergency-detail-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25em;
+  color: var(--urgent-text-muted);
+}
+
+.emergency-detail-label {
+  font-size: clamp(0.9rem, 2.4vh, 1.3rem);
+  font-weight: 700;
+}
+
+.emergency-status .emergency-details {
+  margin: 0;
+  font-size: clamp(1rem, 3vh, 1.8rem);
+}
+
+.screen-guide {
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  min-height: 72px;
+  padding: 10px 18px;
+  color: var(--text);
+  background: var(--surface-calm);
+  border-bottom: var(--grid-line-width) solid var(--grid-line);
+}
+
+.screen-guide-copy {
+  min-width: 0;
+}
+
+.screen-name,
+.message-panel-label {
+  margin: 0 0 2px;
+  color: var(--text-muted);
+  font-size: clamp(0.75rem, 1.8vh, 1rem);
+  font-weight: 700;
+}
+
+.screen-guide h2 {
+  margin: 0;
+  font-size: clamp(1.05rem, 3.2vh, 2rem);
+  line-height: 1.15;
+  word-break: auto-phrase;
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+.screen-guide .message-panel-controls {
+  min-height: 44px;
+}
+
+.message-panel {
+  grid-row: 3;
+  display: block;
+  min-height: 0;
+  max-height: 24vh;
+  max-height: 24dvh;
+  padding: 10px 18px;
+  overflow-y: auto;
+}
+
+.message-panel.is-empty {
+  display: none;
+}
+
+.message-panel h1 {
+  margin-top: 0;
+}
+
+.letter-strip {
+  grid-row: 4;
+}
+
+.grid-board,
+.morse-panel {
+  grid-row: 5;
+}
+
+@media (max-width: 480px), (max-height: 500px) {
+  .emergency-status,
+  .screen-guide,
+  .message-panel {
+    padding: 7px 12px;
+  }
+
+  .screen-guide {
+    min-height: 58px;
+  }
+
+  .emergency-status-message {
+    font-size: clamp(1.2rem, 4.6vh, 1.7rem);
+  }
+
+  .screen-guide h2 {
+    font-size: clamp(0.95rem, 3.8vh, 1.35rem);
+  }
+}

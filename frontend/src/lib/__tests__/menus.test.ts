@@ -1,39 +1,51 @@
 import { describe, expect, it } from 'vitest'
 import {
   LETTER_ROWS,
+  PATIENT_SCREEN_IDS,
   PARENT_SCREEN,
+  SCREEN_GUIDANCE,
   buildHomeMenu,
   buildLettersRowMenu,
   buildMenu,
   type ScreenId,
 } from '../menus'
 
-const ALL_SCREENS: ScreenId[] = [
-  'home',
-  'urgentDetail',
-  'discomfort',
-  'discomfortOther',
-  'painLocation',
-  'moodRequest',
-  'letters',
-  'lettersRow',
-  'lettersYesNo',
-  'morse',
-  'painIntensity',
-  'requests',
-  'feelings',
-]
+const ALL_SCREENS: ScreenId[] = [...PATIENT_SCREEN_IDS]
 
 const homeOptions = { showUndo: false, emergencyActive: false }
 
 describe('buildMenu の共通規則', () => {
-  it.each(ALL_SCREENS)('%s: 先頭項目(items[0])は緊急である', (screen) => {
-    const items = buildMenu(screen, homeOptions)
-    expect(items[0].action).toEqual({ type: 'emergency' })
+  it.each(ALL_SCREENS.filter((screen) => screen !== 'urgentDetail'))(
+    '%s: 緊急詳細以外は先頭項目(items[0])が緊急である（戻る順は #40 で変更予定）',
+    (screen) => {
+      const items = buildMenu(screen, homeOptions)
+      expect(items[0].action).toEqual({ type: 'emergency' })
+    },
+  )
+
+  it('urgentDetail: 成立済みの緊急タイルを重複させず、先頭は戻る', () => {
+    const items = buildMenu('urgentDetail', homeOptions)
+    expect(items[0].action).toEqual({ type: 'back' })
+    expect(items.some((item) => item.action.type === 'emergency')).toBe(false)
   })
 
-  it.each(ALL_SCREENS.filter((s) => s !== 'home'))(
-    '%s: home以外は items[1] が戻るである',
+  it('urgentDetail: すでに伝えた詳細は状態表示だけに残し、操作候補から除く', () => {
+    const items = buildMenu('urgentDetail', {
+      ...homeOptions,
+      emergencyDetails: ['苦しい', '胸が痛い'],
+    })
+    expect(items.map((item) => item.label)).toEqual(['戻る', '痛い', '息ができない', '吐きそう'])
+  })
+
+  it('全 ScreenId が案内文を持ち、画面列挙と親定義から漏れない', () => {
+    for (const screen of PATIENT_SCREEN_IDS) {
+      expect(SCREEN_GUIDANCE[screen]).toMatch(/。$/)
+      if (screen !== 'home') expect(PARENT_SCREEN[screen]).toBeDefined()
+    }
+  })
+
+  it.each(ALL_SCREENS.filter((s) => s !== 'home' && s !== 'urgentDetail'))(
+    '%s: homeと緊急詳細以外は items[1] が戻るである',
     (screen) => {
       const items = buildMenu(screen, homeOptions)
       expect(items[1].action).toEqual({ type: 'back' })
