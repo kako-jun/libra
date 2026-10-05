@@ -138,7 +138,7 @@ describe('App', () => {
     vi.advanceTimersByTime(INTERVAL_MS) // index2(あ行)
     fireEvent.keyDown(window, { key: ' ' }) // 1回目: あ行へ(文字段階)
     fireEvent.keyDown(window, { key: ' ' }) // 2回目: 連打無視区間内なので無視されるはず
-    expect(h1Text(container)).not.toBe('緊急です。来てください') // 文字段階の先頭(緊急)を実行しない
+    expect(h1Text(container)).not.toBe('緊急です。来てください') // 文字段階も戻る→緊急の順。先頭の戻るでは緊急を実行しない
     expect(scanningLabel(container)).toBe('戻る') // 文字段階の先頭
     const output = container.querySelector('.letter-strip output')
     expect(output?.textContent).toBe('文字を選んでください')
