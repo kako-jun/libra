@@ -480,10 +480,10 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('はい')
   })
 
-  it('介助者ボタンのクリックでメニューが開き、スイッチ扱いにならない', () => {
+  it('介助者ボタンの mouse pointerdown で直ちにメニューが開き、スイッチ扱いにならない', () => {
     const { container } = render(() => <App />)
     const button = container.querySelector('.caregiver-button') as HTMLElement
-    fireEvent.click(button)
+    fireEvent.pointerDown(button, { pointerId: 1, pointerType: 'mouse' })
     expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
     expect(h1Text(container)).not.toBe('緊急です。来てください')
     expect(scanningLabel(container)).toBe('緊急')
@@ -496,12 +496,56 @@ describe('App', () => {
     expect(button.getAttribute('aria-label')).toBe('介助者メニューを開く')
   })
 
-  it('介助者ボタンはクリックでメニューを開く', () => {
+  it('介助者ボタンの touch pointerdown で直ちにメニューが開く', () => {
     const { container } = render(() => <App />)
     const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button, { pointerId: 1, pointerType: 'touch' })
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
+  })
+
+  it('介助者ボタンの pointerdown は window まで伝播しても開いたメニューを閉じない', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button, { pointerId: 1, pointerType: 'mouse' })
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
+  })
+
+  it('介助者ボタンの pointerdown に続く click でも開いたメニューを閉じない', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.pointerDown(button, { pointerId: 1, pointerType: 'touch' })
     fireEvent.click(button)
     expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
   })
+
+  it.each(['Enter', ' '])(
+    '介助者ボタンへフォーカスした %s は本人スキャンを実行せず、既定の click でメニューを開ける',
+    (key) => {
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLButtonElement
+      button.focus()
+
+      fireEvent.keyDown(button, { key })
+      expect(h1Text(container)).not.toBe('緊急です。来てください')
+      fireEvent.click(button) // ブラウザが Enter / Space の既定動作として発火する click
+
+      expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
+    },
+  )
+
+  it.each(['a', 'AudioVolumeUp'])(
+    '介助者ボタンへフォーカスした %s は本人の任意キー入力としてスキャンを決定する',
+    (key) => {
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLButtonElement
+      button.focus()
+
+      fireEvent.keyDown(button, { key })
+
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(container.querySelector('.caregiver-overlay')).toBeNull()
+    },
+  )
 
   it('介助者メニュー中はパネル内の操作ではスイッチとして効かず、メニューは開いたまま', () => {
     const { container } = render(() => <App />)
@@ -545,13 +589,22 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('緊急')
   })
 
-  it('M3(a): 介助者メニュー内の操作が60秒ないと自動で閉じ、スキャンが再開する', () => {
+  it('M3(a): 介助者メニューの無操作タイマーは59,999msでは閉じない', () => {
     const { container } = render(() => <App />)
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.click(button)
     expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
 
-    vi.advanceTimersByTime(60000) // 放置60秒
+    vi.advanceTimersByTime(59999)
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
+  })
+
+  it('M3(a): 介助者メニューの無操作タイマーは60,000msで閉じ、スキャンを再開する', () => {
+    const { container } = render(() => <App />)
+    const button = container.querySelector('.caregiver-button') as HTMLElement
+    fireEvent.click(button)
+
+    vi.advanceTimersByTime(60000)
     expect(container.querySelector('.caregiver-overlay')).toBeNull()
 
     // 閉じた後はホーム先頭待機を経てスキャンが進む

@@ -922,9 +922,12 @@ export default function App() {
         return
       }
 
-      // 介助者ボタンへフォーカスしている間の Enter / Space は、ブラウザ標準の button
-      // activation に任せる。本人のスイッチ入力としては流さない。
-      if ((event.target as HTMLElement | null)?.closest?.('[data-caregiver-control]')) return
+      // 介助者ボタンへフォーカスしている間の Enter / Space だけは、ブラウザ標準の
+      // button activation に任せる。ほかの任意キーは本人のスイッチ入力として扱う。
+      const caregiverControl = (event.target as HTMLElement | null)?.closest?.(
+        '[data-caregiver-control]',
+      )
+      if (caregiverControl && (event.key === 'Enter' || event.key === ' ')) return
       if (showDevNumbers && /^[1-9]$/.test(event.key)) {
         // 開発補助(?dev限定): 数字キーで先頭9項目を直接実行する。スイッチ扱いより先に処理し二重実行しない
         event.preventDefault()
