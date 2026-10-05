@@ -1,6 +1,8 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import {
   buildMenu,
+  buildScreenBreadcrumb,
+  LETTER_ROWS,
   PARENT_SCREEN,
   SCREEN_GUIDANCE,
   SCREEN_TITLES,
@@ -179,6 +181,8 @@ export default function App() {
   }))
 
   const [screen, setScreen] = createSignal<ScreenId>('home')
+  // 最後に本人が採用したタイル。通常伝達・緊急は専用領域に出るため保持しない。
+  const [acceptedSelection, setAcceptedSelection] = createSignal<string | null>(null)
   // 再読み込み・再起動後も、介助者が解除するまで緊急状態を復元する(requirements.md §4.3)
   const restoredEmergency = loadEmergencyState()
   const [emergencyActive, setEmergencyActive] = createSignal(restoredEmergency !== null)
@@ -291,6 +295,12 @@ export default function App() {
     }
     return SCREEN_GUIDANCE[screen()]
   })
+  const screenBreadcrumb = createMemo(() =>
+    buildScreenBreadcrumb(screen(), {
+      painLabel: painChoice()?.label,
+      letterRowLabel: LETTER_ROWS[letterRow()]?.name,
+    }),
+  )
 
   // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
   // ResizeObserver で追従するので、回転・キャレギバー設定変更後の再計算も自動で効く。
@@ -468,6 +478,7 @@ export default function App() {
 
   // 通常の伝達完了。緊急状態は専用領域に残したまま、後続伝達を別の結果領域へ出す。
   const completeTransmission = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
+    setAcceptedSelection(null)
     if (emergencyActive()) {
       setEmergencySubMessage(text)
       setMessage(text)
@@ -551,6 +562,7 @@ export default function App() {
     const action = item.action
     switch (action.type) {
       case 'emergency': {
+        setAcceptedSelection(null)
         // S1: 緊急の再選択は詳細を消さずアラーム再開のみ。緊急主文は専用領域に立てる
         const alreadyActive = emergencyActive()
         setEmergencyActive(true)
@@ -573,6 +585,7 @@ export default function App() {
         return
       }
       case 'emergencyDetail': {
+        setAcceptedSelection(null)
         // S1: 見出しは変えず、詳細を積み上げ式(重複なし)で見出し下に表示する
         setEmergencyDetails((details) =>
           details.includes(action.label) ? details : [...details, action.label],
@@ -587,6 +600,7 @@ export default function App() {
         // menus.ts の buildHomeMenu が緊急中は取り消しをメニューに含めないが、
         // 数字キー等での直接実行に備えてここでも二重に防ぐ
         if (emergencyActive()) return
+        setAcceptedSelection(null)
         const previous = messageHistory()[1] ?? { text: DEFAULT_MESSAGE, tone: 'neutral' as Tone }
         setMessageHistory((items) => items.slice(1))
         setMessage(previous.text)
@@ -597,33 +611,39 @@ export default function App() {
         return
       }
       case 'back': {
+        setAcceptedSelection(item.label)
         const current = screen()
         const parent = current === 'home' ? 'home' : PARENT_SCREEN[current]
         goTo(parent)
         return
       }
       case 'navigate': {
+        setAcceptedSelection(item.label)
         goTo(action.screen)
         return
       }
       case 'message': {
+        setAcceptedSelection(null)
         // はい・いいえは、本人が他人の反応なしに区別できる専用の振動パターンで返す
         const event: FeedbackEvent = item.id === 'yes' ? 'yes' : item.id === 'no' ? 'no' : 'message'
         completeTransmission(action.text, action.tone ?? 'neutral', event)
         return
       }
       case 'painLocation': {
+        setAcceptedSelection(item.label)
         // 痛い場所を選んだら、強さ(場所だけ/少し/かなり/とても)を選ぶ画面へ
         setPainChoice({ label: action.label, text: action.text, tone: action.tone })
         goTo('painIntensity')
         return
       }
       case 'letterRow': {
+        setAcceptedSelection(item.label)
         setLetterRow(action.row)
         goTo('lettersRow')
         return
       }
       case 'letterAppend': {
+        setAcceptedSelection(action.char)
         setLetterText((text) => text + action.char)
         announce(action.char, action.char)
         // 1字入れたら行段階へ戻る(次の文字も 行 → 文字 の2段階で選ぶ)
@@ -631,10 +651,12 @@ export default function App() {
         return
       }
       case 'letterBackspace': {
+        setAcceptedSelection(item.label)
         setLetterText((text) => text.slice(0, -1))
         return
       }
       case 'letterCommit': {
+        setAcceptedSelection(null)
         const text = letterText().trim()
         setLetterText('')
         if (!text) {
@@ -993,7 +1015,21 @@ export default function App() {
 
       <section class="screen-guide" aria-label="現在の画面">
         <div class="screen-guide-copy">
-          <p class="screen-name">{SCREEN_TITLES[screen()]}</p>
+          <nav aria-label="現在地">
+            <ol class="screen-breadcrumb">
+              <For each={screenBreadcrumb()}>
+                {(title, index) => (
+                  <li
+                    aria-current={
+                      index() === screenBreadcrumb().length - 1 ? 'location' : undefined
+                    }
+                  >
+                    {title}
+                  </li>
+                )}
+              </For>
+            </ol>
+          </nav>
           <h2>{currentScreenGuidance()}</h2>
         </div>
 
@@ -1017,6 +1053,14 @@ export default function App() {
           </Show>
         </div>
       </section>
+
+      <Show when={acceptedSelection()}>
+        {(selection) => (
+          <section class="selection-confirmation" role="status" aria-label="採用した選択肢">
+            <span>選択:</span> {selection()}
+          </section>
+        )}
+      </Show>
 
       <section
         class="message-panel"

@@ -1161,7 +1161,7 @@ h1[data-fit='single'] {
    Issue #44: 緊急状態・画面案内・選択結果を別々の意味領域に分離する。
    =================================================================== */
 .app-shell {
-  grid-template-rows: auto auto auto auto 1fr;
+  grid-template-rows: auto auto auto auto auto 1fr;
 }
 
 .emergency-status {
@@ -1224,6 +1224,37 @@ h1[data-fit='single'] {
   font-weight: 700;
 }
 
+.screen-breadcrumb {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.35em;
+  min-width: 0;
+  margin: 0 0 2px;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: clamp(0.75rem, 1.8vh, 1rem);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.screen-breadcrumb li + li::before {
+  content: '›';
+  margin-right: 0.35em;
+  color: var(--text-muted);
+}
+
+.screen-breadcrumb li:not(:last-child) {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.screen-breadcrumb li:last-child {
+  flex: 0 0 auto;
+}
+
 .screen-guide h2 {
   margin: 0;
   font-size: clamp(1.05rem, 3.2vh, 2rem);
@@ -1238,7 +1269,7 @@ h1[data-fit='single'] {
 }
 
 .message-panel {
-  grid-row: 3;
+  grid-row: 4;
   display: block;
   min-height: 0;
   max-height: 24vh;
@@ -1256,12 +1287,31 @@ h1[data-fit='single'] {
 }
 
 .letter-strip {
-  grid-row: 4;
+  grid-row: 5;
 }
 
 .grid-board,
 .morse-panel {
-  grid-row: 5;
+  grid-row: 6;
+}
+
+.selection-confirmation {
+  grid-row: 3;
+  min-width: 0;
+  min-height: 30px;
+  padding: 5px 18px;
+  overflow: hidden;
+  color: var(--text-muted);
+  background: var(--bg);
+  border-bottom: var(--grid-line-width) solid var(--grid-line);
+  font-size: clamp(0.8rem, 1.8vh, 1rem);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selection-confirmation span {
+  font-weight: 700;
 }
 
 @media (max-width: 480px), (max-height: 500px) {
@@ -1281,5 +1331,11 @@ h1[data-fit='single'] {
 
   .screen-guide h2 {
     font-size: clamp(0.95rem, 3.8vh, 1.35rem);
+  }
+
+  .selection-confirmation {
+    min-height: 26px;
+    padding: 4px 12px;
+    font-size: 0.78rem;
   }
 }

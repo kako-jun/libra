@@ -13,6 +13,7 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 - **Safety-ordered screens** — Home starts with Emergency; ordinary sub-screens start with Back, then Emergency; the urgent-detail screen starts with Back followed by the remaining detail choices. Free-text letter board sits behind the structured menus, never in front.
 - **Large grid UI** — Not fixed to Esuna's 9-grid rule, but keeps the same easy-to-press grid feeling.
 - **Message display** — The selected phrase is shown in large type so the person nearby can read it.
+- **Location and selection confirmation** — A short home-to-screen breadcrumb stays visible, and the last accepted navigation/character choice is confirmed without adding a switch press or delay. Completed transmissions and emergency details remain in their own areas.
 - **Emergency alarm** — Selecting Emergency shows a red banner with no confirmation step and sounds a Web Audio alarm (works even with speech OFF) until a caregiver clears it. Emergency is restored after a reload or restart until a caregiver clears it.
 - **Caregiver menu** — A 2-second long-press on the "介助者用" (caregiver) button at the top-right of the message panel (not a floating bottom bar), opens scan interval / head-hold / debounce / auditory-scan / speech-mode / font-size / theme / high-contrast settings and emergency clear. Settings persist to localStorage.
 - **Light/dark theme** — A caregiver setting (light / dark / auto, default auto) instead of a URL query; auto follows the device's `prefers-color-scheme` live. High contrast layers on top of either theme. The tile grid is a seamless, gap-less board (no rounded corners, cells separated only by a thin divider line) that always fills its screen area edge to edge — column/row count is computed from the item count and the grid area's own aspect ratio, never leaving empty cells or a blank strip. The current scan target gets a thick yellow ring drawn just inside its own cell (no scale-up, so it never overlaps a neighboring cell).
@@ -21,20 +22,20 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 
 ## Prototype Scope
 
-| Area                                                  | Status                                                               |
-| ----------------------------------------------------- | -------------------------------------------------------------------- |
-| Single-switch scanning (tap / any key / BT shutter)   | Working                                                              |
+| Area                                                                   | Status                                                               |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Single-switch scanning (tap / any key / BT shutter)                    | Working                                                              |
 | Safety-ordered screens (home: Emergency; sub-screens: Back, Emergency) | Working                                                              |
-| Emergency + alarm                                     | Working                                                              |
-| Yes / No                                              | Working                                                              |
-| Discomfort / mood / pain location                     | Working                                                              |
-| Letter board                                          | Prototype (simplified entry; full 2-stage kana keyboard is planned)  |
-| Speech mode                                           | Working                                                              |
-| Caregiver menu (long-press settings)                  | Working                                                              |
-| Offline (Service Worker precache)                     | Working                                                              |
-| Screen Wake Lock                                      | Working                                                              |
-| Custom phrase editing                                 | Planned                                                              |
-| External switch pairing                               | Planned (keyboard-event bridge only; native pairing not implemented) |
+| Emergency + alarm                                                      | Working                                                              |
+| Yes / No                                                               | Working                                                              |
+| Discomfort / mood / pain location                                      | Working                                                              |
+| Letter board                                                           | Prototype (simplified entry; full 2-stage kana keyboard is planned)  |
+| Speech mode                                                            | Working                                                              |
+| Caregiver menu (long-press settings)                                   | Working                                                              |
+| Offline (Service Worker precache)                                      | Working                                                              |
+| Screen Wake Lock                                                       | Working                                                              |
+| Custom phrase editing                                                  | Planned                                                              |
+| External switch pairing                                                | Planned (keyboard-event bridge only; native pairing not implemented) |
 
 ## For Developers
 

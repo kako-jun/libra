@@ -465,7 +465,8 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
         tiles: [...document.querySelectorAll('.grid-board .tile')].map((t) => rectOf(t)),
       }
     })
-    if (!info.hint) failures.push(`[missing hint ${name} ${screenLabel}] 警告音停止中表示が出ていない`)
+    if (!info.hint)
+      failures.push(`[missing hint ${name} ${screenLabel}] 警告音停止中表示が出ていない`)
     if (info.h1 && info.button && rectsOverlap(info.h1, info.button)) {
       failures.push(
         `[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助者用」ボタンと重なっている`,
@@ -482,9 +483,7 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
         failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助者用」ボタンと重なっている`)
       }
       if (info.hint && rectsOverlap(tile, info.hint)) {
-        failures.push(
-          `[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`,
-        )
+        failures.push(`[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`)
       }
     }
   }
@@ -781,7 +780,8 @@ async function checkBackNavigationAndEmergencyRetention(chromium, port) {
     }
     const waitForCursor = async (label) => {
       await page.waitForFunction(
-        (expected) => document.querySelector('.tile.scanning .tile-label')?.textContent === expected,
+        (expected) =>
+          document.querySelector('.tile.scanning .tile-label')?.textContent === expected,
         label,
         { timeout: 8000 },
       )
@@ -1096,6 +1096,108 @@ async function checkFontSizeMonotonicity(chromium, port) {
   return failures
 }
 
+/** Issue #37: 小画面で深いパンくずと採用確認がグリッド領域を押しつぶさず、重ならない。 */
+async function checkIssue37SmallViewport(chromium, port) {
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+
+  try {
+    const page = await browser.newPage({ viewport: { width: 320, height: 568 } })
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'libra',
+        JSON.stringify({ intervalMs: 400, headHoldMultiplier: 1, fontSize: 'xlarge' }),
+      )
+    })
+    await page.goto(`http://localhost:${port}/`)
+    const select = async (label) => {
+      await page.waitForFunction(
+        (expected) =>
+          document.querySelector('.tile.scanning .tile-label')?.textContent === expected,
+        label,
+        { timeout: 10000 },
+      )
+      await page.keyboard.press('Space')
+      await page.waitForTimeout(600)
+    }
+    const checkLayout = async (caseName) => {
+      const result = await page.evaluate(() => {
+        const rect = (selector) => {
+          const element = document.querySelector(selector)
+          if (!element || getComputedStyle(element).display === 'none') return null
+          const { x, y, width, height, bottom, right } = element.getBoundingClientRect()
+          return { x, y, width, height, bottom, right }
+        }
+        const guide = rect('.screen-guide')
+        const accepted = rect('.selection-confirmation')
+        const board = rect('.grid-board')
+        const tiles = [...document.querySelectorAll('.grid-board .tile')].map((tile) => {
+          const { x, y, width, height, bottom, right } = tile.getBoundingClientRect()
+          return { x, y, width, height, bottom, right }
+        })
+        return {
+          guide,
+          accepted,
+          board,
+          tiles,
+          viewport: { width: innerWidth, height: innerHeight },
+        }
+      })
+      if (!result.guide || !result.accepted || !result.board) {
+        failures.push(`[${caseName}] guide, selection confirmation, or grid is missing`)
+        return
+      }
+      if (result.guide.bottom > result.accepted.y || result.accepted.bottom > result.board.y) {
+        failures.push(`[${caseName}] breadcrumb/confirmation overlaps the tile grid`)
+      }
+      if (result.board.height < 100 || result.board.bottom > result.viewport.height + 1) {
+        failures.push(`[${caseName}] tile grid is compressed or extends below the viewport`)
+      }
+      if (
+        result.tiles.some(
+          (tile) => tile.width <= 0 || tile.height <= 0 || tile.bottom > result.viewport.height + 1,
+        )
+      ) {
+        failures.push(`[${caseName}] one or more tiles are clipped or outside the viewport`)
+      }
+    }
+
+    await select('不快')
+    await select('痛い')
+    await select('胸')
+    const painPath = await page.locator('.screen-breadcrumb li').allTextContents()
+    if (JSON.stringify(painPath) !== JSON.stringify(['ホーム', '不快', '胸', '痛みの強さ'])) {
+      failures.push(`[painIntensity] incorrect breadcrumb: ${JSON.stringify(painPath)}`)
+    }
+    if (!(await page.locator('.selection-confirmation').textContent()).includes('胸')) {
+      failures.push('[painIntensity] accepted location is not shown')
+    }
+    await checkLayout('painIntensity')
+
+    await select('戻る')
+    await select('戻る')
+    await select('戻る')
+    await select('文字盤')
+    await select('あ行')
+    const rowPath = await page.locator('.screen-breadcrumb li').allTextContents()
+    if (JSON.stringify(rowPath) !== JSON.stringify(['ホーム', '文字盤', 'あ行', '文字盤・文字'])) {
+      failures.push(`[lettersRow] incorrect breadcrumb: ${JSON.stringify(rowPath)}`)
+    }
+    if (!(await page.locator('.selection-confirmation').textContent()).includes('あ行')) {
+      failures.push('[lettersRow] accepted row is not shown')
+    }
+    await checkLayout('lettersRow')
+  } catch (error) {
+    failures.push(`[issue37-small-viewport] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 async function main() {
   if (!fs.existsSync(DIST_DIR)) {
     console.error(`dist/ が無い。先に \`npm run build\` を実行すること: ${DIST_DIR}`)
@@ -1186,6 +1288,16 @@ async function main() {
     navigationFailures.forEach((f) => console.error(f))
   }
   allFailures.push(...navigationFailures)
+  port += 1
+
+  console.log(`--- checking: issue37-small-viewport (port ${port}) ---`)
+  const issue37Failures = await checkIssue37SmallViewport(chromium, port)
+  if (issue37Failures.length === 0) {
+    console.log('[issue37-small-viewport] OK')
+  } else {
+    issue37Failures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...issue37Failures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)
@@ -1195,4 +1307,15 @@ async function main() {
   }
 }
 
-main()
+if (process.env.ISSUE37_ONLY === '1') {
+  const { chromium } = await import('playwright')
+  const failures = await checkIssue37SmallViewport(chromium, 4710)
+  if (failures.length > 0) {
+    failures.forEach((failure) => console.error(failure))
+    process.exitCode = 1
+  } else {
+    console.log('[issue37-small-viewport] OK')
+  }
+} else {
+  main()
+}
