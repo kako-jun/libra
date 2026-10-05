@@ -381,6 +381,13 @@ async function checkLettersScrollLayout(chromium, port) {
               ? emergencyRect.bottom > boardRect.top + EPSILON &&
                 emergencyRect.top < boardRect.bottom - EPSILON
               : false,
+          scanningOverlapsEmergency:
+            scanningRect && emergencyRect && scanning !== emergencyTile
+              ? scanningRect.left < emergencyRect.right &&
+                scanningRect.right > emergencyRect.left &&
+                scanningRect.top < emergencyRect.bottom &&
+                scanningRect.bottom > emergencyRect.top
+              : false,
         }
       })
 
@@ -398,14 +405,15 @@ async function checkLettersScrollLayout(chromium, port) {
         failures.push(`[letters-scroll ${name}] スキャン対象(確定)がビューポート外`)
       }
       if (info.emergencyLabel !== '緊急') {
-        failures.push(
-          `[letters-scroll ${name}] 1番目のタイルが緊急ではない(${info.emergencyLabel})`,
-        )
+        failures.push(`[letters-scroll ${name}] 緊急タイルが見つからない(${info.emergencyLabel})`)
       } else if (!info.emergencyInBoardViewport) {
         failures.push(
           `[letters-scroll ${name}] スキャンが下の方(確定)まで進んだ際、緊急タイルが` +
             `grid-board の可視範囲外に出ている(sticky が効いていない)`,
         )
+      }
+      if (info.scanningOverlapsEmergency) {
+        failures.push(`[letters-scroll ${name}] 緊急タイルがスキャン対象(確定)を覆っている`)
       }
 
       await context.close()
@@ -760,7 +768,10 @@ async function checkBackNavigationAndEmergencyRetention(chromium, port) {
   try {
     const page = await browser.newPage({ viewport: { width: 1024, height: 768 } })
     await page.addInitScript(() => {
-      localStorage.setItem('libra', JSON.stringify({ intervalMs: 500, headHoldMultiplier: 1 }))
+      localStorage.setItem(
+        'libra',
+        JSON.stringify({ intervalMs: 500, headHoldMultiplier: 1, morseEnabled: true }),
+      )
     })
     await page.goto(`http://localhost:${port}/`)
     const labels = () => page.locator('.grid-board .tile-label').allTextContents()
@@ -783,7 +794,9 @@ async function checkBackNavigationAndEmergencyRetention(chromium, port) {
     await select('緊急')
     const urgentLabels = await labels()
     if (urgentLabels[0] !== '戻る' || urgentLabels.includes('緊急') || urgentLabels.length < 2) {
-      failures.push('[navigation] urgentDetail must start with Back and contain details without a duplicate Emergency tile')
+      failures.push(
+        '[navigation] urgentDetail must start with Back and contain details without a duplicate Emergency tile',
+      )
     }
     await page.waitForFunction(
       () => document.querySelector('.emergency-status-message')?.textContent?.includes('緊急です'),
@@ -791,23 +804,84 @@ async function checkBackNavigationAndEmergencyRetention(chromium, port) {
       { timeout: 5000 },
     )
     await select('戻る')
-    if ((await labels())[0] !== '緊急') failures.push('[navigation] urgentDetail Back did not return to home')
+    if ((await labels())[0] !== '緊急')
+      failures.push('[navigation] urgentDetail Back did not return to home')
     if (!(await page.locator('.emergency-status-message').count())) {
       failures.push('[navigation] emergency state was cleared when returning from urgentDetail')
     }
+    await select('緊急')
+    await select('苦しい')
+    if (!((await page.locator('.emergency-details').textContent()) ?? '').includes('苦しい')) {
+      failures.push('[navigation] selected emergency detail was not retained')
+    }
 
-    await select('不快')
-    const discomfortLabels = await labels()
-    if (discomfortLabels[0] !== '戻る' || discomfortLabels[1] !== '緊急') {
-      failures.push('[navigation] ordinary child order is not Back, Emergency')
-    }
-    await select('痛い')
-    await select('戻る')
-    if ((await page.locator('.screen-guide h2').textContent()) !== 'つらいことを選んでください。') {
-      failures.push('[navigation] nested Back did not return from painLocation to discomfort')
-    }
-    if (!(await page.locator('.emergency-status-message').count())) {
-      failures.push('[navigation] emergency state was cleared during ordinary back navigation')
+    // 通常下位 ScreenId は、スキャン選択で実際に入り、戻るを選んで直前の親メニューへ戻る。
+    // 親のタイル構成を遷移前に保存し、見出しが同じ画面(discomfort / discomfortOther等)も区別する。
+    const routes = [
+      ['discomfort', ['不快']],
+      ['discomfortOther', ['不快', 'その他']],
+      ['painLocation', ['不快', '痛い']],
+      ['painIntensity', ['不快', '痛い', '頭']],
+      ['moodRequest', ['快・要望']],
+      ['requests', ['快・要望', '要望']],
+      ['feelings', ['快・要望', '気分']],
+      ['letters', ['文字盤']],
+      ['lettersRow', ['文字盤', 'あ行']],
+      ['lettersYesNo', ['文字盤', 'はい・いいえ']],
+      ['morse', ['モールス']],
+    ]
+    for (const [screen, path] of routes) {
+      let parentLabels = []
+      for (let index = 0; index < path.length; index += 1) {
+        if (index === path.length - 1) parentLabels = await labels()
+        await select(path[index])
+      }
+      if (screen === 'morse') {
+        // モールスは入力画面に戻るタイルを表示しない専用入力モード。定義済みの
+        // 「・を5回 → 待つ」復帰操作が親(home)へ戻ることを確認する。
+        for (let dot = 0; dot < 5; dot += 1) {
+          await page.keyboard.down('Space')
+          await page.waitForTimeout(100)
+          await page.keyboard.up('Space')
+          await page.waitForTimeout(150)
+        }
+        await page.waitForTimeout(1600)
+        if (await page.locator('.morse-panel').count()) {
+          failures.push('[navigation] morse return operation did not leave morse screen')
+        }
+        if (!(await page.locator('.emergency-status-message').count())) {
+          failures.push('[navigation] emergency state was cleared while returning from morse')
+        }
+        if (!((await page.locator('.emergency-details').textContent()) ?? '').includes('苦しい')) {
+          failures.push('[navigation] emergency detail was cleared while returning from morse')
+        }
+        continue
+      }
+
+      const childLabels = await labels()
+      if (childLabels[0] !== '戻る') {
+        failures.push(`[navigation] ${screen} does not expose Back as its first item`)
+        continue
+      }
+      if (screen !== 'urgentDetail' && childLabels[1] !== '緊急') {
+        failures.push(`[navigation] ${screen} does not expose Emergency as its second item`)
+      }
+      await select('戻る')
+      const actualParentLabels = await labels()
+      if (JSON.stringify(actualParentLabels) !== JSON.stringify(parentLabels)) {
+        failures.push(
+          `[navigation] ${screen} Back did not return to its immediate parent: ${JSON.stringify(actualParentLabels)}`,
+        )
+      }
+      if (!(await page.locator('.emergency-status-message').count())) {
+        failures.push(`[navigation] emergency state was cleared after backing out of ${screen}`)
+      }
+      if (!((await page.locator('.emergency-details').textContent()) ?? '').includes('苦しい')) {
+        failures.push(`[navigation] emergency detail was cleared after backing out of ${screen}`)
+      }
+
+      // 各ケースの開始位置をhomeへ戻す。親から戻る操作も同じ実入力で行う。
+      while ((await labels())[0] !== '緊急') await select('戻る')
     }
   } catch (error) {
     failures.push(`[navigation] ${error.message.split('\n')[0]}`)
