@@ -10,7 +10,7 @@ export interface EmergencyState {
   active: true
   /** 緊急の詳細（苦しい/痛い等）。積み上げ式・重複なし */
   details: string[]
-  /** 緊急中に選ばれた伝達の副表示 */
+  /** 緊急中に選ばれた直前の通常伝達（保存形式互換のためキー名は sub のまま） */
   sub: string | null
 }
 

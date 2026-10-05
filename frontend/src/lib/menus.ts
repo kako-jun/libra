@@ -1,5 +1,5 @@
-// 画面ごとの項目定義。純粋データ + 「先頭=緊急」「下位画面の2番目=戻る」を
-// 構造で保証するビルダー。副作用は持たない（実行そのものは ActionId を App.tsx が解釈する）。
+// 画面ごとの項目定義。緊急詳細を除く現行画面の「先頭=緊急」「下位画面の2番目=戻る」を
+// 構造で保証するビルダー（戻る優先への全体変更は #40）。副作用は持たない。
 // 正本: docs/requirements.md §2, §4
 
 import {
@@ -27,6 +27,23 @@ export type ScreenId =
   | 'lettersRow'
   | 'lettersYesNo'
   | 'morse'
+
+/** 本人画面の全 ScreenId。画面ツリーの追加時に、案内・親子関係・テストを追従させる正本。 */
+export const PATIENT_SCREEN_IDS: readonly ScreenId[] = [
+  'home',
+  'urgentDetail',
+  'discomfort',
+  'discomfortOther',
+  'painLocation',
+  'painIntensity',
+  'moodRequest',
+  'requests',
+  'feelings',
+  'letters',
+  'lettersRow',
+  'lettersYesNo',
+  'morse',
+]
 
 export type ActionId =
   | { type: 'emergency' }
@@ -82,6 +99,23 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   lettersRow: '文字盤・文字',
   lettersYesNo: '文字盤・はい/いいえ',
   morse: 'モールス入力',
+}
+
+/** 画面上部に常に出す、本人向けの目的と操作案内。選択結果や緊急状態はここへ混ぜない。 */
+export const SCREEN_GUIDANCE: Record<ScreenId, string> = {
+  home: '伝えたいことを選んでください。',
+  urgentDetail: '緊急です。いま伝えたい状態を選んでください。',
+  discomfort: 'つらいことを選んでください。',
+  discomfortOther: 'つらいことを選んでください。',
+  painLocation: '痛い場所を選んでください。',
+  painIntensity: '痛みの強さを選んでください。',
+  moodRequest: '今していることへの希望を選んでください。',
+  requests: 'してほしいことを選んでください。',
+  feelings: '今の気持ちを選んでください。',
+  letters: '文字の行を選んでください。',
+  lettersRow: '入力する文字を選んでください。',
+  lettersYesNo: '質問への答えを選んでください。',
+  morse: '短押し・長押しで文字を入力します。',
 }
 
 const EMERGENCY_ITEM: MenuItem = {
@@ -167,6 +201,8 @@ export interface HomeMenuOptions {
   /** 緊急中は取り消しを出さない（requirements.md §4.3: 本人のスイッチ入力で上書き・取り消しされない）。
    *  この判定を App 側に置かず、ここで一元的に保証する。 */
   emergencyActive: boolean
+  /** 緊急詳細ですでに伝えた状態。候補と選択済み表示を重複させないため除外する。 */
+  emergencyDetails?: readonly string[]
   /** 文字盤の文字段階(lettersRow)で表示する行の添字(LETTER_ROWS)。省略時は先頭の行 */
   letterRow?: number
 }
@@ -196,15 +232,20 @@ export const URGENT_DETAIL_ITEMS = [
 
 export const URGENT_DETAIL_LABELS: readonly string[] = URGENT_DETAIL_ITEMS.map((i) => i.label)
 
-export function buildUrgentDetailMenu(): MenuItem[] {
-  return subScreen(
-    URGENT_DETAIL_ITEMS.map(({ id, label }) => ({
-      id,
-      label,
-      tone: 'urgent' as const,
-      action: { type: 'emergencyDetail' as const, label },
-    })),
-  )
+export function buildUrgentDetailMenu(selectedDetails: readonly string[] = []): MenuItem[] {
+  // 緊急状態はこの画面へ入る前に既に成立しており、上部の専用領域で常時示す。
+  // 候補内にもう一度「緊急」を置くと、状態と操作を取り違えるため置かない(Issue #44)。
+  return [
+    makeBackItem(),
+    ...URGENT_DETAIL_ITEMS.filter(({ label }) => !selectedDetails.includes(label)).map(
+      ({ id, label }) => ({
+        id,
+        label,
+        tone: 'urgent' as const,
+        action: { type: 'emergencyDetail' as const, label },
+      }),
+    ),
+  ]
 }
 
 // 1画面の項目数は緊急・戻るを含めて8以内(requirements.md §4.1)。既定はこれを満たし、
@@ -332,7 +373,7 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
     case 'home':
       return buildHomeMenu(homeOptions)
     case 'urgentDetail':
-      return buildUrgentDetailMenu()
+      return buildUrgentDetailMenu(homeOptions.emergencyDetails)
     case 'discomfort':
       return buildDiscomfortMenu(homeOptions.phrases)
     case 'discomfortOther':

@@ -46,6 +46,8 @@ function scanningLabel(container: HTMLElement): string | null {
 }
 
 function h1Text(container: HTMLElement): string | null {
+  const emergency = container.querySelector('.emergency-status-message')
+  if (emergency) return emergency.textContent
   return container.querySelector('h1')?.textContent ?? null
 }
 
@@ -208,7 +210,7 @@ describe('App', () => {
     expect(container.querySelector('.grid-board')?.getAttribute('aria-label')).toContain('緊急')
   })
 
-  it('緊急中にホームで「はい」を選んでも見出しは緊急のまま副表示に「最新: はい」が出る', () => {
+  it('Issue #44: 緊急中の「はい」は緊急状態と混ぜず「直前に伝えたこと」へ出る', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急選択 → urgentDetail
     vi.advanceTimersByTime(HEAD_HOLD_MS) // urgentDetail index1=戻る
@@ -217,7 +219,78 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('はい')
     fireEvent.keyDown(window, { key: ' ' }) // はい を選択
     expect(h1Text(container)).toBe('緊急です。来てください')
-    expect(container.querySelector('.emergency-sub')?.textContent).toContain('最新: はい')
+    expect(container.querySelector('.message-panel-label')?.textContent).toBe('直前に伝えたこと')
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい')
+    expect(container.querySelector('.emergency-sub')).toBeNull()
+  })
+
+  it('Issue #44: 緊急状態・画面案内・直前の伝達は別領域を保ち、通常伝達だけを更新する', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
+    selectByLabel(container, '苦しい') // 緊急詳細へ追記 → home
+    selectByLabel(container, 'はい') // 緊急中の通常伝達
+
+    const emergencyStatus = container.querySelector('.emergency-status') as HTMLElement
+    const screenGuide = container.querySelector('.screen-guide') as HTMLElement
+    const messagePanel = container.querySelector('.message-panel') as HTMLElement
+
+    expect(emergencyStatus.textContent).toContain('緊急です。来てください')
+    expect(emergencyStatus.textContent).toContain('伝えた状態:')
+    expect(emergencyStatus.textContent).toContain('苦しい')
+    expect(emergencyStatus.textContent).not.toContain('はい')
+    expect(emergencyStatus.textContent).not.toContain('伝えたいことを選んでください。')
+
+    expect(screenGuide.querySelector('.screen-name')?.textContent).toBe('libra')
+    expect(screenGuide.querySelector('h2')?.textContent).toBe('伝えたいことを選んでください。')
+    expect(screenGuide.textContent).not.toContain('緊急です。来てください')
+    expect(screenGuide.textContent).not.toContain('苦しい')
+    expect(screenGuide.textContent).not.toContain('はい')
+
+    expect(messagePanel.getAttribute('aria-label')).toBe('直前に伝えたこと')
+    expect(messagePanel.querySelector('h1')?.textContent).toBe('はい')
+    expect(messagePanel.textContent).not.toContain('緊急です。来てください')
+    expect(messagePanel.textContent).not.toContain('苦しい')
+    expect(messagePanel.textContent).not.toContain('伝えたいことを選んでください。')
+
+    const emergencyBefore = emergencyStatus.textContent
+    const guidanceBefore = screenGuide.querySelector('h2')?.textContent
+    selectByLabel(container, 'いいえ')
+
+    expect(container.querySelector('.emergency-status')?.textContent).toBe(emergencyBefore)
+    expect(container.querySelector('.screen-guide h2')?.textContent).toBe(guidanceBefore)
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('いいえ')
+    expect(JSON.parse(window.localStorage.getItem('libra:emergency') as string)).toEqual({
+      active: true,
+      details: ['苦しい'],
+      sub: 'いいえ',
+    })
+  })
+
+  it('Issue #44: 緊急状態・選択済み詳細・画面案内・候補を分離したまま画面移動できる', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
+
+    expect(container.querySelector('.emergency-status-message')?.textContent).toBe(
+      '緊急です。来てください',
+    )
+    expect(container.querySelector('.screen-guide h2')?.textContent).toBe(
+      '緊急です。いま伝えたい状態を選んでください。',
+    )
+    expect(tileLabels(container)).not.toContain('緊急')
+
+    selectByLabel(container, '苦しい') // 選択済み詳細へ移し、home
+    expect(container.querySelector('.emergency-detail-label')?.textContent).toBe('伝えた状態:')
+    expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+
+    selectByLabel(container, '緊急') // urgentDetail を再度開く
+    expect(tileLabels(container)).not.toContain('苦しい') // 状態と候補を重複させない
+    selectByLabel(container, '戻る')
+    selectByLabel(container, '不快')
+    expect(container.querySelector('.screen-guide h2')?.textContent).toBe(
+      'つらいことを選んでください。',
+    )
+    expect(container.querySelector('.emergency-status-message')).not.toBeNull()
+    expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
   })
 
   it('緊急中はホームに取り消しが出ない', () => {
@@ -628,7 +701,7 @@ describe('App', () => {
     expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
   })
 
-  it('Issue #12: 緊急中に痛みを伝えても見出しは緊急のまま、副表示に出る', () => {
+  it('Issue #12/#44: 緊急中の痛みは緊急状態を保ち、独立した直前の伝達に出る', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急
     selectByLabel(container, '戻る') // home へ
@@ -637,7 +710,7 @@ describe('App', () => {
     selectByLabel(container, '胸')
     selectByLabel(container, 'とても')
     expect(h1Text(container)).toBe('緊急です。来てください')
-    expect(container.querySelector('.emergency-sub')?.textContent).toContain('胸がとても痛いです')
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('胸がとても痛いです')
   })
 
   it('Issue #12: 強さの画面でも先頭は緊急、戻るで痛い場所へ戻れる', () => {
@@ -812,7 +885,7 @@ describe('App', () => {
     expect(h1Text(container)).toBe('緊急です。来てください')
     expect(oscillatorStartCount).toBeGreaterThan(0)
     expect(container.querySelector('.morse-panel')).toBeNull() // スキャンの緊急詳細へ
-    expect(scanningLabel(container)).toBe('緊急')
+    expect(scanningLabel(container)).toBe('戻る')
   })
 
   it('Issue #14: ゆっくり押す人(0.9秒押して0.7秒空ける)でも、－5つで緊急に届く', () => {
@@ -1045,9 +1118,8 @@ describe('App', () => {
 
     fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail
 
-    // urgentDetail: 0緊急,1戻る,2苦しい
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=戻る
-    vi.advanceTimersByTime(INTERVAL_MS) // index2=苦しい
+    // urgentDetail: 0戻る,1苦しい（成立済みの緊急タイルは重複させない）
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
 
     const calls = captureSpeechCalls()
     fireEvent.keyDown(window, { key: ' ' }) // 苦しい選択(announce) → home先頭(緊急)へ遷移(goTo)
@@ -1063,7 +1135,7 @@ describe('App', () => {
     enableAuditoryScanAndFullVoice(container)
 
     fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // urgentDetail index1=戻る
+    vi.advanceTimersByTime(600) // 連打無視を超える。urgentDetail index0=戻る
     fireEvent.keyDown(window, { key: ' ' }) // home へ戻る(緊急は継続)
 
     // home(緊急中、取り消し無し): 0緊急,1はい,2いいえ,...
@@ -1080,11 +1152,10 @@ describe('App', () => {
   it('S1: 緊急詳細は積み上げ式で表示され、緊急の再選択でも消えない', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail
-    expect(scanningLabel(container)).toBe('緊急')
+    expect(scanningLabel(container)).toBe('戻る')
 
-    // urgentDetail: 0緊急,1戻る,2苦しい,3痛い,...
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=戻る
-    vi.advanceTimersByTime(INTERVAL_MS) // index2=苦しい
+    // urgentDetail: 0戻る,1苦しい,2痛い,...
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
     expect(scanningLabel(container)).toBe('苦しい')
     fireEvent.keyDown(window, { key: ' ' }) // 苦しい選択 → home
     expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
@@ -1096,9 +1167,7 @@ describe('App', () => {
     expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
 
     // 別の詳細(痛い)を追加すると積み上がる
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // urgentDetail index1=戻る
-    vi.advanceTimersByTime(INTERVAL_MS) // index2=苦しい
-    vi.advanceTimersByTime(INTERVAL_MS) // index3=痛い
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // 選択済みの苦しいは除外され、index1=痛い
     expect(scanningLabel(container)).toBe('痛い')
     fireEvent.keyDown(window, { key: ' ' })
     const detailsText = container.querySelector('.emergency-details')?.textContent
@@ -1210,7 +1279,9 @@ describe('App', () => {
     // pointer-events:none は実ブラウザでのヒットテストにのみ影響するため、jsdom上では
     // このタップがハンドラの除外対象(data-caregiver-control)に当たらないことを確認する
     fireEvent.pointerDown(hint) // カーソルは index0(緊急、先頭待機中)
-    expect(container.querySelector('h1')?.textContent).toBe('緊急です。来てください')
+    expect(container.querySelector('.emergency-status-message')?.textContent).toBe(
+      '緊急です。来てください',
+    )
   })
 
   it('Issue #5: 介助者メニューに Wake Lock 取得中の状態が表示される', () => {
@@ -1423,7 +1494,7 @@ describe('App', () => {
     it('詳細・副表示ごと再マウントで復元され、警告音が再開し、振動・読み上げは出ない', () => {
       const first = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
-      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index2=苦しい
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
       fireEvent.keyDown(window, { key: ' ' }) // 苦しい → home
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい → 副表示
@@ -1444,9 +1515,12 @@ describe('App', () => {
 
       const second = render(() => <App />)
       expect(h1Text(second.container)).toBe('緊急です。来てください')
-      expect(document.documentElement.dataset.messageTone).toBe('urgent')
+      expect(document.documentElement.dataset.messageTone).toBe('neutral')
       expect(second.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
-      expect(second.container.querySelector('.emergency-sub')?.textContent).toContain('最新: はい')
+      expect(second.container.querySelector('.message-panel-label')?.textContent).toBe(
+        '直前に伝えたこと',
+      )
+      expect(second.container.querySelector('.message-panel h1')?.textContent).toBe('はい')
       expect(oscillatorStartCount).toBeGreaterThan(0)
       expect(vibrate).not.toHaveBeenCalled() // 復元の直後に、緊急発生時の振動は出さない
       vi.advanceTimersByTime(3000)
