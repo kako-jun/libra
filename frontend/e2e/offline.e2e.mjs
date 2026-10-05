@@ -22,8 +22,8 @@
 // - letters-scroll: 横向き小画面(844x390/667x375/320x568)で文字盤のスキャン対象が下段に
 //   来ても、document自体はスクロールせず(window.scrollY===0)、メッセージパネル(h1)と
 //   スキャン対象タイルの両方がビューポート内にあることを確認する
-// - no-overlap(4巡目 nit): 固定配置の「介助者用」ボタン・「警告音停止中」表示が、ホーム・
-//   文字盤のタイル領域と重なっていないことを844x390/390x844/1024x768で確認する
+// - no-overlap: 狭い横向き/縦向き/タブレット幅で、警告音停止中ヒント表示時にも
+//   案内領域・「介助者用」ボタン・ヒントがホーム/文字盤のタイルと重ならないことを確認する
 
 import http from 'node:http'
 import fs from 'node:fs'
@@ -458,39 +458,16 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
         tiles: [...document.querySelectorAll('.grid-board .tile')].map((t) => rectOf(t)),
       }
     })
-    // PR#16 5巡目: .audio-status-hint(警告音停止中表示)は position:absolute の
-    // 子として .message-panel(overflow-y:auto)の内側にあり、パネルの表示範囲を
-    // 超えた分は実際には描画されず、クリップされて見えなくなる。単純な矩形の
-    // 幾何学的重なりだけを見ると「隠れて見えないはずの部分」まで重なり判定して
-    // しまう(実際に表示されているのはタイル/h1の方で、hintではない)ため、
-    // hint が関わる判定だけは document.elementFromPoint で実際にその座標に
-    // 描画されている要素を確認し、hint自身が描画されている場合だけ重なりとする
-    const isHintActuallyVisibleAt = async (rectA, rectB) => {
-      const left = Math.max(rectA.left, rectB.left)
-      const right = Math.min(rectA.right, rectB.right)
-      const top = Math.max(rectA.top, rectB.top)
-      const bottom = Math.min(rectA.bottom, rectB.bottom)
-      const cx = (left + right) / 2
-      const cy = (top + bottom) / 2
-      return page.evaluate(
-        ([x, y]) => {
-          const el = document.elementFromPoint(x, y)
-          return !!el && !!el.closest('.audio-status-hint')
-        },
-        [cx, cy],
-      )
-    }
+    if (!info.hint) failures.push(`[missing hint ${name} ${screenLabel}] 警告音停止中表示が出ていない`)
     if (info.h1 && info.button && rectsOverlap(info.h1, info.button)) {
       failures.push(
         `[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助者用」ボタンと重なっている`,
       )
     }
     if (info.h1 && info.hint && rectsOverlap(info.h1, info.hint)) {
-      if (await isHintActuallyVisibleAt(info.h1, info.hint)) {
-        failures.push(
-          `[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「警告音停止中」表示と重なっている`,
-        )
-      }
+      failures.push(
+        `[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「警告音停止中」表示と重なっている`,
+      )
     }
     for (const tile of info.tiles) {
       if (info.board && !rectsOverlap(tile, info.board)) continue // スクロールアウトしている
@@ -498,11 +475,9 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
         failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助者用」ボタンと重なっている`)
       }
       if (info.hint && rectsOverlap(tile, info.hint)) {
-        if (await isHintActuallyVisibleAt(tile, info.hint)) {
-          failures.push(
-            `[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`,
-          )
-        }
+        failures.push(
+          `[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`,
+        )
       }
     }
   }
@@ -511,8 +486,13 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
     for (const [name, width, height] of viewports) {
       const context = await browser.newContext({ viewport: { width, height } })
       const page = await context.newPage()
+      // AudioContext非対応状態に固定し、全ビューポートでヒント表示中の配置を検査する。
+      await page.addInitScript(() => {
+        window.AudioContext = undefined
+        window.webkitAudioContext = undefined
+      })
       await page.goto(base)
-      await page.waitForTimeout(300)
+      await page.waitForTimeout(700)
       await checkScreen(page, name, 'home')
 
       // home: index5 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)

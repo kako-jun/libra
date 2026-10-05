@@ -908,31 +908,9 @@ h1[data-fit='single'] {
   background: var(--caregiver-close-bg);
 }
 
-/* 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる小さな表示。
-   本人向けではないため介助者ボタンと同じくメッセージ欄右上に置くが、
-   data-caregiver-controlは付けない(S-new-4)。pointer-events:noneでタップを素通しし、
-   下のタイルへの本人のスイッチ入力(resumeも走る)を妨げない。
-   PR#16 5巡目 should-A: position:absoluteにして通常のフローから外し、介助ボタンの
-   すぐ下に重ねて表示する。フローに参加しないため、.message-panel-controls の
-   列幅(≒隣のh1の実効幅)に一切影響しない(出現・消失でも列幅・格子の組み替えが
-   起きない)。
-   実装時の落とし穴その1: 幅を明示せず right:0 だけ指定すると、containing block
-   (position:relativeの.message-panel-controls、ボタン1個ぶんの幅=約46pxまで
-   縮んでいる)を基準にshrink-to-fitの幅計算が行われ、200pxのはずの表示が
-   約46px幅まで押し潰されて折り返し行数が激増する(実測: 高さ133〜144pxまで
-   膨らみ、タイル格子と重なった)。width を max-width と同じ値で明示し、
-   containing block の狭さの影響を受けないようにする。
-   実装時の落とし穴その2: top:100% は「containing block(.message-panel-controls)の
-   高さに対する100%」なので、下の min-height:84px を追加した後は
-   位置がその84px分まるごと下にずれてしまう(ボタンの実際の高さより余った
-   分だけ余計に下がる)。介助ボタンの min-height(44px)を直接指定し、
-   .message-panel-controls 自身の高さ(min-heightで底上げされているかどうか)に
-   依存しないようにする */
+/* 警告音停止中を介助者に知らせる表示。案内領域の通常フローに置いて高さを確保し、
+   タイルと重ならない。pointer-events:none で本人のタップ入力を妨げない。 */
 .audio-status-hint {
-  position: absolute;
-  top: 44px;
-  right: 0;
-  z-index: 20;
   width: 200px;
   max-width: 200px;
   margin: 6px 0 0;
