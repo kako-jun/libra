@@ -507,13 +507,13 @@ h1[data-fit='single'] {
   height: 100%;
 }
 
-/* PR#16 再レビュー must-A/B: スクロールモード(9項目以上、現状は文字盤のみ)では
-   緊急タイルが常に先頭(1番目)にある(menus.ts の subScreen/homeScreen)。
-   巡回中に下の方の項目がスキャン対象になっても、緊急タイルだけは
-   sticky で画面内に留め続け、本人がいつでも押せる状態を保つ。
-   文字盤の2段階化(緊急を別の固定領域に出す等)は Issue #4 で扱う。現行の文字盤の
+/* Issue #40: スクロールモード(9項目以上、現状は文字盤のみ)では
+   緊急タイルがホームでは先頭、通常下位画面では2番目にある。
+   位置に依存せず緊急タイル自体を sticky にし、巡回中に下の項目がスキャン対象でも
+   本人がいつでも押せる状態を保つ。
+   文字盤の2段階化(緊急を別の固定領域に出す等)は別途扱う。現行の文字盤の
    応急対応としてはこれで足りる */
-.grid-board:not(.grid-fill) .tile:first-child {
+.grid-board:not(.grid-fill) .tile-emergency {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -522,9 +522,8 @@ h1[data-fit='single'] {
 /* PR#16 3巡目 should-a: 上の sticky 緊急タイル(z-index:2)が、巡回でスクロールして
    来たスキャン対象タイルの上端に重なって隠してしまっていた(.tile.scanning の
    既定 z-index:1 は sticky より低いまま)。スクロールモードでは常にスキャン対象を
-   sticky より前面にする(緊急タイル自身が対象の時は :first-child 側がそのまま
-   勝つので特に問題ない)。この規則は上の sticky 規則と詳細度が同じ(クラス4つ)なので
-   ソース順で後にある(=このルール)が勝つ */
+   sticky より前面にする。
+   緊急タイル自身が対象の時は同じ要素なのでこの規則でも問題ない */
 .grid-board:not(.grid-fill) .tile.scanning {
   z-index: 3;
 }

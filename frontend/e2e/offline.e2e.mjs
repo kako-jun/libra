@@ -336,7 +336,7 @@ async function checkLettersScrollLayout(chromium, port) {
       await page.keyboard.press('Space')
       await page.waitForTimeout(200)
 
-      // letters screen(2 段階文字盤の行段階): 緊急,戻る,あ〜わ行,確定,1字消す,はい・いいえ。
+      // letters screen(2 段階文字盤の行段階): 戻る,緊急,あ〜わ行,確定,1字消す,はい・いいえ。
       // 確定は末尾ではないので、ラベルから位置を引く
       const commitIndex = await page.evaluate(() =>
         [...document.querySelectorAll('.grid-board .tile')].findIndex(
@@ -353,8 +353,8 @@ async function checkLettersScrollLayout(chromium, port) {
         const scanning = document.querySelector('.tile.scanning')
         const h1 = document.querySelector('h1')
         const board = document.querySelector('.grid-board')
-        // 緊急タイルは常に .grid-board 内の1番目(menus.ts の homeScreen/subScreen)
-        const emergencyTile = board?.querySelector('.tile:first-child')
+        // #40: 緊急タイルは通常下位画面で2番目になるため、DOM順ではなく意味クラスで参照する
+        const emergencyTile = board?.querySelector('.tile-emergency')
         const scanningRect = scanning?.getBoundingClientRect()
         const h1Rect = h1?.getBoundingClientRect()
         const emergencyRect = emergencyTile?.getBoundingClientRect()
@@ -375,8 +375,7 @@ async function checkLettersScrollLayout(chromium, port) {
               h1Rect.right <= window.innerWidth + EPSILON
             : false,
           emergencyLabel: emergencyTile?.querySelector('.tile-label')?.textContent,
-          // PR#16 再レビュー must-A/B: 9項目以上(文字盤)のスクロールモードでも、
-          // 緊急タイルは position:sticky で .grid-board の可視範囲内に留まり続ける想定
+          // 9項目以上(文字盤)のスクロールモードでも、緊急タイルは sticky で可視範囲内に残る
           emergencyInBoardViewport:
             emergencyRect && boardRect
               ? emergencyRect.bottom > boardRect.top + EPSILON &&
@@ -752,6 +751,73 @@ async function checkLabelsFitAtXlarge(chromium, port) {
   return failures
 }
 
+async function checkBackNavigationAndEmergencyRetention(chromium, port) {
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+
+  try {
+    const page = await browser.newPage({ viewport: { width: 1024, height: 768 } })
+    await page.addInitScript(() => {
+      localStorage.setItem('libra', JSON.stringify({ intervalMs: 500, headHoldMultiplier: 1 }))
+    })
+    await page.goto(`http://localhost:${port}/`)
+    const labels = () => page.locator('.grid-board .tile-label').allTextContents()
+    const press = async () => {
+      await page.keyboard.press('Space')
+      await page.waitForTimeout(550)
+    }
+    const waitForCursor = async (label) => {
+      await page.waitForFunction(
+        (expected) => document.querySelector('.tile.scanning .tile-label')?.textContent === expected,
+        label,
+        { timeout: 8000 },
+      )
+    }
+    const select = async (label) => {
+      await waitForCursor(label)
+      await press()
+    }
+
+    await select('緊急')
+    const urgentLabels = await labels()
+    if (urgentLabels[0] !== '戻る' || urgentLabels.includes('緊急') || urgentLabels.length < 2) {
+      failures.push('[navigation] urgentDetail must start with Back and contain details without a duplicate Emergency tile')
+    }
+    await page.waitForFunction(
+      () => document.querySelector('.emergency-status-message')?.textContent?.includes('緊急です'),
+      null,
+      { timeout: 5000 },
+    )
+    await select('戻る')
+    if ((await labels())[0] !== '緊急') failures.push('[navigation] urgentDetail Back did not return to home')
+    if (!(await page.locator('.emergency-status-message').count())) {
+      failures.push('[navigation] emergency state was cleared when returning from urgentDetail')
+    }
+
+    await select('不快')
+    const discomfortLabels = await labels()
+    if (discomfortLabels[0] !== '戻る' || discomfortLabels[1] !== '緊急') {
+      failures.push('[navigation] ordinary child order is not Back, Emergency')
+    }
+    await select('痛い')
+    await select('戻る')
+    if ((await page.locator('.screen-guide h2').textContent()) !== 'つらいことを選んでください。') {
+      failures.push('[navigation] nested Back did not return from painLocation to discomfort')
+    }
+    if (!(await page.locator('.emergency-status-message').count())) {
+      failures.push('[navigation] emergency state was cleared during ordinary back navigation')
+    }
+  } catch (error) {
+    failures.push(`[navigation] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 /**
  * PR#16 3巡目 must-3: 文字サイズ設定(標準/大/特大)を上げたときに、タイルのラベル文字が
  * 逆に縮むことがないか(単調性: 標準 ≤ 大 ≤ 特大)を、6画面サイズ × 6画面で確認する。
@@ -1036,6 +1102,16 @@ async function main() {
     monotonicFailures.forEach((f) => console.error(f))
   }
   allFailures.push(...monotonicFailures)
+  port += 1
+
+  console.log(`--- checking: back-navigation-and-emergency-retention (port ${port}) ---`)
+  const navigationFailures = await checkBackNavigationAndEmergencyRetention(chromium, port)
+  if (navigationFailures.length === 0) {
+    console.log('[back-navigation-and-emergency-retention] OK')
+  } else {
+    navigationFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...navigationFailures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)

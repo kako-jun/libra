@@ -1,5 +1,5 @@
-// 画面ごとの項目定義。緊急詳細を除く現行画面の「先頭=緊急」「下位画面の2番目=戻る」を
-// 構造で保証するビルダー（戻る優先への全体変更は #40）。副作用は持たない。
+// 画面ごとの項目定義。ホーム以外の通常下位画面は「先頭=戻る、2番目=緊急」、
+// 緊急詳細は「先頭=戻る、緊急項目なし」を構造で保証するビルダー。副作用は持たない。
 // 正本: docs/requirements.md §2, §4
 
 import {
@@ -135,9 +135,9 @@ function homeScreen(items: MenuItem[]): MenuItem[] {
   return [EMERGENCY_ITEM, ...items]
 }
 
-/** 下位画面共通: 先頭は緊急、2番目は戻る。呼び出し側はこれをバイパスできない。 */
+/** 通常下位画面共通: 先頭は戻る、2番目は緊急。 */
 function subScreen(items: MenuItem[]): MenuItem[] {
-  return [EMERGENCY_ITEM, makeBackItem(), ...items]
+  return [makeBackItem(), EMERGENCY_ITEM, ...items]
 }
 
 function message(id: string, label: string, text: string, tone?: Tone): MenuItem {
@@ -268,7 +268,7 @@ export function buildPainLocationMenu(phrases?: PhraseSets): MenuItem[] {
 }
 
 /**
- * 痛みの強さ(Issue #12): 緊急 / 戻る / 場所だけ / 少し / かなり / とても。
+ * 痛みの強さ(Issue #12): 戻る / 緊急 / 場所だけ / 少し / かなり / とても。
  * 「場所だけ」を先頭に置き、強さを選べない・選びたくない場合でも最短で伝えられる。
  * 「とても」は緊急色。例: 不快→痛い→胸→とても →「胸がとても痛いです」。
  */
@@ -331,7 +331,7 @@ export const LETTER_ROWS: { name: string; chars: string[] }[] = [
   { name: 'わ行', chars: ['わ', 'を', 'ん', 'ー'] },
 ]
 
-/** 文字盤の行段階: 緊急 / 戻る / あ〜わ行 / 確定 / 1字消す / はい・いいえ → */
+/** 文字盤の行段階: 戻る / 緊急 / あ〜わ行 / 確定 / 1字消す / はい・いいえ → */
 export function buildLettersMenu(): MenuItem[] {
   const rowItems: MenuItem[] = LETTER_ROWS.map((row, index) => ({
     id: `letter-row-${index}`,
@@ -346,7 +346,7 @@ export function buildLettersMenu(): MenuItem[] {
   ])
 }
 
-/** 文字盤の文字段階: 緊急 / 戻る(行段階へ) / その行の文字 */
+/** 文字盤の文字段階: 戻る(行段階へ) / 緊急 / その行の文字 */
 export function buildLettersRowMenu(row = 0): MenuItem[] {
   const chars = LETTER_ROWS[row]?.chars ?? LETTER_ROWS[0].chars
   return subScreen(
@@ -363,7 +363,7 @@ export function buildLettersYesNoMenu(): MenuItem[] {
   return subScreen([message('yes', 'はい', 'はい', 'positive'), message('no', 'いいえ', 'いいえ')])
 }
 
-/** モールス入力画面。符号の入力に使うので項目は選ばない。緊急・戻るだけを構造として持つ */
+/** モールス入力画面。符号の入力に使うので項目は選ばない。戻る・緊急だけを構造として持つ */
 export function buildMorseMenu(): MenuItem[] {
   return subScreen([])
 }

@@ -133,13 +133,13 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // letters 画面へ遷移
     expect(container.querySelector('.letter-strip')).not.toBeNull()
 
-    // letters 画面(行段階): index0=緊急, index1=戻る, index2=あ行
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1(戻る)
+    // letters 画面(行段階): index0=戻る, index1=緊急, index2=あ行
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1(緊急)
     vi.advanceTimersByTime(INTERVAL_MS) // index2(あ行)
     fireEvent.keyDown(window, { key: ' ' }) // 1回目: あ行へ(文字段階)
     fireEvent.keyDown(window, { key: ' ' }) // 2回目: 連打無視区間内なので無視されるはず
     expect(h1Text(container)).not.toBe('緊急です。来てください') // 文字段階の先頭(緊急)を実行しない
-    expect(scanningLabel(container)).toBe('緊急') // 文字段階の先頭
+    expect(scanningLabel(container)).toBe('戻る') // 文字段階の先頭
     const output = container.querySelector('.letter-strip output')
     expect(output?.textContent).toBe('文字を選んでください')
   })
@@ -189,18 +189,17 @@ describe('App', () => {
     expect(container.querySelector('.letter-strip output')?.textContent).toBe('あ')
   })
 
-  it('Issue #4: 文字入力の途中(文字段階)でも先頭は緊急で、1周以内に届く', () => {
+  it('Issue #40: 文字入力の途中でも2番目に緊急があり、1周以内に届く', () => {
     const { container } = render(() => <App />)
     selectByScan(container, '文字盤')
     selectByScan(container, 'わ行')
-    expect(scanningLabel(container)).toBe('緊急')
-    // 文字段階の末尾(ー)まで進めても、次の1ステップで先頭(緊急)へ戻り、そこで届く
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 4)
-    expect(scanningLabel(container)).toBe('ー')
-    vi.advanceTimersByTime(INTERVAL_MS)
+    expect(scanningLabel(container)).toBe('戻る')
+    // 文字段階の2番目が緊急。戻るの次の1ステップで届く
+    vi.advanceTimersByTime(HEAD_HOLD_MS)
     expect(scanningLabel(container)).toBe('緊急')
     fireEvent.keyDown(window, { key: ' ' })
     expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(scanningLabel(container)).toBe('戻る')
   })
 
   it('緊急選択で確認なしに即「緊急です。来てください」を表示し緊急詳細画面へ遷移する', () => {
@@ -213,8 +212,7 @@ describe('App', () => {
   it('Issue #44: 緊急中の「はい」は緊急状態と混ぜず「直前に伝えたこと」へ出る', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急選択 → urgentDetail
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // urgentDetail index1=戻る
-    fireEvent.keyDown(window, { key: ' ' }) // home へ戻る
+    selectByLabel(container, '戻る') // urgentDetail の先頭から home へ戻る
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
     expect(scanningLabel(container)).toBe('はい')
     fireEvent.keyDown(window, { key: ' ' }) // はい を選択
@@ -553,7 +551,7 @@ describe('App', () => {
     expect(editor.querySelector('[role="note"]')?.textContent).toContain('表示されません')
   })
 
-  it('Issue #8: 編集してもスキャンの先頭は緊急、戻るは2番目のまま', () => {
+  it('Issue #8/#40: 編集しても戻る・緊急の位置は固定される', () => {
     window.localStorage.setItem(
       'libra',
       JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'テレビ', text: 'テレビ' }] } }),
@@ -561,8 +559,8 @@ describe('App', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, '快・要望')
     selectByLabel(container, '要望')
-    expect(scanningLabel(container)).toBe('緊急')
-    expect(tileLabels(container).slice(0, 3)).toEqual(['緊急', '戻る', 'テレビ'])
+    expect(scanningLabel(container)).toBe('戻る')
+    expect(tileLabels(container).slice(0, 3)).toEqual(['戻る', '緊急', 'テレビ'])
   })
 
   it('Issue #8: 「この画面を既定に戻す」で既定のフレーズに戻る', () => {
@@ -673,7 +671,7 @@ describe('App', () => {
     selectByLabel(container, '不快')
     selectByLabel(container, '痛い')
     selectByLabel(container, '胸')
-    expect(tileLabels(container)).toEqual(['緊急', '戻る', '場所だけ', '少し', 'かなり', 'とても'])
+    expect(tileLabels(container)).toEqual(['戻る', '緊急', '場所だけ', '少し', 'かなり', 'とても'])
     expect(h1Text(container)).not.toBe('胸がとても痛いです') // まだ伝達していない
     selectByLabel(container, 'とても')
     expect(h1Text(container)).toBe('胸がとても痛いです')
@@ -713,12 +711,12 @@ describe('App', () => {
     expect(container.querySelector('.message-panel h1')?.textContent).toBe('胸がとても痛いです')
   })
 
-  it('Issue #12: 強さの画面でも先頭は緊急、戻るで痛い場所へ戻れる', () => {
+  it('Issue #12/#40: 強さの画面は戻るが先頭で、痛い場所へ戻れる', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, '不快')
     selectByLabel(container, '痛い')
     selectByLabel(container, 'おなか')
-    expect(scanningLabel(container)).toBe('緊急')
+    expect(scanningLabel(container)).toBe('戻る')
     selectByLabel(container, '戻る')
     expect(tileLabels(container)).toContain('おなか') // 痛い場所の一覧
   })
@@ -989,7 +987,7 @@ describe('App', () => {
     expect(h1Text(container)).not.toBe('緊急です。来てください')
   })
 
-  it('S4: 聴覚スキャンON時、画面遷移直後にも先頭項目(通常は緊急)を読む', () => {
+  it('S4/#40: 聴覚スキャンON時、画面遷移直後に先頭項目(通常は戻る)を読む', () => {
     const { container } = render(() => <App />)
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
@@ -1012,7 +1010,7 @@ describe('App', () => {
 
     expect(speak).toHaveBeenCalled()
     const lastUtterance = speak.mock.calls[speak.mock.calls.length - 1][0] as { text: string }
-    expect(lastUtterance.text).toBe('緊急')
+    expect(lastUtterance.text).toBe('戻る')
   })
 
   it('Issue #3 追加指示: navigate タイルの聴覚スキャン読み上げはラベルのみ(山形アイコン・予告の記号は読まない)', () => {

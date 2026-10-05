@@ -152,7 +152,7 @@ Source of truth: `docs/requirements.md`.
 
 - The patient has exactly one input: a single "on" (tap anywhere / any key / Bluetooth shutter) timed to an automatic scan cursor.
 - Scanning runs from startup and never requires the patient to start or stop it.
-- As implemented at Issue #44, Home and ordinary child screens start with Emergency; ordinary child screens put Back second. The emergency-detail screen is the exception: it starts with Back and omits a duplicate Emergency tile because the emergency state is already active. Issue #40 has an approved but not-yet-implemented change to reverse ordinary child screens to Back then Emergency.
+- Home starts with Emergency. Ordinary child screens start with Back and put Emergency second. The emergency-detail screen starts with Back and omits a duplicate Emergency tile because the emergency state is already active. Back follows the explicit parent-screen tree in `docs/requirements.md`; returning from emergency detail keeps the unresolved emergency state visible.
 - Caregiver menu opens with a 2-second long press on the button in the current-screen guidance area's top-right corner; it is not in the scan cycle.
 - Number keys 1-9 are a developer/caregiver aid only and hidden by default.
 - Speech can be OFF, tone-only, short, or full. The emergency alarm sounds even when OFF.
