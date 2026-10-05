@@ -152,7 +152,7 @@ describe('緊急と取り違える項目・画面の項目数', () => {
   })
 })
 
-describe('編集しても緊急が先頭・戻るが2番目から外れない(安全の優先順位 §2・§4.1)', () => {
+describe('編集しても戻る・緊急の位置が固定される(安全の優先順位 §2・§4.1)', () => {
   const hostile = {
     discomfort: [],
     discomfortOther: [{ id: 'x', label: '緊急', text: '緊急です' }],
@@ -171,11 +171,11 @@ describe('編集しても緊急が先頭・戻るが2番目から外れない(�
     'moodRequest',
     'requests',
     'feelings',
-  ] as const)('%s: 空・予約ラベル・上限いっぱいでも items[0]=緊急, items[1]=戻る', (screen) => {
+  ] as const)('%s: 空・予約ラベル・上限いっぱいでも items[0]=戻る, items[1]=緊急', (screen) => {
     for (const phrases of [undefined, {}, hostile]) {
       const items = buildMenu(screen, { showUndo: false, emergencyActive: false, phrases })
-      expect(items[0].action).toEqual({ type: 'emergency' })
-      expect(items[1].action).toEqual({ type: 'back' })
+      expect(items[0].action).toEqual({ type: 'back' })
+      expect(items[1].action).toEqual({ type: 'emergency' })
     }
   })
 
@@ -191,7 +191,7 @@ describe('編集しても緊急が先頭・戻るが2番目から外れない(�
       emergencyActive: false,
       phrases,
     }).map((i) => i.label)
-    expect(labels).toEqual(['緊急', '戻る', '痛い', 'のど', 'その他'])
+    expect(labels).toEqual(['戻る', '緊急', '痛い', 'のど', 'その他'])
   })
 
   it('下位画面へ進むタイルの予告に、編集後のフレーズが反映される', () => {

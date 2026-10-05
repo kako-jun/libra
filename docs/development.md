@@ -43,7 +43,7 @@ npm run build   # dist/ を作る(scripts/generate-precache-manifest.mjs が sw.
 npm run e2e     # dist/ を素の静的配信 / Cloudflare Pages 相当 / ドットファイル404環境の3パターンで検証する
 ```
 
-`frontend/e2e/offline.e2e.mjs` が各配信モードで静的サーバーを立て、Playwright(Chromium) でオフライン化した状態の reload とディープリンク(`/foo/bar` 等)への直接アクセスがアプリのシェルまで表示できることを確認する。Chromium の実行体が `playwright install` 済みでない場合は `PLAYWRIGHT_CHROMIUM_PATH` 環境変数で既存の Chromium 実行ファイルを指定する(例: `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run e2e`)。
+`frontend/e2e/offline.e2e.mjs` が各配信モードで静的サーバーを立て、Playwright(Chromium) でオフライン化した状態の reload とディープリンク(`/foo/bar` 等)への直接アクセスがアプリのシェルまで表示できることを確認する。最後に実ブラウザで、緊急詳細の戻る・状態保持、通常下位画面の戻る→緊急順、痛い場所から不快への親戻りも検証する。Chromium の実行体が `playwright install` 済みでない場合は `PLAYWRIGHT_CHROMIUM_PATH` 環境変数で既存の Chromium 実行ファイルを指定する(例: `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run e2e`)。
 
 ## PWA アイコンの再生成
 

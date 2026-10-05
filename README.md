@@ -10,7 +10,7 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 
 - **Single-switch input only** — The patient has exactly one input: a tap anywhere on the screen, any key (Bluetooth shutter buttons arrive as key presses), or a Bluetooth shutter itself. All of these are the same "on" signal.
 - **Always-on auto scan** — Scanning runs from app startup; there is no start/stop control in the patient's path, since a stopped scan can't be restarted by someone who can't reach a "start" button.
-- **Safety-ordered screens** — Every screen's scan lap starts with Emergency; sub-screens put Back right after it. Free-text letter board sits behind the structured menus, never in front.
+- **Safety-ordered screens** — Home starts with Emergency; ordinary sub-screens start with Back, then Emergency; the urgent-detail screen starts with Back followed by the remaining detail choices. Free-text letter board sits behind the structured menus, never in front.
 - **Large grid UI** — Not fixed to Esuna's 9-grid rule, but keeps the same easy-to-press grid feeling.
 - **Message display** — The selected phrase is shown in large type so the person nearby can read it.
 - **Emergency alarm** — Selecting Emergency shows a red banner with no confirmation step and sounds a Web Audio alarm (works even with speech OFF) until a caregiver clears it. Emergency is restored after a reload or restart until a caregiver clears it.
@@ -24,7 +24,7 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 | Area                                                  | Status                                                               |
 | ----------------------------------------------------- | -------------------------------------------------------------------- |
 | Single-switch scanning (tap / any key / BT shutter)   | Working                                                              |
-| Safety-ordered screens (Emergency first, Back second) | Working                                                              |
+| Safety-ordered screens (home: Emergency; sub-screens: Back, Emergency) | Working                                                              |
 | Emergency + alarm                                     | Working                                                              |
 | Yes / No                                              | Working                                                              |
 | Discomfort / mood / pain location                     | Working                                                              |

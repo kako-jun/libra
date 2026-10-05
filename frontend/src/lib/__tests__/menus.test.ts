@@ -17,11 +17,16 @@ const ALL_SCREENS: ScreenId[] = [...PATIENT_SCREEN_IDS]
 const homeOptions = { showUndo: false, emergencyActive: false }
 
 describe('buildMenu の共通規則', () => {
-  it.each(ALL_SCREENS.filter((screen) => screen !== 'urgentDetail'))(
-    '%s: 緊急詳細以外は先頭項目(items[0])が緊急である（戻る順は #40 で変更予定）',
+  it('home: 先頭項目は緊急である', () => {
+    expect(buildMenu('home', homeOptions)[0].action).toEqual({ type: 'emergency' })
+  })
+
+  it.each(ALL_SCREENS.filter((screen) => screen !== 'home' && screen !== 'urgentDetail'))(
+    '%s: 通常下位画面の先頭は戻る、2番目は緊急である',
     (screen) => {
       const items = buildMenu(screen, homeOptions)
-      expect(items[0].action).toEqual({ type: 'emergency' })
+      expect(items[0].action).toEqual({ type: 'back' })
+      expect(items[1].action).toEqual({ type: 'emergency' })
     },
   )
 
@@ -37,14 +42,6 @@ describe('buildMenu の共通規則', () => {
       if (screen !== 'home') expect(PARENT_SCREEN[screen]).toBeDefined()
     }
   })
-
-  it.each(ALL_SCREENS.filter((s) => s !== 'home' && s !== 'urgentDetail'))(
-    '%s: homeと緊急詳細以外は items[1] が戻るである',
-    (screen) => {
-      const items = buildMenu(screen, homeOptions)
-      expect(items[1].action).toEqual({ type: 'back' })
-    },
-  )
 
   // 文字盤の行段階(letters)は あ〜わ行 + 確定/1字消す/はい・いいえ で8項目を超える(§4.6)。
   it.each(ALL_SCREENS.filter((s) => s !== 'letters'))('%s: 項目数は8以内である', (screen) => {
@@ -215,7 +212,7 @@ describe('ホームの並び順(安全の優先順位 §2 の回帰テスト)', 
 })
 
 describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
-  it('不快タイルの予告は遷移先(discomfort)の緊急・戻るを除いた先頭項目から自動生成される', () => {
+  it('不快タイルの予告は遷移先(discomfort)の戻る・緊急を除いた先頭項目から自動生成される', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
     const discomfortTile = items.find((item) => item.id === 'discomfort-nav')
     expect(discomfortTile?.preview).toBe('痛い・苦しい・痰を取ってほしい・体の向きを変えたい…')
@@ -258,11 +255,11 @@ describe('文字盤(§4.6)', () => {
     expect(LETTER_ROWS[9].chars).toEqual(['わ', 'を', 'ん', 'ー'])
   })
 
-  it('行段階: 緊急→戻る→あ〜わ行→確定→1字消す→はい・いいえ', () => {
+  it('行段階: 戻る→緊急→あ〜わ行→確定→1字消す→はい・いいえ', () => {
     const labels = buildMenu('letters', homeOptions).map((item) => item.label)
     expect(labels).toEqual([
-      '緊急',
       '戻る',
+      '緊急',
       ...LETTER_ROWS.map((row) => row.name),
       '確定',
       '1字消す',
@@ -270,17 +267,17 @@ describe('文字盤(§4.6)', () => {
     ])
   })
 
-  it('文字段階: 緊急→戻る→その行の文字(8項目以内)', () => {
+  it('文字段階: 戻る→緊急→その行の文字(8項目以内)', () => {
     LETTER_ROWS.forEach((row, index) => {
       const items = buildLettersRowMenu(index)
-      expect(items.map((item) => item.label)).toEqual(['緊急', '戻る', ...row.chars])
+      expect(items.map((item) => item.label)).toEqual(['戻る', '緊急', ...row.chars])
       expect(items.length).toBeLessThanOrEqual(8)
     })
   })
 
-  it('はい・いいえ画面: 緊急→戻る→はい→いいえ', () => {
+  it('はい・いいえ画面: 戻る→緊急→はい→いいえ', () => {
     const labels = buildMenu('lettersYesNo', homeOptions).map((item) => item.label)
-    expect(labels).toEqual(['緊急', '戻る', 'はい', 'いいえ'])
+    expect(labels).toEqual(['戻る', '緊急', 'はい', 'いいえ'])
   })
 })
 
@@ -308,9 +305,9 @@ describe('モールス入力(Issue #14)', () => {
     expect(items.length).toBeLessThanOrEqual(8)
   })
 
-  it('モールス画面は緊急・戻るだけを構造として持ち、戻る先はホーム', () => {
+  it('モールス画面は戻る・緊急だけを構造として持ち、戻る先はホーム', () => {
     const items = buildMenu('morse', homeOptions)
-    expect(items.map((i) => i.action.type)).toEqual(['emergency', 'back'])
+    expect(items.map((i) => i.action.type)).toEqual(['back', 'emergency'])
     expect(PARENT_SCREEN.morse).toBe('home')
   })
 })
@@ -332,11 +329,11 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     })
   })
 
-  it('強さの画面: 緊急→戻る→場所だけ→少し→かなり→とても(8項目以内)', () => {
+  it('強さの画面: 戻る→緊急→場所だけ→少し→かなり→とても(8項目以内)', () => {
     const items = buildMenu('painIntensity', { ...homeOptions, pain: head })
     expect(items.map((i) => i.label)).toEqual([
-      '緊急',
       '戻る',
+      '緊急',
       '場所だけ',
       '少し',
       'かなり',
@@ -367,20 +364,20 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     expect(tone(chest1, '場所だけ')).toBe('urgent')
   })
 
-  it('場所が未選択でも、強さの画面は緊急・戻るを持つ', () => {
+  it('場所が未選択でも、強さの画面は戻る・緊急を持つ', () => {
     const items = buildMenu('painIntensity', homeOptions)
-    expect(items.map((i) => i.action.type)).toEqual(['emergency', 'back'])
+    expect(items.map((i) => i.action.type)).toEqual(['back', 'emergency'])
   })
 
   it('強さの画面の戻る先は痛い場所', () => {
     expect(PARENT_SCREEN.painIntensity).toBe('painLocation')
   })
 
-  it('快・要望: 緊急→戻る→続けて→やめて→もっと→変えて→要望→気分(8項目)', () => {
+  it('快・要望: 戻る→緊急→続けて→やめて→もっと→変えて→要望→気分(8項目)', () => {
     const items = buildMenu('moodRequest', homeOptions)
     expect(items.map((i) => i.label)).toEqual([
-      '緊急',
       '戻る',
+      '緊急',
       '続けて',
       'やめて',
       'もっと',
@@ -408,8 +405,8 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     expect(PARENT_SCREEN.requests).toBe('moodRequest')
     expect(PARENT_SCREEN.feelings).toBe('moodRequest')
     expect(buildMenu('requests', homeOptions).map((i) => i.label)).toEqual([
-      '緊急',
       '戻る',
+      '緊急',
       '大丈夫',
       'ありがとう',
       '眠りたい',
@@ -418,8 +415,8 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
       '話したい',
     ])
     expect(buildMenu('feelings', homeOptions).map((i) => i.label)).toEqual([
-      '緊急',
       '戻る',
+      '緊急',
       '不安',
       'さみしい',
       '落ち着かない',

@@ -450,7 +450,7 @@ export default function App() {
     }
     setScreen(next)
     setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
-    // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常は緊急)も読む。
+    // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常下位画面では戻る)も読む。
     // 直前の伝達読み上げが済んでいれば messageAnnounceGrace により cancel されない(S-new-1)
     if (settings().auditoryScan) {
       const first = buildMenu(next, {
@@ -1084,6 +1084,7 @@ export default function App() {
               classList={{
                 scanning: scanState().index === index(),
                 'tile-nav': item.action.type === 'navigate',
+                'tile-emergency': item.action.type === 'emergency',
               }}
               style={
                 gridLayout().fill &&
