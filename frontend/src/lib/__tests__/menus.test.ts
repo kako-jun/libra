@@ -4,9 +4,11 @@ import {
   PATIENT_SCREEN_IDS,
   PARENT_SCREEN,
   SCREEN_GUIDANCE,
+  URGENT_DETAIL_LABELS,
   buildHomeMenu,
   buildLettersRowMenu,
   buildMenu,
+  buildUrgentDetailMenu,
   type ScreenId,
 } from '../menus'
 
@@ -29,14 +31,6 @@ describe('buildMenu の共通規則', () => {
     expect(items.some((item) => item.action.type === 'emergency')).toBe(false)
   })
 
-  it('urgentDetail: すでに伝えた詳細は状態表示だけに残し、操作候補から除く', () => {
-    const items = buildMenu('urgentDetail', {
-      ...homeOptions,
-      emergencyDetails: ['苦しい', '胸が痛い'],
-    })
-    expect(items.map((item) => item.label)).toEqual(['戻る', '痛い', '息ができない', '吐きそう'])
-  })
-
   it('全 ScreenId が案内文を持ち、画面列挙と親定義から漏れない', () => {
     for (const screen of PATIENT_SCREEN_IDS) {
       expect(SCREEN_GUIDANCE[screen]).toMatch(/。$/)
@@ -56,6 +50,100 @@ describe('buildMenu の共通規則', () => {
   it.each(ALL_SCREENS.filter((s) => s !== 'letters'))('%s: 項目数は8以内である', (screen) => {
     const items = buildMenu(screen, { showUndo: true, emergencyActive: false })
     expect(items.length).toBeLessThanOrEqual(8)
+  })
+})
+
+describe('本人画面の階層構造', () => {
+  const expectedScreens: ScreenId[] = [
+    'home',
+    'urgentDetail',
+    'discomfort',
+    'discomfortOther',
+    'painLocation',
+    'painIntensity',
+    'moodRequest',
+    'requests',
+    'feelings',
+    'letters',
+    'lettersRow',
+    'lettersYesNo',
+    'morse',
+  ]
+
+  const expectedParents: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
+    urgentDetail: 'home',
+    discomfort: 'home',
+    discomfortOther: 'discomfort',
+    painLocation: 'discomfort',
+    painIntensity: 'painLocation',
+    moodRequest: 'home',
+    requests: 'moodRequest',
+    feelings: 'moodRequest',
+    letters: 'home',
+    lettersRow: 'letters',
+    lettersYesNo: 'letters',
+    morse: 'home',
+  }
+
+  it('仕様書の全 ScreenId と親マップを過不足なく列挙する', () => {
+    expect(PATIENT_SCREEN_IDS).toEqual(expectedScreens)
+    expect(PARENT_SCREEN).toEqual(expectedParents)
+    expect(Object.keys(PARENT_SCREEN)).toEqual(
+      expectedScreens.filter((screen) => screen !== 'home'),
+    )
+  })
+
+  it.each(expectedScreens.filter((screen) => screen !== 'home'))(
+    '%s: 親をたどると循環せず home へ到達する',
+    (start) => {
+      const visited = new Set<ScreenId>()
+      let current: ScreenId = start
+
+      while (current !== 'home') {
+        expect(visited.has(current), `${start} からの親経路が ${current} で循環`).toBe(false)
+        visited.add(current)
+        const parent: ScreenId | undefined = PARENT_SCREEN[current]
+        expect(parent, `${current} の親が未定義`).toBeDefined()
+        expect(expectedScreens, `${current} の親 ${parent} が未知の ScreenId`).toContain(parent)
+        current = parent as ScreenId
+      }
+    },
+  )
+})
+
+describe('urgentDetail の選択済み候補除外', () => {
+  const labels = (selectedDetails?: readonly string[]) =>
+    buildUrgentDetailMenu(selectedDetails).map((item) => item.label)
+
+  it.each([
+    ['未設定', undefined, ['戻る', ...URGENT_DETAIL_LABELS]],
+    ['0件', [], ['戻る', ...URGENT_DETAIL_LABELS]],
+    ['1件', ['苦しい'], ['戻る', '痛い', '息ができない', '吐きそう', '胸が痛い']],
+    ['4件', URGENT_DETAIL_LABELS.slice(0, 4), ['戻る', '胸が痛い']],
+    ['5件', URGENT_DETAIL_LABELS, ['戻る']],
+  ] as const)('%s選択済みなら未選択候補だけを元の順序で返す', (_case, selected, expected) => {
+    expect(labels(selected)).toEqual(expected)
+  })
+
+  it('未知値と重複値は候補を余分に除外せず、既知の選択済みだけを1件除く', () => {
+    expect(labels(['苦しい', '苦しい', '未知の状態', ''])).toEqual([
+      '戻る',
+      '痛い',
+      '息ができない',
+      '吐きそう',
+      '胸が痛い',
+    ])
+  })
+
+  it('残る候補はすべて emergencyDetail で、戻るだけの境界では詳細アクションがない', () => {
+    const remaining = buildUrgentDetailMenu(['苦しい', '痛い', '息ができない', '吐きそう'])
+    expect(remaining[0].action).toEqual({ type: 'back' })
+    expect(remaining.slice(1).map((item) => item.action)).toEqual([
+      { type: 'emergencyDetail', label: '胸が痛い' },
+    ])
+    expect(buildUrgentDetailMenu(URGENT_DETAIL_LABELS).map((item) => item.action)).toEqual([
+      { type: 'back' },
+    ])
   })
 })
 

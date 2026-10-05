@@ -224,6 +224,48 @@ describe('App', () => {
     expect(container.querySelector('.emergency-sub')).toBeNull()
   })
 
+  it('Issue #44: 緊急状態・画面案内・直前の伝達は別領域を保ち、通常伝達だけを更新する', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
+    selectByLabel(container, '苦しい') // 緊急詳細へ追記 → home
+    selectByLabel(container, 'はい') // 緊急中の通常伝達
+
+    const emergencyStatus = container.querySelector('.emergency-status') as HTMLElement
+    const screenGuide = container.querySelector('.screen-guide') as HTMLElement
+    const messagePanel = container.querySelector('.message-panel') as HTMLElement
+
+    expect(emergencyStatus.textContent).toContain('緊急です。来てください')
+    expect(emergencyStatus.textContent).toContain('伝えた状態:')
+    expect(emergencyStatus.textContent).toContain('苦しい')
+    expect(emergencyStatus.textContent).not.toContain('はい')
+    expect(emergencyStatus.textContent).not.toContain('伝えたいことを選んでください。')
+
+    expect(screenGuide.querySelector('.screen-name')?.textContent).toBe('libra')
+    expect(screenGuide.querySelector('h2')?.textContent).toBe('伝えたいことを選んでください。')
+    expect(screenGuide.textContent).not.toContain('緊急です。来てください')
+    expect(screenGuide.textContent).not.toContain('苦しい')
+    expect(screenGuide.textContent).not.toContain('はい')
+
+    expect(messagePanel.getAttribute('aria-label')).toBe('直前に伝えたこと')
+    expect(messagePanel.querySelector('h1')?.textContent).toBe('はい')
+    expect(messagePanel.textContent).not.toContain('緊急です。来てください')
+    expect(messagePanel.textContent).not.toContain('苦しい')
+    expect(messagePanel.textContent).not.toContain('伝えたいことを選んでください。')
+
+    const emergencyBefore = emergencyStatus.textContent
+    const guidanceBefore = screenGuide.querySelector('h2')?.textContent
+    selectByLabel(container, 'いいえ')
+
+    expect(container.querySelector('.emergency-status')?.textContent).toBe(emergencyBefore)
+    expect(container.querySelector('.screen-guide h2')?.textContent).toBe(guidanceBefore)
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('いいえ')
+    expect(JSON.parse(window.localStorage.getItem('libra:emergency') as string)).toEqual({
+      active: true,
+      details: ['苦しい'],
+      sub: 'いいえ',
+    })
+  })
+
   it('Issue #44: 緊急状態・選択済み詳細・画面案内・候補を分離したまま画面移動できる', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
