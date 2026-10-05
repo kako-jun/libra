@@ -5,6 +5,7 @@ import {
   PARENT_SCREEN,
   SCREEN_GUIDANCE,
   URGENT_DETAIL_LABELS,
+  buildScreenBreadcrumb,
   buildHomeMenu,
   buildLettersRowMenu,
   buildMenu,
@@ -17,6 +18,31 @@ const ALL_SCREENS: ScreenId[] = [...PATIENT_SCREEN_IDS]
 const homeOptions = { showUndo: false, emergencyActive: false }
 
 describe('buildMenu の共通規則', () => {
+  it('すべてのScreenIdのパンくずはhomeから始まり、最終画面まで親定義をたどる', () => {
+    for (const screen of PATIENT_SCREEN_IDS) {
+      const breadcrumb = buildScreenBreadcrumb(screen)
+      expect(breadcrumb[0]).toBe('ホーム')
+      expect(breadcrumb.at(-1)).toBeDefined()
+      expect(breadcrumb.length).toBeGreaterThanOrEqual(1)
+      if (screen === 'home') expect(breadcrumb).toEqual(['ホーム'])
+    }
+  })
+
+  it('動的画面のパンくずは採用した痛みの場所・文字盤の行を含む', () => {
+    expect(buildScreenBreadcrumb('painIntensity', { painLabel: '胸' })).toEqual([
+      'ホーム',
+      '不快',
+      '胸',
+      '痛みの強さ',
+    ])
+    expect(buildScreenBreadcrumb('lettersRow', { letterRowLabel: 'あ行' })).toEqual([
+      'ホーム',
+      '文字盤',
+      'あ行',
+      '文字盤・文字',
+    ])
+  })
+
   it('home: 先頭項目は緊急である', () => {
     expect(buildMenu('home', homeOptions)[0].action).toEqual({ type: 'emergency' })
   })

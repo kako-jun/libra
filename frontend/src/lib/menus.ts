@@ -86,7 +86,7 @@ export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
 }
 
 export const SCREEN_TITLES: Record<ScreenId, string> = {
-  home: 'libra',
+  home: 'ホーム',
   urgentDetail: '緊急',
   discomfort: '不快',
   discomfortOther: '不快・その他',
@@ -99,6 +99,27 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   lettersRow: '文字盤・文字',
   lettersYesNo: '文字盤・はい/いいえ',
   morse: 'モールス入力',
+}
+
+/** 現在地をホームからの親子経路として表示する。全ScreenIdをPARENT_SCREENから導出する。 */
+export function buildScreenBreadcrumb(
+  screen: ScreenId,
+  dynamic?: { painLabel?: string; letterRowLabel?: string },
+): string[] {
+  const path: ScreenId[] = [screen]
+  let current = screen
+  while (current !== 'home') {
+    current = PARENT_SCREEN[current]
+    path.unshift(current)
+  }
+  const titles = path.map((id) => SCREEN_TITLES[id])
+  if (screen === 'painIntensity' && dynamic?.painLabel) {
+    titles[titles.length - 2] = dynamic.painLabel
+  }
+  if (screen === 'lettersRow' && dynamic?.letterRowLabel) {
+    titles.splice(titles.length - 1, 0, dynamic.letterRowLabel)
+  }
+  return titles
 }
 
 /** 画面上部に常に出す、本人向けの目的と操作案内。選択結果や緊急状態はここへ混ぜない。 */

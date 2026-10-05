@@ -238,7 +238,7 @@ describe('App', () => {
     expect(emergencyStatus.textContent).not.toContain('はい')
     expect(emergencyStatus.textContent).not.toContain('伝えたいことを選んでください。')
 
-    expect(screenGuide.querySelector('.screen-name')?.textContent).toBe('libra')
+    expect(screenGuide.querySelector('.screen-breadcrumb')?.textContent).toBe('ホーム')
     expect(screenGuide.querySelector('h2')?.textContent).toBe('伝えたいことを選んでください。')
     expect(screenGuide.textContent).not.toContain('緊急です。来てください')
     expect(screenGuide.textContent).not.toContain('苦しい')
@@ -289,6 +289,49 @@ describe('App', () => {
     )
     expect(container.querySelector('.emergency-status-message')).not.toBeNull()
     expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+  })
+
+  it('Issue #37: 選択後の現在地と採用内容を表示し、戻ると親画面へ追従する', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '不快')
+    expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('ホーム')
+    expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
+    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('不快')
+
+    selectByLabel(container, '痛い')
+    expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛い場所')
+    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('痛い')
+
+    selectByLabel(container, '胸')
+    expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('胸')
+    expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛みの強さ')
+    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('胸')
+
+    selectByLabel(container, '戻る')
+    expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛い場所')
+    expect(container.querySelector('.screen-breadcrumb')?.textContent).not.toContain('痛みの強さ')
+    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('戻る')
+  })
+
+  it('Issue #37: 開発用の直接番号入力でも採用内容と現在地が更新される', () => {
+    window.history.replaceState({}, '', '/?dev')
+    const { container } = render(() => <App />)
+    window.history.replaceState({}, '', '/')
+    fireEvent.keyDown(window, { key: '4' }) // home の4番目=不快
+    expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
+    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('不快')
+  })
+
+  it('Issue #37: 通常伝達・緊急詳細は採用確認を重複表示せず、専用領域だけを使う', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, 'はい')
+    expect(container.querySelector('.selection-confirmation')).toBeNull()
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい')
+
+    selectByLabel(container, '緊急')
+    selectByLabel(container, '苦しい')
+    expect(container.querySelector('.selection-confirmation')).toBeNull()
+    expect(container.querySelector('.emergency-status')?.textContent).toContain('苦しい')
   })
 
   it('緊急中はホームに取り消しが出ない', () => {
