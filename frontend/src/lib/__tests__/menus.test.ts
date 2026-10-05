@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { PAIN_INTENSITY_WORDS } from '../phrases'
 import {
   LETTER_ROWS,
   PATIENT_SCREEN_IDS,
@@ -18,6 +19,28 @@ const ALL_SCREENS: ScreenId[] = [...PATIENT_SCREEN_IDS]
 const homeOptions = { showUndo: false, emergencyActive: false }
 
 describe('buildMenu の共通規則', () => {
+  it('すべてのScreenIdでパンくずが完全な親経路と一致する', () => {
+    const expectedBreadcrumbs: Record<ScreenId, string[]> = {
+      home: ['ホーム'],
+      urgentDetail: ['ホーム', '緊急'],
+      discomfort: ['ホーム', '不快'],
+      discomfortOther: ['ホーム', '不快', '不快・その他'],
+      painLocation: ['ホーム', '不快', '痛い場所'],
+      painIntensity: ['ホーム', '不快', '痛い場所', '痛みの強さ'],
+      moodRequest: ['ホーム', '快・要望'],
+      requests: ['ホーム', '快・要望', '要望'],
+      feelings: ['ホーム', '快・要望', '気分'],
+      letters: ['ホーム', '文字盤'],
+      lettersRow: ['ホーム', '文字盤', '文字盤・文字'],
+      lettersYesNo: ['ホーム', '文字盤', '文字盤・はい/いいえ'],
+      morse: ['ホーム', 'モールス入力'],
+    }
+
+    for (const screen of PATIENT_SCREEN_IDS) {
+      expect(buildScreenBreadcrumb(screen), screen).toEqual(expectedBreadcrumbs[screen])
+    }
+  })
+
   it('すべてのScreenIdのパンくずはhomeから始まり、最終画面まで親定義をたどる', () => {
     for (const screen of PATIENT_SCREEN_IDS) {
       const breadcrumb = buildScreenBreadcrumb(screen)
@@ -301,6 +324,25 @@ describe('文字盤(§4.6)', () => {
     })
   })
 
+  it('全行を選び直したときも、その行だけの文字候補と採用アクションを作る', () => {
+    LETTER_ROWS.forEach((row, index) => {
+      const items = buildLettersRowMenu(index)
+      expect(
+        items.slice(2).map((item) => item.label),
+        row.name,
+      ).toEqual(row.chars)
+      expect(
+        items.slice(2).map((item) => item.action),
+        row.name,
+      ).toEqual(row.chars.map((char) => ({ type: 'letterAppend', char })))
+    })
+    expect(
+      buildLettersRowMenu(undefined)
+        .slice(2)
+        .map((item) => item.label),
+    ).toEqual(LETTER_ROWS[0].chars)
+  })
+
   it('はい・いいえ画面: 戻る→緊急→はい→いいえ', () => {
     const labels = buildMenu('lettersYesNo', homeOptions).map((item) => item.label)
     expect(labels).toEqual(['戻る', '緊急', 'はい', 'いいえ'])
@@ -378,6 +420,28 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     expect(text('かなり')?.text).toBe('胸がかなり痛いです')
     expect(text('少し')?.text).toBe('胸が少し痛いです')
     expect(text('場所だけ')?.text).toBe('胸が痛いです')
+  })
+
+  it('痛みの強さは未設定時に選択候補を出さず、場所の選び直し後は全候補の文面を更新する', () => {
+    expect(buildMenu('painIntensity', homeOptions).map((item) => item.label)).toEqual([
+      '戻る',
+      '緊急',
+    ])
+
+    const items = buildMenu('painIntensity', {
+      ...homeOptions,
+      pain: { label: 'おなか', text: 'おなかが痛いです' },
+    })
+    expect(items.slice(2).map((item) => item.label)).toEqual([
+      '場所だけ',
+      ...Object.values(PAIN_INTENSITY_WORDS),
+    ])
+    expect(items.slice(2).map((item) => item.action)).toEqual([
+      { type: 'message', text: 'おなかが痛いです', tone: undefined },
+      { type: 'message', text: 'おなかが少し痛いです', tone: undefined },
+      { type: 'message', text: 'おなかがかなり痛いです', tone: undefined },
+      { type: 'message', text: 'おなかがとても痛いです', tone: 'urgent' },
+    ])
   })
 
   it('「とても」は緊急色、場所の色(胸=緊急色)は少し/かなり/場所だけにも引き継ぐ', () => {
