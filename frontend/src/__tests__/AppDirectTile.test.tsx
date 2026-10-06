@@ -66,6 +66,9 @@ function tile(container: HTMLElement, label: string): HTMLElement {
 function screenLabel(container: HTMLElement): string {
   return container.querySelector('.grid-board')?.getAttribute('aria-label') ?? ''
 }
+// click に pointerId を載せる(本番の Chrome と同じ pointerId 一致経路)。fireEvent.click は pointerId が undefined
+const pointerClick = (el: Element, pointerId: number) =>
+  fireEvent(el, new PointerEvent('click', { pointerId, bubbles: true, cancelable: true }))
 const setSettings = (value: object) => window.localStorage.setItem('libra', JSON.stringify(value))
 
 describe('Issue #38: タイル直接選択', () => {
@@ -115,6 +118,18 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1 })
       expect(h1Text(container)).toBe('はい')
       expect(container.querySelector('.emergency-status-message')).toBeNull()
+    })
+
+    it('pointerdown に続く pointerId 付き click も捨てられ、二重実行しない(受理の振動が1回だけ)', () => {
+      const { container } = render(() => <App />)
+      const yes = tile(container, 'はい')
+      fireEvent.pointerDown(yes, { pointerId: 1 })
+      fireEvent.pointerUp(yes, { pointerId: 1 })
+      const afterDown = vibrate.mock.calls.length
+      expect(afterDown).toBeGreaterThan(0)
+      vi.advanceTimersByTime(1000)
+      pointerClick(yes, 1)
+      expect(vibrate.mock.calls.length).toBe(afterDown)
     })
 
     it('pointerdown に続く click は捨てられ、二重実行しない(受理の振動が1回だけ)', () => {
@@ -280,10 +295,6 @@ describe('Issue #38: タイル直接選択', () => {
       expect(h1Text(container)).toBe('いいえ')
     })
 
-    // click に pointerId を載せる(本番の pointerId 一致経路)。fireEvent.click は pointerId が undefined
-    const pointerClick = (el: Element, pointerId: number) =>
-      fireEvent(el, new PointerEvent('click', { pointerId, bubbles: true, cancelable: true }))
-
     it('マルチタッチ: 1と2を押し、2を離して id2 の click を消費しても、id1 の記録は残る', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
@@ -418,6 +429,20 @@ describe('Issue #38: タイル直接選択', () => {
       expect(h1Text(container)).not.toBe('はい')
       expect(scanningLabel(container)).toBe('緊急') // ホーム先頭から再開
       fireEvent.click(tile(container, 'いいえ')) // 次の合成 click は実行される
+      expect(h1Text(container)).toBe('いいえ')
+    })
+
+    it('オーバーレイの pointerdown でメニューが閉じ、続く pointerId 付きタイル click は実行されない', () => {
+      const { container } = render(() => <App />)
+      open(container)
+      const overlay = container.querySelector('.caregiver-overlay') as HTMLElement
+      fireEvent.pointerDown(overlay, { pointerId: 1 })
+      fireEvent.pointerUp(overlay, { pointerId: 1 })
+      expect(container.querySelector('.caregiver-overlay')).toBeNull()
+      pointerClick(tile(container, 'はい'), 1)
+      expect(h1Text(container)).not.toBe('はい')
+      expect(scanningLabel(container)).toBe('緊急')
+      pointerClick(tile(container, 'いいえ'), 1) // 記録は消費済み。次の pointerdown なし click は合成として実行
       expect(h1Text(container)).toBe('いいえ')
     })
 
