@@ -655,6 +655,14 @@ describe('App', () => {
     fireEvent.click(button)
   }
 
+  function selectCaregiverTab(root: Element, label: string) {
+    const tab = Array.from(root.querySelectorAll('[role="tab"]')).find(
+      (t) => t.textContent === label,
+    ) as HTMLElement
+    expect(tab).toBeTruthy()
+    fireEvent.click(tab)
+  }
+
   function clickButton(root: Element, text: string) {
     const target = Array.from(root.querySelectorAll('button')).find((b) =>
       b.textContent?.includes(text),
@@ -666,6 +674,7 @@ describe('App', () => {
   it('Issue #8: 介助者が追加したフレーズはスキャンで選べ、再読み込み後も保持される', () => {
     const first = render(() => <App />)
     openCaregiverMenu(first.container)
+    selectCaregiverTab(first.container, 'フレーズ')
     const editor = first.container.querySelector('.phrase-editor') as HTMLElement
     clickButton(editor, '要望')
     clickButton(editor, 'フレーズを追加')
@@ -691,6 +700,7 @@ describe('App', () => {
   function openEditorWithFocusedInput() {
     const view = render(() => <App />)
     openCaregiverMenu(view.container)
+    selectCaregiverTab(view.container, 'フレーズ')
     const editor = view.container.querySelector('.phrase-editor') as HTMLElement
     clickButton(editor, '要望')
     const input = editor.querySelector('.phrase-row input') as HTMLInputElement
@@ -729,6 +739,7 @@ describe('App', () => {
     window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 3000 }))
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
+    selectCaregiverTab(container, 'データ')
     const editor = container.querySelector('.phrase-editor') as HTMLElement
     const textarea = editor.querySelector('textarea') as HTMLTextAreaElement
     fireEvent.input(textarea, {
@@ -752,6 +763,7 @@ describe('App', () => {
     )
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
+    selectCaregiverTab(container, 'フレーズ')
     const editor = container.querySelector('.phrase-editor') as HTMLElement
     clickButton(editor, '要望')
     expect(editor.querySelector('[role="note"]')?.textContent).toContain('表示されません')
@@ -776,6 +788,7 @@ describe('App', () => {
     )
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
+    selectCaregiverTab(container, 'フレーズ')
     const editor = container.querySelector('.phrase-editor') as HTMLElement
     clickButton(editor, '要望')
     clickButton(editor, 'この画面を既定に戻す')
@@ -795,6 +808,7 @@ describe('App', () => {
     window.localStorage.setItem('libra', JSON.stringify({ phrases: { moodRequest: many } }))
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
+    selectCaregiverTab(container, 'フレーズ')
     const editor = container.querySelector('.phrase-editor') as HTMLElement
     clickButton(editor, '要望')
     expect(editor.querySelector('[role="alert"]')?.textContent).toContain('9 項目')
@@ -1163,6 +1177,7 @@ describe('App', () => {
   it('Issue #14: 介助者メニューにモールスの設定が出る(ON のときだけ時間の設定)', () => {
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
+    selectCaregiverTab(container, '入力方式')
     const panel = container.querySelector('.caregiver-panel') as HTMLElement
     expect(panel.textContent).toContain('モールス入力を使う')
     expect(panel.textContent).not.toContain('長押し(－)の境目')
@@ -1199,6 +1214,7 @@ describe('App', () => {
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
     vi.advanceTimersByTime(2000) // メニューが開く
+    selectCaregiverTab(container, '入力方式')
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox) // 聴覚スキャンON
     const closeButton = Array.from(container.querySelectorAll('button')).find(
@@ -1225,6 +1241,7 @@ describe('App', () => {
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
     vi.advanceTimersByTime(2000)
+    selectCaregiverTab(container, '入力方式')
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox) // 聴覚スキャンON
     const closeButton = Array.from(container.querySelectorAll('button')).find(
@@ -1253,8 +1270,10 @@ describe('App', () => {
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
     vi.advanceTimersByTime(2000) // メニューが開く
+    selectCaregiverTab(container, '入力方式')
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox) // 聴覚スキャンON
+    selectCaregiverTab(container, 'フィードバック')
     const fullVoiceButton = Array.from(container.querySelectorAll('button')).find(
       (b) => b.textContent === '全部読む',
     ) as HTMLElement
@@ -1294,8 +1313,10 @@ describe('App', () => {
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
     vi.advanceTimersByTime(2000)
+    selectCaregiverTab(container, '入力方式')
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox)
+    selectCaregiverTab(container, 'フィードバック')
     const fullVoiceButton = Array.from(container.querySelectorAll('button')).find(
       (b) => b.textContent === '全部読む',
     ) as HTMLElement
@@ -1653,6 +1674,7 @@ describe('App', () => {
     const button = first.container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
     vi.advanceTimersByTime(2000)
+    selectCaregiverTab(first.container, 'スキャン')
     const slider = first.container.querySelector(
       'input[type="range"][min="500"]',
     ) as HTMLInputElement
@@ -1663,6 +1685,7 @@ describe('App', () => {
     const button2 = second.container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button2)
     vi.advanceTimersByTime(2000)
+    selectCaregiverTab(second.container, 'スキャン')
     expect(second.container.textContent).toContain('スキャン間隔: 2.5 秒')
   })
 
@@ -1807,6 +1830,7 @@ describe('App', () => {
       const button = first.container.querySelector('.caregiver-button') as HTMLElement
       fireEvent.pointerDown(button)
       vi.advanceTimersByTime(2000)
+      selectCaregiverTab(first.container, 'スキャン')
       const slider = first.container.querySelector(
         'input[type="range"][min="500"]',
       ) as HTMLInputElement
@@ -1894,6 +1918,7 @@ describe('App', () => {
       const button = container.querySelector('.caregiver-button') as HTMLElement
       fireEvent.pointerDown(button)
       vi.advanceTimersByTime(2000)
+      selectCaregiverTab(container, '表示')
       const darkButton = Array.from(container.querySelectorAll('button')).find(
         (b) => b.textContent === '夜間',
       ) as HTMLElement
@@ -1907,6 +1932,7 @@ describe('App', () => {
       const button = container.querySelector('.caregiver-button') as HTMLElement
       fireEvent.pointerDown(button)
       vi.advanceTimersByTime(2000)
+      selectCaregiverTab(container, '表示')
       const lightButton = Array.from(container.querySelectorAll('button')).find(
         (b) => b.textContent === '明るい',
       ) as HTMLElement
@@ -1925,6 +1951,7 @@ describe('App', () => {
       const button = container.querySelector('.caregiver-button') as HTMLElement
       fireEvent.pointerDown(button)
       vi.advanceTimersByTime(2000)
+      selectCaregiverTab(container, '表示')
       const xlargeButton = Array.from(container.querySelectorAll('button')).find(
         (b) => b.textContent === '特大',
       ) as HTMLElement
@@ -1937,6 +1964,7 @@ describe('App', () => {
       const button = container.querySelector('.caregiver-button') as HTMLElement
       fireEvent.pointerDown(button)
       vi.advanceTimersByTime(2000)
+      selectCaregiverTab(container, '表示')
       const checkboxes = Array.from(
         container.querySelectorAll('input[type="checkbox"]'),
       ) as HTMLInputElement[]

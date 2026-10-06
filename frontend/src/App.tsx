@@ -27,7 +27,7 @@ import {
 } from './lib/offlineReady'
 import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
-import PhraseEditor from './PhraseEditor'
+import PhraseEditor, { SettingsBackup } from './PhraseEditor'
 import { createSwitchInput } from './lib/switchInput'
 import { HAPTIC_STRENGTHS, playFeedback, type FeedbackEvent } from './lib/feedback'
 import { createMorseInput } from './lib/morseInput'
@@ -43,6 +43,19 @@ import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './l
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const EMERGENCY_MESSAGE = '緊急です。来てください'
 const ALARM_REPEAT_MS = 3000
+/** 介助者メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
+const CAREGIVER_TABS = [
+  { id: 'status', label: '状態' },
+  { id: 'scan', label: 'スキャン' },
+  { id: 'input', label: '入力方式' },
+  { id: 'feedback', label: 'フィードバック' },
+  { id: 'display', label: '表示' },
+  { id: 'phrases', label: 'フレーズ' },
+  { id: 'backup', label: 'データ' },
+] as const
+const CAREGIVER_TAB_NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
+type CaregiverTabId = (typeof CAREGIVER_TABS)[number]['id']
+
 /** 介助者メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
 
@@ -251,6 +264,7 @@ export default function App() {
   let undoLapsRemaining = 0
 
   const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
+  const [caregiverTab, setCaregiverTab] = createSignal<CaregiverTabId>('status')
   const [letterText, setLetterText] = createSignal('')
   // 痛みの強さの画面で使う、直前に選んだ痛い場所(Issue #12)
   const [painChoice, setPainChoice] = createSignal<PainChoice | undefined>(undefined)
@@ -915,6 +929,13 @@ export default function App() {
           '.caregiver-panel input, .caregiver-panel textarea',
         )
         if (inField && isTextEditingKey(event)) return
+        // Issue #31: カテゴリタブにフォーカスがあるときの左右/Home/End だけは、タブ移動(ARIA tablist)に使う。
+        // Enter/Space など他のキーは従来どおり本人のスイッチ入力として扱い、閉じてスキャンへ戻す
+        const onTab = (event.target as HTMLElement | null)?.closest?.('.caregiver-tab')
+        if (onTab && CAREGIVER_TAB_NAV_KEYS.includes(event.key)) {
+          resetCaregiverIdleTimer()
+          return
+        }
         // M3(b): 介助者はタッチで操作する想定。メニュー表示中の keydown は閉じて
         // ホーム先頭から再開する(その押下では項目を実行しない)
         event.preventDefault()
@@ -985,9 +1006,25 @@ export default function App() {
     })
   })
 
+  // ARIA tablist: フォーカスを動かすと同時に選択する(自動アクティベーション)
+  const onCaregiverTabKeyDown = (event: KeyboardEvent) => {
+    if (!CAREGIVER_TAB_NAV_KEYS.includes(event.key)) return
+    const last = CAREGIVER_TABS.length - 1
+    const current = CAREGIVER_TABS.findIndex((tab) => tab.id === caregiverTab())
+    let next = current
+    if (event.key === 'ArrowRight') next = current >= last ? 0 : current + 1
+    else if (event.key === 'ArrowLeft') next = current <= 0 ? last : current - 1
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = last
+    event.preventDefault()
+    setCaregiverTab(CAREGIVER_TABS[next].id)
+    document.getElementById(`caregiver-tab-${CAREGIVER_TABS[next].id}`)?.focus()
+  }
+
   const openCaregiverMenu = () => {
     if (caregiverMenuOpen()) return
     input.cancelAll()
+    setCaregiverTab('status')
     setCaregiverMenuOpen(true)
     resetCaregiverIdleTimer()
     // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
@@ -1165,313 +1202,415 @@ export default function App() {
       <Show when={caregiverMenuOpen()}>
         <div class="caregiver-overlay" data-caregiver-control>
           <div class="caregiver-panel">
-            <h2>介助者メニュー</h2>
-
-            <button
-              type="button"
-              class="caregiver-action"
-              onClick={clearEmergency}
-              disabled={!emergencyActive()}
-            >
-              緊急解除{emergencyActive() ? '' : '（緊急なし）'}
-            </button>
-
-            <p class="caregiver-status" classList={{ warn: wakeLockStatus() !== 'active' }}>
-              {WAKE_LOCK_LABELS[wakeLockStatus()]}
-            </p>
-
-            <p class="caregiver-status" classList={{ warn: offlineReadyStatus() !== 'ready' }}>
-              {OFFLINE_READY_LABELS[offlineReadyStatus()]}
-            </p>
-
-            <Show when={fullscreenSupported && !isFullscreen() && !isDisplayModeFullscreen()}>
-              <button type="button" class="caregiver-action" onClick={enterFullscreen}>
-                全画面にする
-              </button>
-            </Show>
-
-            <label class="caregiver-field">
-              <span>スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒</span>
-              <input
-                type="range"
-                min="500"
-                max="5000"
-                step="100"
-                value={settings().intervalMs}
-                onInput={(event) =>
-                  updateSettings({ intervalMs: Number(event.currentTarget.value) })
-                }
-              />
-            </label>
-
-            <label class="caregiver-field">
-              <span>先頭待機倍率: 間隔 × {settings().headHoldMultiplier}</span>
-              <input
-                type="range"
-                min="1"
-                max="5"
-                step="0.5"
-                value={settings().headHoldMultiplier}
-                onInput={(event) =>
-                  updateSettings({ headHoldMultiplier: Number(event.currentTarget.value) })
-                }
-              />
-            </label>
-
-            <label class="caregiver-field">
-              <span>連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒</span>
-              <input
-                type="range"
-                min="0"
-                max="3000"
-                step="100"
-                value={settings().debounceMs}
-                onInput={(event) =>
-                  updateSettings({ debounceMs: Number(event.currentTarget.value) })
-                }
-              />
-            </label>
-
-            <label class="caregiver-field">
-              <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
-              <input
-                type="range"
-                min="0"
-                max="2000"
-                step="100"
-                value={settings().minHoldMs}
-                onInput={(event) =>
-                  updateSettings({ minHoldMs: Number(event.currentTarget.value) })
-                }
-              />
-            </label>
-
-            <div class="caregiver-field">
-              <span>決定のタイミング</span>
-              <div class="caregiver-choice-options">
-                <For each={ACTIVATE_ONS}>
-                  {(timing) => (
-                    <button
-                      type="button"
-                      classList={{ active: settings().activateOn === timing }}
-                      onClick={() => updateSettings({ activateOn: timing })}
-                    >
-                      {ACTIVATE_ON_LABELS[timing]}
-                    </button>
-                  )}
-                </For>
+            <div class="caregiver-header">
+              <h2>介助者メニュー</h2>
+              <div class="caregiver-header-actions">
+                <button
+                  type="button"
+                  class="caregiver-action caregiver-emergency-clear"
+                  onClick={clearEmergency}
+                  disabled={!emergencyActive()}
+                >
+                  緊急解除{emergencyActive() ? '' : '（緊急なし）'}
+                </button>
+                <button
+                  type="button"
+                  class="caregiver-action caregiver-close"
+                  onClick={closeCaregiverMenu}
+                >
+                  閉じる
+                </button>
               </div>
             </div>
 
-            <label class="caregiver-field caregiver-checkbox">
-              <input
-                type="checkbox"
-                checked={settings().auditoryScan}
-                onChange={(event) => updateSettings({ auditoryScan: event.currentTarget.checked })}
-              />
-              <span>聴覚スキャン</span>
-            </label>
-
-            <label class="caregiver-field caregiver-checkbox">
-              <input
-                type="checkbox"
-                checked={settings().morseEnabled}
-                onChange={(event) => updateSettings({ morseEnabled: event.currentTarget.checked })}
-              />
-              <span>
-                モールス入力を使う（上級者向け。押下と解放を同時に送るシャッターでは長押しが使えません）
-              </span>
-            </label>
-
-            <Show when={settings().morseEnabled}>
-              <label class="caregiver-field">
-                <span>
-                  モールス: 長押し(－)の境目 {(settings().morseDashMs / 1000).toFixed(1)} 秒
-                  {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
-                  settings().morseDashMs
-                    ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
-                    : ''}
-                </span>
-                <input
-                  type="range"
-                  min="150"
-                  max="1500"
-                  step="50"
-                  value={settings().morseDashMs}
-                  onInput={(event) =>
-                    updateSettings({ morseDashMs: Number(event.currentTarget.value) })
-                  }
-                />
-              </label>
-              <label class="caregiver-field">
-                <span>
-                  モールス: 文字の確定までの無入力 {(settings().morseLetterGapMs / 1000).toFixed(1)}{' '}
-                  秒
-                </span>
-                <input
-                  type="range"
-                  min="500"
-                  max="3000"
-                  step="100"
-                  value={settings().morseLetterGapMs}
-                  onInput={(event) => {
-                    const letterGap = Number(event.currentTarget.value)
-                    // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
-                    updateSettings({
-                      morseLetterGapMs: letterGap,
-                      morseWordGapMs: Math.max(
-                        settings().morseWordGapMs,
-                        letterGap + MORSE_WORD_GAP_MARGIN_MS,
-                      ),
-                    })
-                  }}
-                />
-              </label>
-              <label class="caregiver-field">
-                <span>
-                  モールス: 語の区切りまでの無入力 {(settings().morseWordGapMs / 1000).toFixed(1)}{' '}
-                  秒
-                </span>
-                <input
-                  type="range"
-                  min="1500"
-                  max="8000"
-                  step="100"
-                  value={settings().morseWordGapMs}
-                  onInput={(event) =>
-                    updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
-                  }
-                />
-              </label>
-            </Show>
-
-            <div class="caregiver-field">
-              <span>音声モード</span>
-              <div class="caregiver-voice-options">
-                <For each={VOICE_MODES}>
-                  {(mode) => (
-                    <button
-                      type="button"
-                      classList={{ active: settings().voiceMode === mode }}
-                      onClick={() => updateSettings({ voiceMode: mode })}
-                    >
-                      {VOICE_LABELS[mode]}
-                    </button>
-                  )}
-                </For>
-              </div>
+            <div class="caregiver-tablist" role="tablist" aria-label="設定カテゴリ">
+              <For each={CAREGIVER_TABS}>
+                {(tab) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    class="caregiver-tab"
+                    id={`caregiver-tab-${tab.id}`}
+                    aria-selected={caregiverTab() === tab.id}
+                    aria-controls="caregiver-tabpanel"
+                    tabindex={caregiverTab() === tab.id ? 0 : -1}
+                    classList={{ active: caregiverTab() === tab.id }}
+                    onClick={() => setCaregiverTab(tab.id)}
+                    onKeyDown={onCaregiverTabKeyDown}
+                  >
+                    {tab.label}
+                  </button>
+                )}
+              </For>
             </div>
 
-            <label class="caregiver-field caregiver-checkbox">
-              <input
-                type="checkbox"
-                checked={settings().hapticsEnabled}
-                onChange={(event) =>
-                  updateSettings({ hapticsEnabled: event.currentTarget.checked })
-                }
-              />
-              <span>本人への振動フィードバック（受理・はい/いいえ・緊急）</span>
-            </label>
+            <Show when={caregiverTab() === 'status'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-status"
+                tabindex="0"
+              >
+                <h3 class="caregiver-section-title">動作状態</h3>
+                <p class="caregiver-status" classList={{ warn: wakeLockStatus() !== 'active' }}>
+                  {WAKE_LOCK_LABELS[wakeLockStatus()]}
+                </p>
 
-            <Show when={settings().hapticsEnabled}>
-              <div class="caregiver-field">
-                <span>振動の強さ</span>
-                <div class="caregiver-choice-options">
-                  <For each={HAPTIC_STRENGTHS}>
-                    {(strength) => (
-                      <button
-                        type="button"
-                        classList={{ active: settings().hapticsStrength === strength }}
-                        onClick={() => updateSettings({ hapticsStrength: strength })}
-                      >
-                        {HAPTIC_STRENGTH_LABELS[strength]}
-                      </button>
-                    )}
-                  </For>
+                <p class="caregiver-status" classList={{ warn: offlineReadyStatus() !== 'ready' }}>
+                  {OFFLINE_READY_LABELS[offlineReadyStatus()]}
+                </p>
+
+                <Show when={fullscreenSupported && !isFullscreen() && !isDisplayModeFullscreen()}>
+                  <button type="button" class="caregiver-action" onClick={enterFullscreen}>
+                    全画面にする
+                  </button>
+                </Show>
+              </div>
+            </Show>
+
+            <Show when={caregiverTab() === 'scan'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-scan"
+                tabindex="0"
+              >
+                <h3 class="caregiver-section-title">スイッチ入力とスキャン</h3>
+                <label class="caregiver-field">
+                  <span>スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒</span>
+                  <input
+                    type="range"
+                    min="500"
+                    max="5000"
+                    step="100"
+                    value={settings().intervalMs}
+                    onInput={(event) =>
+                      updateSettings({ intervalMs: Number(event.currentTarget.value) })
+                    }
+                  />
+                </label>
+
+                <label class="caregiver-field">
+                  <span>先頭待機倍率: 間隔 × {settings().headHoldMultiplier}</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="0.5"
+                    value={settings().headHoldMultiplier}
+                    onInput={(event) =>
+                      updateSettings({ headHoldMultiplier: Number(event.currentTarget.value) })
+                    }
+                  />
+                </label>
+
+                <label class="caregiver-field">
+                  <span>連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="3000"
+                    step="100"
+                    value={settings().debounceMs}
+                    onInput={(event) =>
+                      updateSettings({ debounceMs: Number(event.currentTarget.value) })
+                    }
+                  />
+                </label>
+
+                <label class="caregiver-field">
+                  <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2000"
+                    step="100"
+                    value={settings().minHoldMs}
+                    onInput={(event) =>
+                      updateSettings({ minHoldMs: Number(event.currentTarget.value) })
+                    }
+                  />
+                </label>
+
+                <div class="caregiver-field">
+                  <span>決定のタイミング</span>
+                  <div class="caregiver-choice-options">
+                    <For each={ACTIVATE_ONS}>
+                      {(timing) => (
+                        <button
+                          type="button"
+                          classList={{ active: settings().activateOn === timing }}
+                          onClick={() => updateSettings({ activateOn: timing })}
+                        >
+                          {ACTIVATE_ON_LABELS[timing]}
+                        </button>
+                      )}
+                    </For>
+                  </div>
                 </div>
               </div>
-
-              <label class="caregiver-field caregiver-checkbox">
-                <input
-                  type="checkbox"
-                  checked={settings().hapticSoundAlso}
-                  onChange={(event) =>
-                    updateSettings({ hapticSoundAlso: event.currentTarget.checked })
-                  }
-                />
-                <span>
-                  振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
-                </span>
-              </label>
-
-              <label class="caregiver-field caregiver-checkbox">
-                <input
-                  type="checkbox"
-                  checked={settings().hapticSoundWhenVoiceOff}
-                  onChange={(event) =>
-                    updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
-                  }
-                />
-                <span>振動できない端末では、音声OFFでも短い効果音で知らせる</span>
-              </label>
             </Show>
 
-            <div class="caregiver-field">
-              <span>文字サイズ</span>
-              <div class="caregiver-choice-options">
-                <For each={FONT_SIZES}>
-                  {(size) => (
-                    <button
-                      type="button"
-                      classList={{ active: settings().fontSize === size }}
-                      onClick={() => updateSettings({ fontSize: size })}
-                    >
-                      {FONT_SIZE_LABELS[size]}
-                    </button>
-                  )}
-                </For>
+            <Show when={caregiverTab() === 'input'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-input"
+                tabindex="0"
+              >
+                <h3 class="caregiver-section-title">入力方式</h3>
+                <label class="caregiver-field caregiver-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={settings().auditoryScan}
+                    onChange={(event) =>
+                      updateSettings({ auditoryScan: event.currentTarget.checked })
+                    }
+                  />
+                  <span>聴覚スキャン</span>
+                </label>
+
+                <label class="caregiver-field caregiver-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={settings().morseEnabled}
+                    onChange={(event) =>
+                      updateSettings({ morseEnabled: event.currentTarget.checked })
+                    }
+                  />
+                  <span>
+                    モールス入力を使う（上級者向け。押下と解放を同時に送るシャッターでは長押しが使えません）
+                  </span>
+                </label>
+
+                <Show when={settings().morseEnabled}>
+                  <label class="caregiver-field">
+                    <span>
+                      モールス: 長押し(－)の境目 {(settings().morseDashMs / 1000).toFixed(1)} 秒
+                      {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
+                      settings().morseDashMs
+                        ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
+                        : ''}
+                    </span>
+                    <input
+                      type="range"
+                      min="150"
+                      max="1500"
+                      step="50"
+                      value={settings().morseDashMs}
+                      onInput={(event) =>
+                        updateSettings({ morseDashMs: Number(event.currentTarget.value) })
+                      }
+                    />
+                  </label>
+                  <label class="caregiver-field">
+                    <span>
+                      モールス: 文字の確定までの無入力{' '}
+                      {(settings().morseLetterGapMs / 1000).toFixed(1)} 秒
+                    </span>
+                    <input
+                      type="range"
+                      min="500"
+                      max="3000"
+                      step="100"
+                      value={settings().morseLetterGapMs}
+                      onInput={(event) => {
+                        const letterGap = Number(event.currentTarget.value)
+                        // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
+                        updateSettings({
+                          morseLetterGapMs: letterGap,
+                          morseWordGapMs: Math.max(
+                            settings().morseWordGapMs,
+                            letterGap + MORSE_WORD_GAP_MARGIN_MS,
+                          ),
+                        })
+                      }}
+                    />
+                  </label>
+                  <label class="caregiver-field">
+                    <span>
+                      モールス: 語の区切りまでの無入力{' '}
+                      {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
+                    </span>
+                    <input
+                      type="range"
+                      min="1500"
+                      max="8000"
+                      step="100"
+                      value={settings().morseWordGapMs}
+                      onInput={(event) =>
+                        updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
+                      }
+                    />
+                  </label>
+                </Show>
               </div>
-            </div>
+            </Show>
 
-            <div class="caregiver-field">
-              <span>表示</span>
-              <div class="caregiver-choice-options">
-                <For each={THEMES}>
-                  {(theme) => (
-                    <button
-                      type="button"
-                      classList={{ active: settings().theme === theme }}
-                      onClick={() => updateSettings({ theme })}
-                    >
-                      {THEME_LABELS[theme]}
-                    </button>
-                  )}
-                </For>
+            <Show when={caregiverTab() === 'feedback'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-feedback"
+                tabindex="0"
+              >
+                <h3 class="caregiver-section-title">音声と振動</h3>
+                <div class="caregiver-field">
+                  <span>音声モード</span>
+                  <div class="caregiver-voice-options">
+                    <For each={VOICE_MODES}>
+                      {(mode) => (
+                        <button
+                          type="button"
+                          classList={{ active: settings().voiceMode === mode }}
+                          onClick={() => updateSettings({ voiceMode: mode })}
+                        >
+                          {VOICE_LABELS[mode]}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
+
+                <label class="caregiver-field caregiver-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={settings().hapticsEnabled}
+                    onChange={(event) =>
+                      updateSettings({ hapticsEnabled: event.currentTarget.checked })
+                    }
+                  />
+                  <span>本人への振動フィードバック（受理・はい/いいえ・緊急）</span>
+                </label>
+
+                <Show when={settings().hapticsEnabled}>
+                  <div class="caregiver-field">
+                    <span>振動の強さ</span>
+                    <div class="caregiver-choice-options">
+                      <For each={HAPTIC_STRENGTHS}>
+                        {(strength) => (
+                          <button
+                            type="button"
+                            classList={{ active: settings().hapticsStrength === strength }}
+                            onClick={() => updateSettings({ hapticsStrength: strength })}
+                          >
+                            {HAPTIC_STRENGTH_LABELS[strength]}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+
+                  <label class="caregiver-field caregiver-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={settings().hapticSoundAlso}
+                      onChange={(event) =>
+                        updateSettings({ hapticSoundAlso: event.currentTarget.checked })
+                      }
+                    />
+                    <span>
+                      振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
+                    </span>
+                  </label>
+
+                  <label class="caregiver-field caregiver-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={settings().hapticSoundWhenVoiceOff}
+                      onChange={(event) =>
+                        updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
+                      }
+                    />
+                    <span>振動できない端末では、音声OFFでも短い効果音で知らせる</span>
+                  </label>
+                </Show>
               </div>
-            </div>
+            </Show>
 
-            <label class="caregiver-field caregiver-checkbox">
-              <input
-                type="checkbox"
-                checked={settings().highContrast}
-                onChange={(event) => updateSettings({ highContrast: event.currentTarget.checked })}
-              />
-              <span>高コントラスト</span>
-            </label>
+            <Show when={caregiverTab() === 'display'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-display"
+                tabindex="0"
+              >
+                <h3 class="caregiver-section-title">表示</h3>
+                <div class="caregiver-field">
+                  <span>文字サイズ</span>
+                  <div class="caregiver-choice-options">
+                    <For each={FONT_SIZES}>
+                      {(size) => (
+                        <button
+                          type="button"
+                          classList={{ active: settings().fontSize === size }}
+                          onClick={() => updateSettings({ fontSize: size })}
+                        >
+                          {FONT_SIZE_LABELS[size]}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
 
-            <PhraseEditor
-              settings={settings()}
-              updateSettings={updateSettings}
-              replaceSettings={replaceSettings}
-            />
+                <div class="caregiver-field">
+                  <span>表示</span>
+                  <div class="caregiver-choice-options">
+                    <For each={THEMES}>
+                      {(theme) => (
+                        <button
+                          type="button"
+                          classList={{ active: settings().theme === theme }}
+                          onClick={() => updateSettings({ theme })}
+                        >
+                          {THEME_LABELS[theme]}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
 
-            <button
-              type="button"
-              class="caregiver-action caregiver-close"
-              onClick={closeCaregiverMenu}
-            >
-              閉じる
-            </button>
+                <label class="caregiver-field caregiver-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={settings().highContrast}
+                    onChange={(event) =>
+                      updateSettings({ highContrast: event.currentTarget.checked })
+                    }
+                  />
+                  <span>高コントラスト</span>
+                </label>
+              </div>
+            </Show>
+
+            <Show when={caregiverTab() === 'phrases'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-phrases"
+                tabindex="0"
+              >
+                <PhraseEditor settings={settings()} updateSettings={updateSettings} />
+              </div>
+            </Show>
+
+            <Show when={caregiverTab() === 'backup'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-backup"
+                tabindex="0"
+              >
+                <SettingsBackup settings={settings()} replaceSettings={replaceSettings} />
+              </div>
+            </Show>
           </div>
         </div>
       </Show>
