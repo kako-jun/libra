@@ -1128,8 +1128,7 @@ h1[data-fit='single'] {
   align-content: start;
   gap: 12px;
   padding: 16px 14px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   color: var(--text);
   background: var(--surface);
 }
@@ -1180,7 +1179,7 @@ h1[data-fit='single'] {
 /* Issue #57: モールス画面は案内を常に全項目見せる(本人はスイッチのみ・touch-action:none で
    スクロールできない)。案内の上に積まれる枠(画面名・直前の選択・直前に伝えたこと)を詰め、
    狭い/低い画面(390x844・568x320・844x390・320x568)でも全項目が画面内に収まるようにする。
-   収まらない分をスクロールで逃がさない。 */
+   スクロールで逃がさず、全項目が収まること自体を保証する(DESIGN.md §9 の実測表)。 */
 .app-shell.is-morse .selection-confirmation,
 .app-shell.is-morse .message-panel,
 .app-shell.is-morse .screen-breadcrumb {
@@ -1189,6 +1188,31 @@ h1[data-fit='single'] {
 
 .app-shell.is-morse .screen-guide {
   min-height: 0;
+}
+
+/* 緊急が解除されていない状態でモールスに入ったときも、案内の全項目を収める。
+   緊急の文言(「緊急です。来てください」)は残し、伝えた状態の一覧(緊急画面で確認できる)と余白を詰める */
+.app-shell.is-morse .emergency-status {
+  gap: 0;
+  padding: 4px 12px;
+}
+
+.app-shell.is-morse .emergency-status-message {
+  font-size: clamp(1rem, 3vh, 1.5rem);
+}
+
+.app-shell.is-morse .emergency-detail-status {
+  display: none;
+}
+
+.app-shell.is-morse .screen-guide-copy {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.app-shell.is-morse .screen-guide .message-panel-controls {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .app-shell.is-morse .screen-guide h2 {
@@ -1221,7 +1245,12 @@ h1[data-fit='single'] {
 }
 
 @media (max-height: 500px) {
+  .app-shell.is-morse .screen-guide {
+    padding-block: 3px;
+  }
+
   .morse-legend {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
     font-size: clamp(0.75rem, 4vh, 1rem);
   }
 }

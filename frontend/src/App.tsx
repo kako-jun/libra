@@ -27,7 +27,6 @@ import { HAPTIC_STRENGTHS, playFeedback, type FeedbackEvent } from './lib/feedba
 import { MORSE_MAX_HOLD_MS, createMorseInput } from './lib/morseInput'
 import {
   effectiveDashMs,
-  MORSE_HISTORY_RESET_MS,
   MORSE_IDLE_EXIT_MS,
   formatMorseCode,
   morseNoiseMs,
@@ -1205,7 +1204,10 @@ export default function App() {
               </li>
             </Show>
             <li>
-              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・（<b>待たずにすぐ</b>）
+              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・（<b>休まず続けて</b>
+              {'打つと、待たずにすぐ。'}
+              <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>
+              {'休むと数え直し）'}
             </li>
             <li>
               <b>・・・・・</b>（・を5つ）→ <b>待つと</b>スキャンへ戻る
@@ -1224,9 +1226,6 @@ export default function App() {
             </li>
             <li>
               <b>{MORSE_IDLE_EXIT_MS / 1000}秒</b>何も押さないと、スキャンへ戻る
-            </li>
-            <li>
-              <b>{MORSE_HISTORY_RESET_MS / 1000}秒</b>押さないと、SOSの数え直し
             </li>
             <li>
               <b>{MORSE_MAX_HOLD_MS / 1000}秒を超えて</b>押しっぱなしの入力は、無効になる

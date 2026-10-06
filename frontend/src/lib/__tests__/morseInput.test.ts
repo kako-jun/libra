@@ -203,8 +203,8 @@ describe('morseInput', () => {
   })
 })
 
-// Issue #57: SOS の断片列による判定を、実際の押下/解放と時計(createMorseInput)でも確認する
-describe('morseInput: SOS は文字の切れ目から始まる場合だけ(Issue #57)', () => {
+// Issue #57: SOS は、休まず続けて入力中の符号の末尾だけを見る。実際の押下/解放と時計(createMorseInput)で確認する
+describe('morseInput: SOS は休まず続けた符号の末尾だけ(Issue #57)', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(0)
@@ -225,48 +225,64 @@ describe('morseInput: SOS は文字の切れ目から始まる場合だけ(Issue
     expect(h.events).toEqual([])
     h.press(100)
     expect(h.events).toEqual([{ type: 'emergency' }])
+    expect(h.last().code).toBe('')
+    expect(h.last().text).toBe('')
   })
 
-  it('「...」が「ら」として確定済み(間が1.5秒超)でも、後続の「---...」で発火する', () => {
-    const h = setup()
-    h.input.start('')
-    sendSymbols(h, '...')
-    vi.advanceTimersByTime(2000)
-    expect(h.last().text).toBe('ら')
-    sendSymbols(h, '---...')
-    expect(h.events).toEqual([{ type: 'emergency' }])
-  })
-
-  it('前に誤符号があっても、SOS が文字の切れ目(確定のあと)から始まれば発火する', () => {
+  it('休まず続けた「誤符号+SOS」も、9つ目を離した時点で緊急になる', () => {
     const h = setup()
     h.input.start('')
     sendSymbols(h, '-.')
-    vi.advanceTimersByTime(2000) // 誤符号を確定
-    sendSymbols(h, '...---...')
-    expect(h.events).toEqual([{ type: 'emergency' }])
-  })
-
-  it('前の文字から休まず続けた「誤符号+SOS」は文字の途中から始まるので発火しない', () => {
-    const h = setup()
-    h.input.start('')
-    sendSymbols(h, '-.')
-    sendSymbols(h, '...---...')
+    sendSymbols(h, '...---..')
     expect(h.events).toEqual([])
+    sendSymbols(h, '.')
+    expect(h.events).toEqual([{ type: 'emergency' }])
   })
 
-  it('「ら」「れ」「ら」と3文字に確定しながら打った SOS で緊急になり、SOS 由来の文字は消える', () => {
+  it('誤符号を休んで確定したあとの SOS でも緊急になり、誤符号の文字は残る', () => {
     const h = setup()
-    h.input.start('あ')
+    h.input.start('')
+    sendSymbols(h, '-.')
+    vi.advanceTimersByTime(2000)
+    expect(h.last().text).toBe('た')
+    sendSymbols(h, '...---...')
+    expect(h.events).toEqual([{ type: 'emergency' }])
+    expect(h.last().text.trim()).toBe('た')
+  })
+
+  it('文字の確定時間(1.5秒)の休みを挟むと数え直しになり、緊急にならない(ら・れ・ら)', () => {
+    const h = setup()
+    h.input.start('')
     for (const code of ['...', '---', '...']) {
       sendSymbols(h, code)
       vi.advanceTimersByTime(2000)
-      if (h.events.length === 0) expect(h.last().text.length).toBeGreaterThan(1)
     }
-    expect(h.events).toEqual([{ type: 'emergency' }])
-    expect(h.last().text.replace(MORSE_WORD_SEPARATOR, '')).toBe('あ')
+    expect(h.events).toEqual([])
+    expect(h.last().text.replace(MORSE_WORD_SEPARATOR, '')).toBe('られら')
   })
 
-  it('「かぜ」を打っても(符号の連結が SOS を含んでも)緊急にならない', () => {
+  it('確定の直前(1.4秒休み)までなら続きとして数える', () => {
+    const h = setup()
+    h.input.start('')
+    sendSymbols(h, '...', 1400)
+    sendSymbols(h, '---', 1400)
+    sendSymbols(h, '...', 0)
+    expect(h.events).toEqual([{ type: 'emergency' }])
+  })
+
+  it('ゆっくり押す人(0.9秒押して0.7秒空ける)でも、休まず続ければ SOS で緊急になる', () => {
+    const h = setup()
+    h.input.start('')
+    for (const symbol of '...---...') {
+      h.input.down('k')
+      vi.advanceTimersByTime(symbol === '-' ? 900 : 100)
+      h.input.up('k')
+      vi.advanceTimersByTime(700)
+    }
+    expect(h.events).toEqual([{ type: 'emergency' }])
+  })
+
+  it('「かぜ」(か・せ・゛)を打っても(符号の連結が SOS を含んでも)緊急にならない', () => {
     const h = setup()
     h.input.start('')
     for (const code of ['.-..', '.---.', '..']) {
@@ -285,93 +301,42 @@ describe('morseInput: SOS は文字の切れ目から始まる場合だけ(Issue
     expect(h.events).toEqual([])
   })
 
-  it('緊急のあと断片列が空になり、続く「---...」では再発火しない', () => {
+  it('緊急のあと、続く「---...」では再発火しない(入力中の符号は空から数え直す)', () => {
     const h = setup()
     h.input.start('')
     sendSymbols(h, '...---...')
     expect(h.events).toHaveLength(1)
     sendSymbols(h, '---...')
     expect(h.events).toHaveLength(1)
-    expect(h.last().segments).toEqual([])
     expect(h.last().code).toBe('---...')
   })
 
-  describe('15秒の断片リセット', () => {
-    it('14秒空けても残りの「---...」で発火する', () => {
-      const h = setup()
-      h.input.start('')
-      sendSymbols(h, '...', 0)
-      vi.advanceTimersByTime(14000)
-      sendSymbols(h, '---...')
-      expect(h.events).toEqual([{ type: 'emergency' }])
-    })
-
-    it('16秒空けると断片は捨てられ、「---...」だけでは発火しない', () => {
-      const h = setup()
-      h.input.start('')
-      sendSymbols(h, '...', 0)
-      vi.advanceTimersByTime(16000)
-      expect(h.last().segments).toEqual([])
-      sendSymbols(h, '---...')
-      expect(h.events).toEqual([])
-    })
-
-    it('押している最中は時計が進んでも断片を捨てない(離してから数える)', () => {
-      const h = setup()
-      h.input.start('')
-      sendSymbols(h, '...', 0)
-      vi.advanceTimersByTime(14500)
-      h.input.down('k')
-      vi.advanceTimersByTime(1000) // 15秒を超えるが押している間
-      h.input.up('k') // 長押し(－)
-      expect(h.last().code).toBe('-')
-      expect(h.last().segments.length).toBe(1)
-      sendSymbols(h, '--...')
-      expect(h.events).toEqual([{ type: 'emergency' }])
-    })
-  })
-
-  describe('操作の符号のあとは断片列が空', () => {
-    it('・6つ(1字消す)を確定した直後の「---...」では緊急にならない', () => {
+  describe('操作の符号のあとの「---...」では緊急にならない', () => {
+    it('・6つ(1字消す)を確定した直後', () => {
       const h = setup()
       h.input.start('あい')
       sendSymbols(h, '......')
       vi.advanceTimersByTime(1600)
       expect(h.last().text).toBe('あ')
-      expect(h.last().segments).toEqual([])
       sendSymbols(h, '---...')
       expect(h.events).toEqual([])
     })
 
-    it('・5つは確定待ちのあと exit(緊急と衝突せず、断片列は空)', () => {
+    it('・5つは確定待ちのあと exit(緊急と衝突しない)', () => {
       const h = setup()
       h.input.start('')
       sendSymbols(h, '.....')
       expect(h.events).toEqual([])
       vi.advanceTimersByTime(1600)
       expect(h.events).toEqual([{ type: 'exit' }])
-      expect(h.last().segments).toEqual([])
     })
 
-    it('確定の符号(・－・－・－)のあとは send が出て断片列は空', () => {
+    it('確定の符号(・－・－・－)のあとは send が出る', () => {
       const h = setup()
       h.input.start('あ')
       sendSymbols(h, '.-.-.-')
       vi.advanceTimersByTime(1600)
       expect(h.events).toEqual([{ type: 'send', text: 'あ' }])
-      expect(h.last().segments).toEqual([])
     })
-  })
-
-  it('入り直し(start)で断片列は空から始まる', () => {
-    const h = setup()
-    h.input.start('')
-    sendSymbols(h, '...---..')
-    h.input.stop()
-    h.input.start('')
-    h.press(100)
-    expect(h.events).toEqual([])
-    expect(h.last().segments).toEqual([])
-    expect(h.last().code).toBe('.')
   })
 })
