@@ -131,6 +131,7 @@ BIZ UDPGothic (400/700) is bundled via `@fontsource/biz-udpgothic` and imported 
 ## 4. Layout Principles
 
 - The top stack has separate sections: unresolved emergency status (only while active), current-screen guidance with a home-to-screen breadcrumb, a compact accepted-selection confirmation (only for non-transmission choices), and the last completed transmission (only when one exists). The breadcrumb is derived from `PARENT_SCREEN`; pain intensity and letter-row paths include the selected dynamic value. The confirmation never duplicates a completed transmission or emergency details and adds no scan step or wait. Both additions stay compact so the tile grid remains the main operation area. The caregiver button lives in the current-screen guidance section's top-right `.message-panel-controls`, rather than in the transmission or emergency-status section — see §8.
+- Always-visible guidance (Issue #58): one fixed band at the **bottom edge of every patient screen** (`.screen-notes`, the last row of `.app-shell`; not rendered when there is nothing to say) and one fixed band at the **top of the caregiver menu** (`.caregiver-notes`, between the header and the tab list; it does not move when tabs change). Never move it per screen and never offer a way to hide it. It lists only the automatic behaviours that apply in the current state/settings (undo shown for one lap, undo hidden during an emergency, periodic emergency vibration, debounce, minimum press time / release-to-activate, head hold); wording and conditions live in `frontend/src/lib/guidance.ts`. See §10.
 - Tile grid fills the remaining space edge-to-edge; `app-shell` has no padding at all (`0`) on any side, since there's no longer a fixed-position control band to leave clearance for.
 - Screens with 8 items or fewer (requirements.md §4.1's "1画面8項目以内" target) **always** use a **fill grid** and never scroll, regardless of 文字サイズ (**PR#16 再レビュー must-A/B, 方針転換**; see below for why). `computeGridLayout()` (`frontend/src/lib/gridLayout.ts`, unit-tested for n=1..8 × landscape/portrait/square + real device-size approximations) measures the grid area's real size via `ResizeObserver` and picks `(cols, rows=ceil(n/cols))` by, in order: (0) reject any candidate whose cell would be smaller than a minimum cell size (`minCellWidth`/`minCellHeight`, defaulting to `160×84px`); (1) reject candidates needing 2+ empty cells (span 3+); (2) **PR#16 4巡目 must-E**: reject "bands" outright — `cols === 1` with `rows >= 5`, or `rows === 1` with `cols >= 5` — even if they'd otherwise pass the minimum-cell-size floor (that floor is an absolute px check, so on a big enough screen a 1-column, 7-row stack can individually clear it while still reading as a degenerate band); (3) among the survivors, maximize `min(labelWidthFactor × cellWidth, labelHeightFactor × cellHeight) − 0.5 × emptyCells` — `labelWidthFactor`/`labelHeightFactor` default to `0.15`/`0.20` (`DEFAULT_LABEL_WIDTH_FACTOR`/`DEFAULT_LABEL_HEIGHT_FACTOR`) but are normally supplied live by `App.tsx` from `--label-cqi`/`--label-cqb` (see "Font size" above), so this is always the _same_ coefficient `--tile-label-font` is using at the current breakpoint, not a hardcoded value that could silently diverge from it. The unpenalized score _is_ therefore the resulting label font-size in px, and the small per-empty-cell penalty only breaks near-ties, it doesn't override a genuinely bigger label.
 
@@ -155,6 +156,7 @@ Source of truth: `docs/requirements.md`.
 - Home starts with Emergency. Ordinary child screens start with Back and put Emergency second. The emergency-detail screen starts with Back and omits a duplicate Emergency tile because the emergency state is already active. Back follows the explicit parent-screen tree in `docs/requirements.md`; returning from emergency detail keeps the unresolved emergency state visible.
 - A short breadcrumb shows the current path from Home; the latest accepted navigation, Back, or character choice gets a compact confirmation until another choice. Completed transmissions and emergency details use their dedicated regions.
 - Caregiver menu opens with a regular click or tap on the button in the current-screen guidance area's top-right corner. Enter or Space on the focused button opens it too without reaching the patient's scan input; other keys remain available as the patient's normal any-key input. The menu is not in the scan cycle.
+- Nothing happens implicitly: automatic behaviours (undo appearing for one lap, undo hidden during an emergency, repeated emergency vibration, ignored presses, head hold, the caregiver menu's 60 s auto-close and the Morse clock pausing while it is open) are stated in the fixed guidance bands (§10). The Morse legend stays as the Morse screen's own list of operations (§9).
 - Number keys 1-9 are a developer/caregiver aid only and hidden by default.
 - Speech can be OFF, tone-only, short, or full. No emergency alarm sound is played; an active emergency stays as a silent visual banner until a caregiver clears it.
 
@@ -223,10 +225,36 @@ The Morse input screen (`.morse-panel`) always shows its full legend (`.morse-le
 - Unresolved-emergency band (`.emergency-status`) while on the Morse screen: the band is compacted (padding 4px 12px, message `clamp(1rem, 3vh, 1.5rem)`, the detail list hidden — it is visible on the emergency screens), and the screen-guide keeps the heading and the caregiver button on one row (3px block padding when short) so the legend still fits.
 - `.morse-panel` is `overflow: hidden` — no scrolling is ever relied on; fit is guaranteed by the measurements below.
 
-Measured with real Chromium (playwright-core): bottom of the last legend item vs viewport height; `.morse-panel` `scrollHeight == clientHeight` in every cell.
+Re-measured after Issue #58 (short-viewport spacing tightened to make room for the bottom guidance band, §10). Measured with real Chromium (playwright-core): bottom of the last legend item vs viewport height; `.morse-panel` `scrollHeight == clientHeight` in every cell.
 
 | State (items shown)                                                     | 390x844 | 568x320 | 844x390 | 320x568 |
 | ----------------------------------------------------------------------- | ------- | ------- | ------- | ------- |
-| Default, no emergency (9)                                               | 438     | 249     | 286     | 301     |
-| Unresolved emergency with 3 details (9)                                 | 474     | 275     | 312     | 329     |
-| Worst case: emergency + minimum press time + letter gap 3.0s (10 items) | 498     | 309     | 312     | 347     |
+| Default, no emergency (9)                                               | 438     | 237     | 272     | 301     |
+| Unresolved emergency with 3 details (9)                                 | 474     | 263     | 299     | 329     |
+| Worst case: emergency + minimum press time + letter gap 3.0s (10 items) | 498     | 296     | 299     | 347     |
+
+## 10. Always-visible guidance (Issue #58)
+
+Rule: **no implicit operation.** Every automatic behaviour is stated on screen, in one fixed place per audience, and the patient cannot scroll, so the bands must never push tiles/message/scan frame off screen.
+
+- Patient screens: `.screen-notes` is a `<section aria-label="操作と自動で起きること">` holding a `<ul>`, in `.app-shell` grid-row 7 (below the grid / Morse panel). Muted text on `--surface-calm` with a top divider line; `clamp(0.72rem, 1.9vh, 0.95rem)`, 0.7rem (line-height 1.15, padding 2px 12px) when narrow (<=480px) or short (<=500px). Notes flow inline (`flex-wrap`) so short notes share a line. It is hidden (not rendered) only when no note applies — never by a setting or button.
+- Caregiver menu: `.caregiver-notes` is a `<ul>` between `.caregiver-header` and `.caregiver-tablist` (`flex: none`, so only the tab panel scrolls): "{60}秒操作しないと、自動で閉じてホームに戻ります。" and "開いている間は、モールス入力の時間が止まります。" — always shown.
+- Morse screen: the fixed band is used too (it shows the emergency-vibration note when that applies). The Morse legend is **not** merged into it: the legend is the screen's own list of operations (the counterpart of the tiles on a scanning screen) and must stay full-size and complete (§9), whereas the band is for cross-screen automatic behaviours. Short-height Morse spacing was tightened (panel padding 3px 12px, gap 2px, legend line-height 1.2) to pay for the band.
+- No emoji. Colors only via existing tokens.
+
+Measured with real Chromium (playwright-core, chromium-1243). `fill` = the tile grid still fills the area with no inner scroll; `-` = no band. Band height in px (list of 390x844 / 568x320 / 844x390 / 320x568):
+
+| State (notes shown)                                              | Band height       | Tiles / panel fit                                                                 |
+| ---------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------- |
+| Home, defaults (debounce + head hold = 2)                        | 31 / 18 / 18 / 31 | fill at all four sizes                                                            |
+| Discomfort (8 items), defaults (2)                               | 31 / 18 / 18 / 31 | fill at all four sizes                                                            |
+| Home right after a transmission, defaults (undo + 2 = 3)         | 44 / 31 / 18 / 44 | fill except 568x320 (see below)                                                   |
+| Home after a transmission, min press 0.8 s + release (4)         | 57 / 31 / 31 / 69 | fill except 568x320 (see below)                                                   |
+| Emergency (3 details), home, min press 0.8 s + release (5)       | 69 / 44 / 31 / 95 | fill at all four sizes                                                            |
+| Emergency (3 details), discomfort (8 items) (4)                  | 57 / 31 / 31 / 69 | fill except 568x320 (see below)                                                   |
+| Letter board (15 items, scrolling grid by design) (3)            | 44 / 31 / 18 / 57 | scrolls inside the grid as before; the band stays at the bottom                   |
+| Morse, no emergency (no band)                                    | -                 | `.morse-panel` scrollHeight == clientHeight; legend bottom 438 / 237 / 272 / 301  |
+| Morse worst case: emergency + min press 0.5 s + letter gap 3.0 s | 18 / 18 / 18 / 18 | no clipping; legend bottom 498 / 296 / 299 / 347 (band top 826 / 302 / 372 / 550) |
+| Caregiver menu band (2 lines)                                    | 36 / 36 / 22 / 63 | panel inside the viewport; tab panel height 214 / 96 / 170 / 208 (it scrolls)     |
+
+568x320 (landscape phone) was already scrolling **before** this change for "7-8 items plus a message/emergency band" (grid area 153px without any band; `computeGridLayout` finds no candidate that avoids a 2-empty-cell or band layout at that height). The band does not create these cases: measured identically with the band hidden. Fixing them belongs to the grid layout (§4), not to the guidance bands.
