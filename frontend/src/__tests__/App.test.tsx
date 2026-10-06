@@ -740,7 +740,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
     selectCaregiverTab(container, 'データ')
-    const editor = container.querySelector('.phrase-editor') as HTMLElement
+    const editor = container.querySelector('.settings-backup') as HTMLElement
     const textarea = editor.querySelector('textarea') as HTMLTextAreaElement
     fireEvent.input(textarea, {
       target: { value: JSON.stringify({ app: 'libra', version: 1, headHoldMultiplier: 4 }) },
@@ -2244,14 +2244,23 @@ describe('App', () => {
       expect(selectedLabel(container)).toBe('フレーズ')
     })
 
-    it('タブをキーで移動した時刻から 60 秒の無操作で閉じる(59,999ms では開いたまま)', () => {
-      const { container, tab } = openAndFocus('状態')
-      vi.advanceTimersByTime(30000)
-      fireEvent.keyDown(tab, { key: 'ArrowRight' })
-      vi.advanceTimersByTime(IDLE_MS - 1)
+    it('タブのキー移動では無操作タイマーを延ばさない(キー連打でも最後の pointerdown から 60 秒で閉じる)', () => {
+      const { container } = render(() => <App />)
+      openCaregiverMenu(container)
+      fireEvent.pointerDown(tabByLabel(container, '状態')) // 最後の延長(t=0)
+      const tab = tabByLabel(container, '状態')
+      tab.focus()
+      let focused: HTMLElement = tab
+      for (let i = 0; i < 5; i += 1) {
+        vi.advanceTimersByTime(10000)
+        fireEvent.keyDown(focused, { key: 'ArrowRight' })
+        focused = document.activeElement as HTMLElement
+      }
+      expect(menuOpen(container)).toBe(true) // 50 秒時点では開いたまま
+      vi.advanceTimersByTime(IDLE_MS - 50000 - 1)
       expect(menuOpen(container)).toBe(true)
       vi.advanceTimersByTime(1)
-      expect(menuOpen(container)).toBe(false)
+      expect(menuOpen(container)).toBe(false) // キー移動で延びていれば 110 秒まで開いたままのはず
     })
 
     it('タブのクリック(pointerdown)でも無操作タイマーが延長される', () => {
@@ -2315,10 +2324,11 @@ describe('App', () => {
       const { container } = render(() => <App />)
       activateEmergency()
       expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(container.querySelector('.emergency-status')).not.toBeNull()
       openCaregiverMenu(container)
       selectCaregiverTab(container, 'データ')
       fireEvent.click(buttonByText(container, '緊急解除'))
-      expect(container.querySelector('.emergency-sub')).toBeNull()
+      expect(container.querySelector('.emergency-status')).toBeNull()
       expect(h1Text(container)).not.toBe('緊急です。来てください')
       fireEvent.click(buttonByText(container, '閉じる'))
       expect(menuOpen(container)).toBe(false)
@@ -2342,6 +2352,9 @@ describe('App', () => {
       }
       selectCaregiverTab(container, 'フレーズ')
       expect(container.querySelector('.phrase-editor')).not.toBeNull()
+      selectCaregiverTab(container, 'データ')
+      expect(container.querySelector('.phrase-editor')).toBeNull()
+      expect(container.querySelector('.settings-backup')).not.toBeNull()
     })
 
     it('書き出し/取り込みはデータタブにあり、フレーズタブには無い', () => {

@@ -937,10 +937,9 @@ export default function App() {
         // Issue #31: カテゴリタブにフォーカスがあるときの左右/Home/End だけは、タブ移動(ARIA tablist)に使う。
         // Enter/Space など他のキーは従来どおり本人のスイッチ入力として扱い、閉じてスキャンへ戻す
         const onTab = (event.target as HTMLElement | null)?.closest?.('.caregiver-tab')
-        if (onTab && isCaregiverTabNavKey(event)) {
-          resetCaregiverIdleTimer()
-          return
-        }
+        // 無操作 60 秒タイマーは延ばさない(タブにフォーカスが残ったまま本人が矢印/Home/End の
+        // スイッチを押し続けても、メニューが永久に開いたまま取り残されないようにする)
+        if (onTab && isCaregiverTabNavKey(event)) return
         // M3(b): 介助者はタッチで操作する想定。メニュー表示中の keydown は閉じて
         // ホーム先頭から再開する(その押下では項目を実行しない)
         event.preventDefault()

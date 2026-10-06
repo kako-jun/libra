@@ -241,7 +241,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
   }
 
   return (
-    <section class="phrase-editor" aria-label="設定データ">
+    <section class="settings-backup" aria-label="設定データ">
       <h3>設定データ</h3>
       <div class="caregiver-field">
         <span>設定のバックアップ（端末の入れ替え用）</span>

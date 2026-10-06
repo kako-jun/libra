@@ -865,6 +865,17 @@ h1[data-fit='single'] {
   white-space: nowrap;
 }
 
+/* キーボード操作用のフォーカス表示。tablist が overflow で外側を切るため内側に描く。
+   通常・高コントラスト・夜間とも、タブ背景(ok-bg/action-bg)と地(panel-bg)の両方から離れる --text 色 */
+.caregiver-tab:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: -5px;
+}
+
+.caregiver-tab.active:focus-visible {
+  outline-color: var(--caregiver-action-text);
+}
+
 /* 現在タブは色だけに頼らず、太字・太い下線・反転色で判別できるようにする */
 .caregiver-tab.active {
   color: var(--caregiver-action-text);
@@ -879,7 +890,7 @@ h1[data-fit='single'] {
   flex: 1 1 auto;
   align-content: start;
   gap: 14px;
-  min-height: 0;
+  min-height: 6rem;
   padding: 4px 2px 8px;
   overflow-y: auto;
 }
@@ -1081,14 +1092,16 @@ h1[data-fit='single'] {
 }
 
 /* Issue #8: フレーズ編集(介助者メニュー内)。タッチ操作しやすい大きさで縦に並べる */
-.phrase-editor {
+.phrase-editor,
+.settings-backup {
   display: grid;
   gap: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--grid-line);
 }
 
-.phrase-editor h3 {
+.phrase-editor h3,
+.settings-backup h3 {
   margin: 0;
   font-size: 1.05rem;
 }
@@ -1123,7 +1136,7 @@ h1[data-fit='single'] {
 }
 
 .phrase-row input,
-.phrase-editor textarea {
+.settings-backup textarea {
   min-height: 44px;
   padding: 6px 8px;
   color: var(--text);
