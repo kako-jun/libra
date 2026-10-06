@@ -453,9 +453,10 @@ h1[data-fit='single'] {
   touch-action: none;
 }
 
-/* Issue #3 再レビュー: 項目数が少ない画面(目安8項目以内)では、孤立タイル・下部の
-   空白を出さないよう App.tsx(computeGridLayout)が算出した列数(--cols)・行数(--rows)で
-   grid 領域全体を等分してタイルで埋める。auto-fit/minmax によるスクロールは使わない。 */
+/* Issue #47: 通常画面(目安8項目以内)は、画面の向きだけで決まる固定格子(App.tsx の
+   computeGridLayout: 縦長 2列×4行 / 横長 4列×2行)で領域全体を等分する。項目数が少なくても
+   タイルは引き延ばさず、余りは .tile-empty(非操作の空きセル)になる。
+   auto-fit/minmax によるスクロールは使わない。 */
 .grid-board.grid-fill {
   grid-template-columns: repeat(var(--cols, 1), 1fr);
   grid-template-rows: repeat(var(--rows, 1), 1fr);
@@ -466,6 +467,15 @@ h1[data-fit='single'] {
 .grid-board.grid-fill .tile {
   min-height: 0;
   height: 100%;
+}
+
+/* Issue #47: 空きセル。タイルではない(スキャン・クリック・読み上げの対象外)ので、面の色も
+   区切り線も持たず、盤の背景がそのまま見える「何もない」セルにする。 */
+.tile-empty {
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  pointer-events: none;
 }
 
 /* Issue #40: スクロールモード(9項目以上、現状は文字盤の行段階のみ)では
