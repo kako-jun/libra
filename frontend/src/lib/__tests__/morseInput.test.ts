@@ -202,3 +202,141 @@ describe('morseInput', () => {
     expect(last().text).toBe('へ')
   })
 })
+
+// Issue #57: SOS の履歴判定を、実際の押下/解放と時計(createMorseInput)でも確認する
+describe('morseInput: SOS の履歴(Issue #57)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const sendSymbols = (h: ReturnType<typeof setup>, code: string, gapMs = 150) => {
+    for (const symbol of code) {
+      h.press(symbol === '-' ? 600 : 100)
+      vi.advanceTimersByTime(gapMs)
+    }
+  }
+
+  it('8押下では緊急にならず、9押下目を離した時点で即 emergency(確定を待たない)', () => {
+    const h = setup()
+    h.input.start('')
+    sendSymbols(h, '...---..')
+    expect(h.events).toEqual([])
+    h.press(100)
+    expect(h.events).toEqual([{ type: 'emergency' }])
+  })
+
+  it('「...」が「ら」として確定済み(間が1.5秒超)でも、後続の「---...」で発火する', () => {
+    const h = setup()
+    h.input.start('')
+    sendSymbols(h, '...')
+    vi.advanceTimersByTime(2000)
+    expect(h.last().text).toBe('ら')
+    sendSymbols(h, '---...')
+    expect(h.events).toEqual([{ type: 'emergency' }])
+  })
+
+  it('前に誤符号があっても発火する', () => {
+    const h = setup()
+    h.input.start('')
+    sendSymbols(h, '-.')
+    sendSymbols(h, '...---...')
+    expect(h.events).toEqual([{ type: 'emergency' }])
+  })
+
+  it('旧・緊急の「－」5つでは緊急にならない', () => {
+    const h = setup()
+    h.input.start('')
+    sendSymbols(h, '-----')
+    vi.advanceTimersByTime(2000)
+    expect(h.events).toEqual([])
+  })
+
+  it('緊急のあと履歴が空になり、続く「---...」では再発火しない', () => {
+    const h = setup()
+    h.input.start('')
+    sendSymbols(h, '...---...')
+    expect(h.events).toHaveLength(1)
+    sendSymbols(h, '---...')
+    expect(h.events).toHaveLength(1)
+    expect(h.last().history).toBe('---...')
+  })
+
+  describe('15秒の履歴リセット', () => {
+    it('14秒空けても残りの「---...」で発火する', () => {
+      const h = setup()
+      h.input.start('')
+      sendSymbols(h, '...', 0)
+      vi.advanceTimersByTime(14000)
+      sendSymbols(h, '---...')
+      expect(h.events).toEqual([{ type: 'emergency' }])
+    })
+
+    it('16秒空けると履歴は捨てられ、「---...」だけでは発火しない', () => {
+      const h = setup()
+      h.input.start('')
+      sendSymbols(h, '...', 0)
+      vi.advanceTimersByTime(16000)
+      expect(h.last().history).toBe('')
+      sendSymbols(h, '---...')
+      expect(h.events).toEqual([])
+    })
+
+    it('押している最中は時計が進んでも履歴を捨てない(離してから数える)', () => {
+      const h = setup()
+      h.input.start('')
+      sendSymbols(h, '...', 0)
+      vi.advanceTimersByTime(14500)
+      h.input.down('k')
+      vi.advanceTimersByTime(1000) // 15秒を超えるが押している間
+      h.input.up('k') // 長押し(－)
+      expect(h.last().history).toBe('...-')
+      sendSymbols(h, '--...')
+      expect(h.events).toEqual([{ type: 'emergency' }])
+    })
+  })
+
+  describe('操作の符号のあとは履歴が空', () => {
+    it('・6つ(1字消す)を確定した直後の「---...」では緊急にならない', () => {
+      const h = setup()
+      h.input.start('あい')
+      sendSymbols(h, '......')
+      vi.advanceTimersByTime(1600)
+      expect(h.last().text).toBe('あ')
+      expect(h.last().history).toBe('')
+      sendSymbols(h, '---...')
+      expect(h.events).toEqual([])
+    })
+
+    it('・5つは確定待ちのあと exit(緊急と衝突せず、履歴は空)', () => {
+      const h = setup()
+      h.input.start('')
+      sendSymbols(h, '.....')
+      expect(h.events).toEqual([])
+      vi.advanceTimersByTime(1600)
+      expect(h.events).toEqual([{ type: 'exit' }])
+      expect(h.last().history).toBe('')
+    })
+
+    it('確定の符号(・－・－・－)のあとは send が出て履歴は空', () => {
+      const h = setup()
+      h.input.start('あ')
+      sendSymbols(h, '.-.-.-')
+      vi.advanceTimersByTime(1600)
+      expect(h.events).toEqual([{ type: 'send', text: 'あ' }])
+      expect(h.last().history).toBe('')
+    })
+  })
+
+  it('入り直し(start)で履歴は空から始まる', () => {
+    const h = setup()
+    h.input.start('')
+    sendSymbols(h, '...---..')
+    h.input.stop()
+    h.input.start('')
+    h.press(100)
+    expect(h.events).toEqual([])
+    expect(h.last().history).toBe('.')
+  })
+})

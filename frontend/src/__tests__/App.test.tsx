@@ -1199,6 +1199,147 @@ describe('App', () => {
     expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').morseEnabled).toBe(true)
   })
 
+  // Issue #57: 緊急=SOS。案内は常時表示し、時間は設定値に追従する
+  function enterMorseWith(settings: Record<string, unknown>) {
+    window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, ...settings }))
+    const view = render(() => <App />)
+    selectByLabel(view.container, 'モールス')
+    expect(view.container.querySelector('.morse-panel')).not.toBeNull()
+    return view
+  }
+  // 空白(全角含む)の幅の違いは見ない
+  const legendOf = (container: HTMLElement) =>
+    (container.querySelector('.morse-legend')?.textContent ?? '').replace(/\s+/g, ' ')
+
+  it('Issue #57: モールス画面の案内は押下なしで常時表示され、全項目の文言がある(既定値)', () => {
+    const { container } = enterMorse()
+    const text = legendOf(container)
+    for (const phrase of [
+      '短く押す＝・',
+      '0.5秒以上押す＝－',
+      '緊急＝SOS ・・・ －－－ ・・・',
+      '・・・・・（・を5つ）＝スキャンへ戻る',
+      '・・・・・・（・を6つ）＝1字消す',
+      '・－・－・－＝確定して伝える',
+      '1.5秒押さないと、1文字が決まる',
+      '4.0秒押さないと、語の区切りが入る',
+      '30秒何も押さないと、スキャンへ戻る',
+      '15秒押さないと、SOSの数え直し',
+      '10秒以上押しっぱなしの入力は、無効になる',
+    ]) {
+      expect(text).toContain(phrase)
+    }
+    expect(container.querySelectorAll('.morse-legend li').length).toBe(10)
+    expect(text).not.toMatch(/\p{Extended_Pictographic}/u) // 絵文字なし
+  })
+
+  it('Issue #57: 案内は入力中・押下中・時間経過のあとも隠れない', () => {
+    const { container } = enterMorse()
+    const before = legendOf(container)
+    sendCode('.-')
+    expect(legendOf(container)).toBe(before)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(700)
+    expect(legendOf(container)).toBe(before)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(5000)
+    expect(legendOf(container)).toBe(before)
+    // 入力前の大表示のヒント文は案内に移したので、確定済み文字列が空のときは空白
+    expect(morseTextOf(container).trim()).not.toBe('')
+  })
+
+  it('Issue #57: 設定(文字確定・語の区切り・長押しの境目)を変えると、案内の秒数が追従する', () => {
+    const { container } = enterMorseWith({
+      morseDashMs: 800,
+      morseLetterGapMs: 2500,
+      morseWordGapMs: 6000,
+    })
+    const text = legendOf(container)
+    expect(text).toContain('0.8秒以上押す＝－')
+    expect(text).toContain('2.5秒押さないと、1文字が決まる')
+    expect(text).toContain('6.0秒押さないと、語の区切りが入る')
+    expect(text).not.toContain('0.5秒以上押す')
+    expect(text).toContain('緊急＝SOS') // 設定を変えても緊急の案内は消えない
+  })
+
+  it('Issue #57: 押下時間の下限(#6)が大きいと、長押しの境目の秒数はそれに従って長く表示される', () => {
+    // 下限 1 秒では、スキャンの選択も 1 秒以上押す必要がある
+    window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, minHoldMs: 1000 }))
+    const { container } = render(() => <App />)
+    for (let i = 0; i < 40 && scanningLabel(container) !== 'モールス'; i += 1) {
+      vi.advanceTimersByTime(1500)
+    }
+    vi.advanceTimersByTime(600)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(1100)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(100)
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+    // 実効の境目 = 1000 + 100ms
+    expect(legendOf(container)).toContain('1.1秒以上押す＝－')
+  })
+
+  it('Issue #57: 語の区切りの設定は文字確定+0.5秒以上に補正され、案内もそれに従う', () => {
+    const { container } = enterMorseWith({ morseLetterGapMs: 3000, morseWordGapMs: 1500 })
+    expect(legendOf(container)).toContain('3.0秒押さないと、1文字が決まる')
+    expect(legendOf(container)).toContain('3.5秒押さないと、語の区切りが入る')
+  })
+
+  it('Issue #57: SOS の途中で 14 秒空けても、続きで緊急になる', () => {
+    const { container } = enterMorse()
+    sendCode('...')
+    vi.advanceTimersByTime(14000)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    sendCode('---...')
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #57: 16 秒空けると SOS の数え直しになり、続きだけでは緊急にならない', () => {
+    const { container } = enterMorse()
+    sendCode('...')
+    vi.advanceTimersByTime(16000)
+    sendCode('---...')
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+  })
+
+  it('Issue #57: 「...」が「ら」で確定済みでも、続く「---...」で緊急になる', () => {
+    const { container } = enterMorse()
+    sendCode('...')
+    vi.advanceTimersByTime(1600)
+    expect(morseTextOf(container)).toBe('ら')
+    sendCode('---...')
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #57: 旧・緊急の「－」5つでは緊急にならない', () => {
+    const { container } = enterMorse()
+    sendCode('-----')
+    vi.advanceTimersByTime(1600)
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+  })
+
+  it('Issue #57: ・6つ(1字消す)を確定した直後の「---...」では緊急にならない', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    vi.advanceTimersByTime(1600)
+    sendCode('......')
+    vi.advanceTimersByTime(1600)
+    expect(morseTextOf(container).trim()).toBe('')
+    sendCode('---...')
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+  })
+
+  it('Issue #57: 介助者メニューのモールス注意書きに、SOSも出せない旨がある', () => {
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    selectCaregiverTab(container, '入力方式')
+    const panel = container.querySelector('.caregiver-panel') as HTMLElement
+    expect(panel.textContent).toContain('SOS（・・・－－－・・・）も出せません')
+  })
+
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
     const { container } = render(() => <App />)
     // カーソルは index0(緊急)。"3"キーは index2(いいえ)への直接ジャンプではなく
