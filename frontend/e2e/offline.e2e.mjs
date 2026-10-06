@@ -654,7 +654,7 @@ async function checkHeadingFit(chromium, port) {
 /**
  * PR#16 Opus レビュー must-3: 文字サイズ「特大」× 390x844 × 不快画面(8項目)で、
  * タイルのラベルがタイル自身の矩形からはみ出さない(隣セルへ食い込まない)ことを確認する。
- * gridLayout への最小セル寸法連動・container-type:size + cqb clamp・overflow:hiddenの
+ * 固定格子(gridLayout.ts)・container-type:size + cqb clamp・overflow:hiddenの
  * 3段構えの対策がすべて外れた場合にここで検知する。
  */
 async function checkLabelsFitAtXlarge(chromium, port) {
