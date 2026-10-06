@@ -10,7 +10,7 @@
 //   横長 844x390          | 0         | -                         | 1x1    | 0             | false
 //   横長 844x390          | 1〜8      | -                         | 4x2    | 8-n           | true
 //   横長 844x390          | 9, 15     | -                         | 1x1    | 0(スクロール) | false
-//   幅=高さ 600x600       | 1〜8      | -                         | 4x2    | 8-n           | true  (>= は横長)
+//   幅=高さ 600x600       | 1〜8      | -                         | 2x4    | 8-n           | true  (正方形は縦長。CSS の orientation:portrait と同じ)
 //   幅=高さ-1 / +1        | 1〜8      | -                         | 縦2x4 / 横4x2 | 8-n    | true
 //   縦長/横長             | 6(home)   | 通常/緊急中/伝達メッセージ/特大文字 | 状態によらず同一 | 2          | true
 //   縦長/横長             | 15(文字盤行) | -                      | fill:false。緊急タイルが sticky(従来どおり)・空きセルなし
@@ -88,7 +88,7 @@ describe('Issue #47: 固定格子と空きセル(純関数のデシジョンテ�
   const orientations = [
     ['縦長 390x844', 390, 844, { cols: 2, rows: 4 }],
     ['横長 844x390', 844, 390, { cols: 4, rows: 2 }],
-    ['幅=高さ 600x600(>= は横長)', 600, 600, { cols: 4, rows: 2 }],
+    ['幅=高さ 600x600(正方形は縦長)', 600, 600, { cols: 2, rows: 4 }],
     ['幅=高さ-1 599x600', 599, 600, { cols: 2, rows: 4 }],
     ['幅=高さ+1 601x600', 601, 600, { cols: 4, rows: 2 }],
   ] as const
@@ -157,10 +157,10 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(gridOf(container)).toEqual(PORTRAIT)
     })
 
-    it('幅=高さちょうどは横長、幅=高さ-1 は縦長、+1 は横長(App 上の境界)', () => {
+    it('幅=高さちょうど(正方形)は縦長、幅=高さ-1 も縦長、+1 は横長(App 上の境界)', () => {
       const { container } = render(() => <App />)
       setViewport(600, 600)
-      expect(gridOf(container)).toEqual(LANDSCAPE)
+      expect(gridOf(container)).toEqual(PORTRAIT)
       setViewport(599, 600)
       expect(gridOf(container)).toEqual(PORTRAIT)
       setViewport(601, 600)
@@ -230,7 +230,8 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         press(emg.container, EMERGENCY_LABEL)
         expect(emg.container.querySelector('.emergency-status')).not.toBeNull()
         expect(gridOf(emg.container)).toEqual(grid)
-        // 緊急中に「緊急詳細」へ進んでも同じ
+        // 緊急タイルを押すと緊急詳細(先頭は「戻る」)へ進む。そこでも同じ格子
+        expect(labels(emg.container)[0]).toBe('戻る')
         expect(tiles(emg.container).length + emptyCells(emg.container).length).toBe(8)
         emg.unmount()
         window.localStorage.clear()
@@ -248,12 +249,14 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       setViewport(390, 844)
       const { container } = render(() => <App />)
       press(container, EMERGENCY_LABEL)
+      // 緊急タイルを押すと実際に緊急詳細へ進む(先頭は「戻る」、緊急タイルは重複しない)
+      expect(labels(container)[0]).toBe('戻る')
+      expect(labels(container)).not.toContain(EMERGENCY_LABEL)
       const n = tiles(container).length
       expect(n).toBeGreaterThan(0)
-      if (n <= 8) {
-        expect(gridOf(container)).toEqual(PORTRAIT)
-        expect(emptyCells(container)).toHaveLength(8 - n)
-      }
+      expect(n).toBeLessThanOrEqual(8)
+      expect(gridOf(container)).toEqual(PORTRAIT)
+      expect(emptyCells(container)).toHaveLength(8 - n)
     })
   })
 
@@ -280,35 +283,54 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(labels(container)).toEqual(labelsBefore)
     })
 
-    it('スキャンは全タイルを巡回して先頭に戻り、空きセルには決して止まらない(.scanning はタイルのみ)', () => {
+    it('スキャンは全タイルを順に巡回し、最後の項目の次は先頭へ戻る(周期=項目数。空きセルには止まらない)', () => {
       setViewport(390, 844)
       setSettings({ intervalMs: INTERVAL_MS })
       const { container } = render(() => <App />)
+      const all = labels(container)
+      const n = all.length
+      expect(n).toBeLessThan(8) // 空きセルがある画面(周期が格子のセル数=8と区別できる)
+      expect(emptyCells(container)).toHaveLength(8 - n)
       const seen: string[] = []
       vi.advanceTimersByTime(HEAD_HOLD_MS)
-      for (let i = 0; i < 14; i += 1) {
+      for (let i = 0; i < n * 3 + 2; i += 1) {
+        // 各ステップで .scanning はタイルにちょうど1つ。空きセルは決して .scanning にならない
         const scanning = container.querySelectorAll('.grid-board .scanning')
-        expect(scanning.length).toBeLessThanOrEqual(1)
-        for (const el of Array.from(scanning)) {
-          expect(el.classList.contains('tile')).toBe(true)
-          expect(el.classList.contains('tile-empty')).toBe(false)
-        }
+        expect(scanning.length, `step ${i}`).toBe(1)
+        expect(scanning[0].classList.contains('tile')).toBe(true)
         expect(container.querySelector('.tile-empty.scanning')).toBeNull()
-        const label = container.querySelector('.tile.scanning .tile-label')?.textContent
-        if (label) seen.push(label)
+        seen.push(container.querySelector('.tile.scanning .tile-label')?.textContent ?? '')
         vi.advanceTimersByTime(INTERVAL_MS)
       }
-      expect(new Set(seen)).toEqual(new Set(labels(container)))
+      // 並びは項目の順の循環(最後→先頭)で、周期は項目数
+      const start = all.indexOf(seen[0])
+      expect(start).toBeGreaterThanOrEqual(0)
+      seen.forEach((label, i) => expect(label, `step ${i}`).toBe(all[(start + i) % n]))
+      expect(seen[n]).toBe(seen[0])
+      expect(seen.indexOf(all[n - 1]) + 1 < seen.length).toBe(true)
+      expect(seen[seen.indexOf(all[n - 1]) + 1]).toBe(all[0])
     })
 
-    it('キー(スペース)はスキャン中のタイルを実行し、空きセルが選ばれることはない', () => {
+    it('キー(スペース)は currentMenu の範囲のタイルだけを実行する(最後の項目の次は先頭で、空きセルは対象にならない)', () => {
       setViewport(390, 844)
+      setSettings({ intervalMs: INTERVAL_MS })
       const { container } = render(() => <App />)
+      const all = labels(container)
+      expect(all.length).toBeLessThan(8)
       vi.advanceTimersByTime(HEAD_HOLD_MS)
-      const target = container.querySelector('.tile.scanning .tile-label')?.textContent
-      expect(target).toBe('はい')
+      // 最後のタイルまで進め、その次(空きセルがあれば止まってしまう位置)で先頭へ戻っていることを確認する
+      let guard = 0
+      while (
+        container.querySelector('.tile.scanning .tile-label')?.textContent !== all[all.length - 1]
+      ) {
+        vi.advanceTimersByTime(INTERVAL_MS)
+        expect(++guard).toBeLessThan(all.length * 3)
+      }
+      vi.advanceTimersByTime(INTERVAL_MS)
+      expect(container.querySelector('.tile.scanning .tile-label')?.textContent).toBe(all[0])
       fireEvent.keyDown(window, { key: ' ' })
-      expect(container.querySelector('h1')?.textContent).toBe('はい')
+      // 先頭は緊急: 実行されて緊急詳細(先頭は「戻る」)へ進む
+      expect(labels(container)[0]).toBe('戻る')
     })
 
     it('聴覚スキャン: 読み上げられるのはタイルのラベルだけで、空きセル分の読み上げは出ない', () => {
@@ -404,6 +426,9 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(document.documentElement.dataset.highContrast).toBe('true')
     })
 
+    // 注: jsdom は pointer-events:none を実イベントに適用しない。ここは CSS 宣言の存在だけを見る
+    // (実際に押せないことは実Chromiumの実測で確認する。直上のテストは jsdom で直接イベントを送っても
+    // ハンドラが無いので何も起きないことを見ている)
     it('空きセルは面の色・区切り線を持たず、pointer-events:none', () => {
       const block = css.match(/\.tile-empty \{([^}]*)\}/s)?.[1] ?? ''
       expect(block).toMatch(/pointer-events:\s*none/)
