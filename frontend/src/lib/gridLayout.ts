@@ -5,8 +5,8 @@
 // 項目が少ないときは空きセルを残す(最後のタイルを引き延ばさない)。
 //
 // 固定格子: 通常のスキャン画面(1画面8項目以内)は、画面の向きだけで決まる1つの格子を共有する。
-//   縦長(幅 < 高さ): 2列 × 4行
-//   横長(幅 >= 高さ): 4列 × 2行
+//   縦長(高さ >= 幅。正方形を含む。CSS の orientation: portrait と同じ境界): 2列 × 4行
+//   横長(幅 > 高さ): 4列 × 2行
 // どちらも8セル。8項目(requirements.md §4.1 の1画面の上限。ホームの「直前を取り消す」込み)が
 // ちょうど埋まる最小の格子で、項目数・緊急中・伝達メッセージの有無・文字サイズでは変わらない。
 // 判定にはビューポートの縦横を使う(格子領域の実測は、緊急帯・伝達メッセージ・案内帯の増減で
@@ -27,7 +27,7 @@ export const GRID_FILL_MAX_ITEMS = 8
 
 /** 縦長ビューポートの固定格子 */
 export const PORTRAIT_GRID = { cols: 2, rows: 4 } as const
-/** 横長(幅 >= 高さ)ビューポートの固定格子 */
+/** 横長(幅 > 高さ)ビューポートの固定格子 */
 export const LANDSCAPE_GRID = { cols: 4, rows: 2 } as const
 
 /**
@@ -46,6 +46,6 @@ export function computeGridLayout(
   if (itemCount > GRID_FILL_MAX_ITEMS) {
     return { fill: false, cols: 1, rows: 1 }
   }
-  const grid = viewportWidth >= viewportHeight ? LANDSCAPE_GRID : PORTRAIT_GRID
+  const grid = viewportWidth > viewportHeight ? LANDSCAPE_GRID : PORTRAIT_GRID
   return { fill: true, cols: grid.cols, rows: grid.rows }
 }

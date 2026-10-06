@@ -37,8 +37,9 @@ describe('computeGridLayout (固定格子, Issue #47)', () => {
     expect(PORTRAIT_GRID.cols * PORTRAIT_GRID.rows).toBe(GRID_FILL_MAX_ITEMS)
   })
 
-  it('幅 >= 高さなら横長格子、幅 < 高さなら縦長格子', () => {
-    expect(computeGridLayout(5, 600, 600)).toMatchObject(LANDSCAPE_GRID)
+  it('幅 > 高さなら横長格子、高さ >= 幅(正方形を含む)なら縦長格子(CSS の orientation と同じ境界)', () => {
+    expect(computeGridLayout(5, 601, 600)).toMatchObject(LANDSCAPE_GRID)
+    expect(computeGridLayout(5, 600, 600)).toMatchObject(PORTRAIT_GRID)
     expect(computeGridLayout(5, 599, 600)).toMatchObject(PORTRAIT_GRID)
   })
 })

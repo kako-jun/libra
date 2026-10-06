@@ -540,12 +540,25 @@ h1[data-fit='single'] {
      係数だけ揃えたことで、狭い画面の実際の頭打ち値が下がった)。
      係数を --label-cqi/--label-cqb という CSS 変数に戻し、ブレークポイントごとに
      元の値(基本15/20、720px以下20/22、480px以下22/24、下の @media 参照)に
-     戻す。JS側(gridLayout.ts)にハードコードしていた頃の食い違いを繰り返さない
-     よう、今度は App.tsx がこの実効値を getComputedStyle で読んで
-     computeGridLayout に渡す(ハードコードされた定数を持たない) */
+     戻す(係数はこの CSS だけが持つ。Issue #47 で JS 側は読まなくなった)。
+     Issue #47/#34 追加(高コントラストの補正): タイルの padding をスキャン枠の帯
+     (--scan-ring-inset)にしたため、帯が太い(15px)高コントラストでは cqi/cqb の基準になる
+     content-box が標準(12px)より縮み、ラベルまで小さくなっていた(弱視向けの設定で
+     文字が小さくなるのは逆効果)。基準を標準の帯(12px)相当に戻すため、上限側の項に
+     --ring-extra(帯の標準との差。標準では 0)の分を足す。
+     Issue #34 追加(2行ラベルを帯に入れない): 下限 1.05rem は、セルの高さが低い(2行ぶんの
+     content 高さが無い)と2行ラベルが枠の帯に食い込む。content 高さで2行(行間1.08×2 ≒ 2.2)が
+     入らないときだけ、下限をその高さに合わせて下げる */
+  --ring-extra: calc(var(--scan-ring-inset) - 12px);
   --tile-label-font: clamp(
-    1.05rem,
-    calc(var(--label-ratio) * min(calc(var(--label-cqi) * 1cqi), calc(var(--label-cqb) * 1cqb))),
+    min(1.05rem, calc(100cqb / 2.4)),
+    calc(
+      var(--label-ratio) *
+        min(
+          calc(var(--label-cqi) * 1cqi + var(--label-cqi) * 0.02 * var(--ring-extra)),
+          calc(var(--label-cqb) * 1cqb + var(--label-cqb) * 0.02 * var(--ring-extra))
+        )
+    ),
     min(calc(var(--font-scale) * 4.8vh), 3.4rem)
   );
   container-type: size;
@@ -957,6 +970,7 @@ h1[data-fit='single'] {
   background: var(--caregiver-close-bg);
 }
 
+/* 縦横の境界は gridLayout.ts と同じ(高さ >= 幅 が縦長。正方形は縦長) */
 @media (orientation: portrait) {
   .message-panel {
     min-height: 148px;
@@ -966,8 +980,7 @@ h1[data-fit='single'] {
 @media (max-width: 720px) {
   /* PR#16 5巡目 must-G(4巡目 should-a を巻き戻す): --label-cqi/--label-cqb を
      このブレークポイント向けの値に上書きする。:root で定義することで、
-     .tile の子孫だけでなく App.tsx が getComputedStyle(gridBoardEl) で読む先
-     (gridBoardElはこれらの祖先)にも同じ実効値が伝わる */
+     .tile の子孫を含め、どこから参照しても同じ実効値になる */
   :root {
     --label-cqi: 20;
     --label-cqb: 22;
@@ -986,7 +999,6 @@ h1[data-fit='single'] {
 
   .tile {
     min-height: 112px;
-    padding: var(--scan-ring-inset);
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
@@ -1031,7 +1043,6 @@ h1[data-fit='single'] {
 
   .tile {
     min-height: 84px;
-    padding: var(--scan-ring-inset);
   }
 }
 
