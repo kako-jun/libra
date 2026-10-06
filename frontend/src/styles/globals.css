@@ -1510,11 +1510,29 @@ h1[data-fit='single'] {
     padding-block: 3px;
   }
 
-  /* 本人が読める下限は 0.7rem(約11px)。これより小さくせず、低い画面では短縮文言(guidance.ts の compact)で収める */
-  .screen-notes {
-    padding: 2px 12px;
+  /* 緊急の帯・直前に伝えたこと・選択確認の余白も詰め、案内の帯の分の高さを作る
+     (緊急+伝達メッセージ+選択確認が重なる 568x320 でも8項目の格子を埋めるため) */
+  .emergency-status {
+    padding-block: 4px;
+  }
+
+  .message-panel {
+    padding-block: 3px;
+  }
+
+  .message-panel-label {
+    margin: 0;
     font-size: 0.7rem;
-    line-height: 1.15;
+    line-height: 1.1;
+  }
+
+  .selection-confirmation {
+    min-height: 0;
+    padding-block: 2px;
+  }
+
+  .screen-notes {
+    padding: 3px 12px;
   }
 
   /* 帯が増えた分、短い画面では設定ペインの下限を詰める(ペインはスクロールする) */
@@ -1526,5 +1544,15 @@ h1[data-fit='single'] {
     font-size: 0.72rem;
     line-height: 1.2;
     padding: 3px 8px;
+  }
+}
+
+/* 帯の文字を縮めるのは「高さが足りない」ときだけ(縦長スマホ 390x844・320x568 は基本の clamp のまま読みやすい大きさ)。
+   本人が読める下限は 0.7rem(約11px)。これより小さくせず、収まらないときは短縮文言(guidance.ts の compact)で収める */
+@media (max-height: 500px) {
+  .screen-notes {
+    padding: 2px 12px;
+    font-size: 0.7rem;
+    line-height: 1.15;
   }
 }
