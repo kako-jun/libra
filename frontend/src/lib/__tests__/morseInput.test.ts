@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMorseInput, type MorseInputConfig } from '../morseInput'
-import type { MorseEvent, MorseState, MorseSymbol } from '../morse'
+import { MORSE_WORD_SEPARATOR, type MorseEvent, type MorseState, type MorseSymbol } from '../morse'
 
 const config: MorseInputConfig = {
   noiseMs: 30,
@@ -203,8 +203,8 @@ describe('morseInput', () => {
   })
 })
 
-// Issue #57: SOS の履歴判定を、実際の押下/解放と時計(createMorseInput)でも確認する
-describe('morseInput: SOS の履歴(Issue #57)', () => {
+// Issue #57: SOS の断片列による判定を、実際の押下/解放と時計(createMorseInput)でも確認する
+describe('morseInput: SOS は文字の切れ目から始まる場合だけ(Issue #57)', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(0)
@@ -237,12 +237,44 @@ describe('morseInput: SOS の履歴(Issue #57)', () => {
     expect(h.events).toEqual([{ type: 'emergency' }])
   })
 
-  it('前に誤符号があっても発火する', () => {
+  it('前に誤符号があっても、SOS が文字の切れ目(確定のあと)から始まれば発火する', () => {
+    const h = setup()
+    h.input.start('')
+    sendSymbols(h, '-.')
+    vi.advanceTimersByTime(2000) // 誤符号を確定
+    sendSymbols(h, '...---...')
+    expect(h.events).toEqual([{ type: 'emergency' }])
+  })
+
+  it('前の文字から休まず続けた「誤符号+SOS」は文字の途中から始まるので発火しない', () => {
     const h = setup()
     h.input.start('')
     sendSymbols(h, '-.')
     sendSymbols(h, '...---...')
+    expect(h.events).toEqual([])
+  })
+
+  it('「ら」「れ」「ら」と3文字に確定しながら打った SOS で緊急になり、SOS 由来の文字は消える', () => {
+    const h = setup()
+    h.input.start('あ')
+    for (const code of ['...', '---', '...']) {
+      sendSymbols(h, code)
+      vi.advanceTimersByTime(2000)
+      if (h.events.length === 0) expect(h.last().text.length).toBeGreaterThan(1)
+    }
     expect(h.events).toEqual([{ type: 'emergency' }])
+    expect(h.last().text.replace(MORSE_WORD_SEPARATOR, '')).toBe('あ')
+  })
+
+  it('「かぜ」を打っても(符号の連結が SOS を含んでも)緊急にならない', () => {
+    const h = setup()
+    h.input.start('')
+    for (const code of ['.-..', '.---.', '..']) {
+      sendSymbols(h, code)
+      vi.advanceTimersByTime(2000)
+    }
+    expect(h.last().text.trim()).toBe('かぜ')
+    expect(h.events).toEqual([])
   })
 
   it('旧・緊急の「－」5つでは緊急にならない', () => {
@@ -253,17 +285,18 @@ describe('morseInput: SOS の履歴(Issue #57)', () => {
     expect(h.events).toEqual([])
   })
 
-  it('緊急のあと履歴が空になり、続く「---...」では再発火しない', () => {
+  it('緊急のあと断片列が空になり、続く「---...」では再発火しない', () => {
     const h = setup()
     h.input.start('')
     sendSymbols(h, '...---...')
     expect(h.events).toHaveLength(1)
     sendSymbols(h, '---...')
     expect(h.events).toHaveLength(1)
-    expect(h.last().history).toBe('---...')
+    expect(h.last().segments).toEqual([])
+    expect(h.last().code).toBe('---...')
   })
 
-  describe('15秒の履歴リセット', () => {
+  describe('15秒の断片リセット', () => {
     it('14秒空けても残りの「---...」で発火する', () => {
       const h = setup()
       h.input.start('')
@@ -273,17 +306,17 @@ describe('morseInput: SOS の履歴(Issue #57)', () => {
       expect(h.events).toEqual([{ type: 'emergency' }])
     })
 
-    it('16秒空けると履歴は捨てられ、「---...」だけでは発火しない', () => {
+    it('16秒空けると断片は捨てられ、「---...」だけでは発火しない', () => {
       const h = setup()
       h.input.start('')
       sendSymbols(h, '...', 0)
       vi.advanceTimersByTime(16000)
-      expect(h.last().history).toBe('')
+      expect(h.last().segments).toEqual([])
       sendSymbols(h, '---...')
       expect(h.events).toEqual([])
     })
 
-    it('押している最中は時計が進んでも履歴を捨てない(離してから数える)', () => {
+    it('押している最中は時計が進んでも断片を捨てない(離してから数える)', () => {
       const h = setup()
       h.input.start('')
       sendSymbols(h, '...', 0)
@@ -291,45 +324,46 @@ describe('morseInput: SOS の履歴(Issue #57)', () => {
       h.input.down('k')
       vi.advanceTimersByTime(1000) // 15秒を超えるが押している間
       h.input.up('k') // 長押し(－)
-      expect(h.last().history).toBe('...-')
+      expect(h.last().code).toBe('-')
+      expect(h.last().segments.length).toBe(1)
       sendSymbols(h, '--...')
       expect(h.events).toEqual([{ type: 'emergency' }])
     })
   })
 
-  describe('操作の符号のあとは履歴が空', () => {
+  describe('操作の符号のあとは断片列が空', () => {
     it('・6つ(1字消す)を確定した直後の「---...」では緊急にならない', () => {
       const h = setup()
       h.input.start('あい')
       sendSymbols(h, '......')
       vi.advanceTimersByTime(1600)
       expect(h.last().text).toBe('あ')
-      expect(h.last().history).toBe('')
+      expect(h.last().segments).toEqual([])
       sendSymbols(h, '---...')
       expect(h.events).toEqual([])
     })
 
-    it('・5つは確定待ちのあと exit(緊急と衝突せず、履歴は空)', () => {
+    it('・5つは確定待ちのあと exit(緊急と衝突せず、断片列は空)', () => {
       const h = setup()
       h.input.start('')
       sendSymbols(h, '.....')
       expect(h.events).toEqual([])
       vi.advanceTimersByTime(1600)
       expect(h.events).toEqual([{ type: 'exit' }])
-      expect(h.last().history).toBe('')
+      expect(h.last().segments).toEqual([])
     })
 
-    it('確定の符号(・－・－・－)のあとは send が出て履歴は空', () => {
+    it('確定の符号(・－・－・－)のあとは send が出て断片列は空', () => {
       const h = setup()
       h.input.start('あ')
       sendSymbols(h, '.-.-.-')
       vi.advanceTimersByTime(1600)
       expect(h.events).toEqual([{ type: 'send', text: 'あ' }])
-      expect(h.last().history).toBe('')
+      expect(h.last().segments).toEqual([])
     })
   })
 
-  it('入り直し(start)で履歴は空から始まる', () => {
+  it('入り直し(start)で断片列は空から始まる', () => {
     const h = setup()
     h.input.start('')
     sendSymbols(h, '...---..')
@@ -337,6 +371,7 @@ describe('morseInput: SOS の履歴(Issue #57)', () => {
     h.input.start('')
     h.press(100)
     expect(h.events).toEqual([])
-    expect(h.last().history).toBe('.')
+    expect(h.last().segments).toEqual([])
+    expect(h.last().code).toBe('.')
   })
 })

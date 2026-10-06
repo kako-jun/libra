@@ -2,8 +2,9 @@
 // 正本: docs/requirements.md §4.7 / Issue #14
 //
 // 符号は内部では '.'(短点・短押し)と '-'(長点・長押し)で持ち、表示側で ・ － に直す。
-// 緊急の符号は SOS(短点3・長点3・短点3の連続9押下)。文字の確定とは独立に押下の並びの
-// 履歴を持ち、末尾9押下が SOS なら、最後の押下を離した時点で即座に出す。
+// 緊急の符号は SOS(短点3・長点3・短点3の連続9押下)。SOS は「文字の切れ目から始まる」ときだけ
+// 緊急にする。確定済みの符号(断片)の列と入力中の符号をつなげて SOS になったとき、
+// 最後の押下を離した時点で即座に出す(アルゴリズムは pushSymbol を参照)。
 
 export type MorseSymbol = '.' | '-'
 
@@ -62,14 +63,19 @@ export const MORSE_TABLE: Record<string, string> = {
   ー: '.--.-',
 }
 
-/** 緊急: SOS(・・・－－－・・・)。かなの符号(最長5押下)には無い。9つ目を離した時点で即緊急 */
+/**
+ * 緊急: SOS(・・・－－－・・・)。9つ目を離した時点で即緊急。
+ * かな1文字の符号(最長5押下)には含まれないが、複数の文字をまたぐと偶然一致しうる
+ * (例: かぜ=.-.. .---. ..、おそく=.-... ---. ...-)。そのため押下の並び全体ではなく、
+ * 「文字の切れ目から始まる断片列」だけを見る。
+ */
 export const MORSE_EMERGENCY_CODE = '...---...'
 
-/** 押下の並びの履歴に残す最大の長さ。SOS の判定は末尾だけを見るので、符号の長さに少し余裕を足せば足りる */
-const MORSE_HISTORY_MAX = 32
+/** 確定済みの断片として覚える最大数(SOS は最小でも1断片1押下=9断片) */
+const MORSE_SEGMENTS_MAX = 9
 
 /**
- * 押下が途絶えてこの時間が経つと、押下の並びの履歴を捨てる(ms)。
+ * 押下が途絶えてこの時間が経つと、確定済みの断片を捨てる(ms)。
  * 離れた時間の偶然の一致で SOS と誤判定しないため。文字確定(既定1.5秒)・語の区切り(最大8秒)より
  * 長く、ゆっくり押す人が SOS の途中で取りこぼされない長さ。
  */
@@ -168,10 +174,17 @@ export interface MorseState {
   /** 現在の無入力区間で語の区切りを入れ済みか */
   wordMarked: boolean
   /**
-   * 押下の並びの履歴(内部表記)。文字の確定とは独立に持ち、SOS の判定にだけ使う。
-   * 操作の符号(・5つ・・6つ・確定)を実行したとき、MORSE_HISTORY_RESET_MS 無押下のとき、緊急のときに空にする
+   * 文字として確定した符号のうち、SOS の連続部分列(断片)になっているものの列。SOS の判定にだけ使う。
+   * textBefore はその符号を確定する直前の確定済み文字列で、緊急のとき SOS 由来の文字を巻き戻すのに使う。
+   * SOS の断片でない符号を確定したとき、操作の符号(・5つ・・6つ・確定)を実行したとき、
+   * MORSE_HISTORY_RESET_MS 無押下のとき、緊急のときに空にする
    */
-  history: string
+  segments: MorseSegment[]
+}
+
+export interface MorseSegment {
+  code: string
+  textBefore: string
 }
 
 export type MorseEvent =
@@ -184,26 +197,42 @@ export interface MorseResult {
 
 export function startMorse(now: number, text = ''): MorseState {
   // 入り直した直後に、既存の文字列へ勝手に語の区切りを足さない(次の入力まで)
-  return { code: '', text, lastAt: now, wordMarked: true, history: '' }
+  return { code: '', text, lastAt: now, wordMarked: true, segments: [] }
 }
 
 /**
- * 符号(短点/長点)が1つ入力された。押下の並びの末尾9押下が SOS なら、文字の確定を待たず緊急にする。
- * 判定は並びの履歴で行うので、押す間隔が文字の確定時間を超えて文字として確定されていても、
- * 誤った符号が前に混ざっていても取りこぼさない。
+ * 符号(短点/長点)が1つ入力された。SOS の判定(文字の確定を待たず、9つ目の押下で即緊急):
+ *   確定済みの断片列(segments)の末尾 k 個(k=0以上)の符号と、入力中の符号(確定前)をつなげたものが
+ *   ちょうど SOS になれば緊急。つまり SOS の先頭は、必ず「文字の切れ目」(確定の切れ目、または
+ *   モールスに入った直後)から始まる。
+ * 入力中の符号は、まだ確定前でも最後の断片として扱う(続けて速く押した SOS は入力中の1符号が
+ * そのまま SOS になる。途中で確定時間をまたいだ SOS は、確定済みの断片 + 入力中の残りで成立する)。
+ * 文字の途中から始まる偶然の一致(かぜ・おそく 等の符号の連結)は、先頭が切れ目に揃わないので緊急にならない。
+ * 緊急にしたとき、SOS の構成要素として確定済みだった断片の文字は確定文字列から巻き戻す
+ * (SOS より前の無関係な確定文字は残す)。
  * 操作の符号(・5つ・・6つ)は無入力で確定したときだけ実行するので、SOS の先頭・末尾の・・・が
  * それらに食われることはない(SOS は9つ目の押下で、確定を待たず即緊急になる)。
  */
 export function pushSymbol(state: MorseState, symbol: MorseSymbol, now: number): MorseResult {
   const code = state.code + symbol
-  const history = (state.history + symbol).slice(-MORSE_HISTORY_MAX)
-  if (history.endsWith(MORSE_EMERGENCY_CODE)) {
-    return {
-      state: { ...state, code: '', lastAt: now, wordMarked: false, history: '' },
-      event: { type: 'emergency' },
+  const { segments } = state
+  for (let k = 0; k <= segments.length; k += 1) {
+    const used = segments.slice(segments.length - k)
+    if (used.map((seg) => seg.code).join('') + code === MORSE_EMERGENCY_CODE) {
+      return {
+        state: {
+          ...state,
+          code: '',
+          text: used.length > 0 ? used[0].textBefore : state.text,
+          lastAt: now,
+          wordMarked: false,
+          segments: [],
+        },
+        event: { type: 'emergency' },
+      }
     }
   }
-  return { state: { ...state, code, lastAt: now, wordMarked: false, history }, event: null }
+  return { state: { ...state, code, lastAt: now, wordMarked: false }, event: null }
 }
 
 /** 濁点・半濁点の付いた文字から、付く前の文字を引く(ば→は、ぱ→は)。付いていなければそのまま */
@@ -232,7 +261,7 @@ function commitCode(state: MorseState): MorseResult {
   // 次の入力まで語の区切りは入れない(wordMarked)
   const cleared = { ...state, code: '', wordMarked: true }
   // 操作の符号を実行したら、その押下は SOS の並びに数えない(・6つ→－－－・・・ を誤って緊急にしない)
-  const controlCleared = { ...cleared, history: '' }
+  const controlCleared = { ...cleared, segments: [] }
 
   if (code === MORSE_CONTROL_CODES.exit) return { state: controlCleared, event: { type: 'exit' } }
   if (code === MORSE_CONTROL_CODES.backspace) {
@@ -246,14 +275,21 @@ function commitCode(state: MorseState): MorseResult {
     return { state: controlCleared, event: text ? { type: 'send', text } : null }
   }
 
+  // SOS の断片(連続部分列)になる符号だけ断片として覚える。それ以外を確定したら、
+  // そこで SOS の列は切れる(かな文字の途中から始まる偶然の一致を防ぐ)
+  const segments = MORSE_EMERGENCY_CODE.includes(code)
+    ? [...state.segments, { code, textBefore: state.text }].slice(-MORSE_SEGMENTS_MAX)
+    : []
+  const kept = { ...cleared, segments }
+
   const char = decodeMorse(code)
-  if (char === null) return { state: cleared, event: null } // 該当なしの符号は捨てる
+  if (char === null) return { state: kept, event: null } // 該当なしの符号は捨てる
   if (char === '゛' || char === '゜') {
     const next = applyMark(state.text, char)
-    return { state: next === null ? cleared : { ...cleared, text: next }, event: null }
+    return { state: next === null ? kept : { ...kept, text: next }, event: null }
   }
   // 文字を足したあとは、続く無入力で語の区切りを入れてよい
-  return { state: { ...cleared, text: state.text + char, wordMarked: false }, event: null }
+  return { state: { ...kept, text: state.text + char, wordMarked: false }, event: null }
 }
 
 /**
@@ -261,10 +297,14 @@ function commitCode(state: MorseState): MorseResult {
  * 語の区切りを入れ、MORSE_IDLE_EXIT_MS 続けばスキャンへ戻る(exit)。
  */
 export function tickMorse(state: MorseState, now: number, config: MorseConfig): MorseResult {
-  // 押下が途絶えたら並びの履歴を捨てる(長い時間をまたいだ偶然の一致を防ぐ)
-  if (state.history !== '' && now - state.lastAt >= MORSE_HISTORY_RESET_MS) {
-    const result = tickMorseInner({ ...state, history: '' }, now, config)
-    return result
+  // 押下が途絶えたら確定済みの断片を捨てる(長い時間をまたいだ偶然の一致を防ぐ)
+  if (
+    (state.segments.length > 0 || state.code !== '') &&
+    now - state.lastAt >= MORSE_HISTORY_RESET_MS
+  ) {
+    // 確定前の符号がこのtickで確定しても、その断片は(15秒前の押下なので)覚えない
+    const result = tickMorseInner({ ...state, segments: [] }, now, config)
+    return { ...result, state: { ...result.state, segments: [] } }
   }
   return tickMorseInner(state, now, config)
 }

@@ -1138,11 +1138,48 @@ describe('App', () => {
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
-  it('Issue #14: 直前に誤って符号が入っていても、続けてSOSで緊急になる', () => {
+  it('Issue #14: 直前に誤って符号が入って確定されていても、続けてSOSで緊急になる', () => {
+    const { container } = enterMorse()
+    sendCode('-.')
+    vi.advanceTimersByTime(1600) // 誤符号を確定(文字の切れ目)
+    sendCode('...---...')
+    expect(h1Text(container)).toBe('緊急です。来てください')
+  })
+
+  it('Issue #57: 前の符号から休まず続けた「誤符号+SOS」は文字の途中から始まるので緊急にならない', () => {
     const { container } = enterMorse()
     sendCode('-.')
     sendCode('...---...')
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+  })
+
+  it('Issue #57: 「かぜ」(か・せ・゛)を打っても、符号の連結が SOS を含むだけでは緊急にならない', () => {
+    const { container } = enterMorse()
+    for (const code of ['.-..', '.---.', '..']) {
+      sendCode(code)
+      vi.advanceTimersByTime(1600)
+    }
+    expect(morseTextOf(container).trim()).toBe('かぜ')
+    expect(h1Text(container)).not.toBe('緊急です。来てください')
+  })
+
+  it('Issue #57: ゆっくり(確定をまたいで)打った SOS で緊急になり、SOS 由来の確定文字はモールス欄から消える', () => {
+    const { container } = enterMorse()
+    sendCode('.-')
+    vi.advanceTimersByTime(1600)
+    expect(morseTextOf(container).trim()).toBe('い')
+    for (const code of ['...', '---']) {
+      sendCode(code)
+      vi.advanceTimersByTime(1600)
+    }
+    expect(morseTextOf(container).trim()).toBe('いられ')
+    sendCode('...')
     expect(h1Text(container)).toBe('緊急です。来てください')
+    // 緊急で画面を離れて戻っても、確定済みの文字列は「い」だけ
+    selectByLabel(container, '戻る')
+    selectByLabel(container, 'モールス')
+    expect(morseTextOf(container).trim()).toBe('い')
   })
 
   it('Issue #14: 短押し5つ+待つ でスキャンへ戻り、入力途中の文字列は残る', () => {

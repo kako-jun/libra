@@ -74,7 +74,7 @@ describe('和文モールスの符号表', () => {
     expect(controls).not.toContain(MORSE_EMERGENCY_CODE)
   })
 
-  it('かなの符号に、SOS(緊急)を含むものはない', () => {
+  it('かな1文字の符号に、SOS(緊急)を含むものはない(文字をまたぐ偶然一致は別: SOSの履歴判定を参照)', () => {
     for (const code of Object.values(MORSE_TABLE)) {
       expect(code.includes(MORSE_EMERGENCY_CODE)).toBe(false)
     }
@@ -178,17 +178,20 @@ describe('モールス入力の状態遷移', () => {
       expect(out.state.code).toBe('')
     })
 
-    it('直前に誤って別の符号が入っていても、続けてSOSで緊急になる', () => {
+    it('直前に誤って別の符号が入って確定されていても、続けてSOSで緊急になる', () => {
       let state = startMorse(0)
       state = pushSymbol(state, '-', 100).state
+      state = tickMorse(state, 100 + config.letterGapMs, config).state // 「む」として確定
+      expect(state.text).toBe('む')
       let event = null as ReturnType<typeof pushSymbol>['event']
       for (let i = 0; i < 9; i += 1) {
-        const out = pushSymbol(state, '...---...'[i] as '.' | '-', 200 + i * 100)
+        const out = pushSymbol(state, '...---...'[i] as '.' | '-', 2000 + i * 100)
         state = out.state
         event = out.event
       }
       expect(event).toEqual({ type: 'emergency' })
       expect(state.code).toBe('')
+      expect(state.text).toBe('む') // SOS より前の無関係な確定文字は残る
     })
 
     it('長押し5つ(旧・緊急の符号)では緊急にならない', () => {
@@ -311,31 +314,31 @@ describe('モールス入力の状態遷移', () => {
   })
 })
 
-// Issue #57: 緊急=SOS。押下の並びの履歴(history)で、文字の確定とは独立に判定する。
+// Issue #57: 緊急=SOS。SOS は「文字の切れ目から始まる」ときだけ緊急にする(A案)。
 //
-// デシジョンテーブル(押下列 × 確定タイミング × 履歴の状態 → 結果)
-//   押下列                         | 確定/時間                  | 履歴の状態        | 結果
-//   ...---... (9押下)              | 各押下200ms間隔            | 空                | 9押下目で emergency
-//   ...---.. (8押下)               | -                          | 空                | なし(8押下目まで)
-//   ...(→ら確定) ---...            | 3押下目と4押下目の間で確定 | 「...」が残る     | 9押下目で emergency
-//   -....---...(前に誤符号)        | -                          | 空                | emergency
-//   ...---...                      | 全押下が確定時間(1.5s)超   | 残る              | emergency
-//   ...  +14,999ms+ ---...         | tick 後                    | 残る              | emergency
-//   ...  +15,000ms/15,001ms+ ---...| tick 後                    | 捨てる            | なし
-//   ......(→backspace確定) ---...  | 確定後                     | 空                | なし(緊急にならない)
-//   .....(→exit確定) ---...        | 確定後                     | 空                | なし
-//   .-.-.-(→send確定)              | 確定後                     | 空                | -
-//   -----(旧)                      | -                          | -                 | なし
-//   .....(5つ) → 待つ              | 確定後                     | -                 | exit(緊急と衝突しない)
-describe('SOSの履歴判定(Issue #57)', () => {
+// アルゴリズム: 確定済みの断片列(SOS の連続部分列になる符号だけ覚える)の末尾 k 個の符号 +
+// 入力中の符号(確定前)== SOS なら、その押下で即緊急。SOS の断片でない符号を確定すると列は切れる。
+// 緊急時は、使った断片の文字を確定文字列から巻き戻す。
+//
+// デシジョンテーブル(押下列 × 確定タイミング × 断片列の状態 → 結果)
+//   ...---... を1文字として連続(9押下)  | 切れ目なし(入力中のみ)    | 空               | 9押下目で emergency
+//   ...---.. (8押下)                     | -                         | 空               | なし
+//   ...(→ら確定) ---...                  | 3押下目と4押下目の間      | ['...']          | 9押下目で emergency、「ら」を巻き戻す
+//   ...(ら) ---(れ) ...                  | 各切れ目で確定            | ['...','---']    | emergency、「られ」を巻き戻す
+//   -(む確定) ...---...                  | 前の文字は無関係          | -は断片(－)だが  | emergency、「む」は残る
+//                                        |                           | 末尾kに含めない  |
+//   .-...---... (かぜ等・連続押下)       | 文字の途中から始まる      | -                | なし
+//   かぜ/おそく等を確定しながら入力      | 各文字を確定              | 非断片で切れる   | なし
+//   ...  +14,999ms+ ---...               | tick 後                   | 残る             | emergency
+//   ...  +15,000/15,001ms+ ---...        | tick 後                   | 捨てる           | なし
+//   ......(backspace) / .....(exit) / .-.-.-(send) の確定後 | -       | 空               | 以後 ---... では緊急にならない
+//   -----(旧)                            | -                         | -                | なし
+//   .....(5つ) → 待つ                    | 確定後                    | -                | exit(緊急と衝突しない)
+describe('SOSは文字の切れ目から始まる場合だけ緊急(Issue #57)', () => {
   const SOS = '...---...'
-  /** 押下列を間隔 gap で入れる。途中で event が出たらそこで止める */
-  function pushAll(
-    state: MorseState,
-    code: string,
-    start: number,
-    gap = 200,
-  ): { state: MorseState; event: MorseResult['event']; at: number; events: number } {
+
+  /** 符号列('.-' 表記)を、1押下ずつ間隔 gap で入れる。途中で event が出たらそこで止める */
+  function pushAll(state: MorseState, code: string, start: number, gap = 200) {
     let current = state
     let now = start
     let events = 0
@@ -345,15 +348,51 @@ describe('SOSの履歴判定(Issue #57)', () => {
       const out = pushSymbol(current, symbol as '.' | '-', now)
       current = out.state
       event = out.event
-      if (event) events += 1
+      if (event) {
+        events += 1
+        break
+      }
     }
     return { state: current, event, at: now, events }
   }
 
+  /** 各文字(符号の配列)を、文字ごとに確定させながら入れる。緊急が出たらそこで止める */
+  function typeChars(codes: string[], initial: MorseState = startMorse(0)) {
+    let state = initial
+    let at = 0
+    let events = 0
+    let event: MorseResult['event'] = null
+    for (const code of codes) {
+      const out = pushAll(state, code, at)
+      state = out.state
+      at = out.at
+      if (out.event) {
+        events += 1
+        event = out.event
+        break
+      }
+      at += config.letterGapMs
+      state = tickMorse(state, at, config).state // 文字の確定
+    }
+    return { state, at, events, event }
+  }
+
+  /** かな文字列を符号の配列にする(濁点・半濁点は「清音 + ゛」の2文字で打つ) */
+  function encode(word: string): string[] {
+    const codes: string[] = []
+    for (const ch of word) {
+      const base = ch.normalize('NFD')
+      const [head, mark] = [base[0], base.slice(1)]
+      codes.push(MORSE_TABLE[head])
+      if (mark === '゙') codes.push(MORSE_TABLE['゛'])
+      if (mark === '゚') codes.push(MORSE_TABLE['゜'])
+    }
+    return codes
+  }
+
   it('8押下目まではどの接頭辞でも緊急にならず、9押下目だけで緊急になる', () => {
     for (let n = 1; n <= 8; n += 1) {
-      const out = pushAll(startMorse(0), SOS.slice(0, n), 0)
-      expect(out.events).toBe(0)
+      expect(pushAll(startMorse(0), SOS.slice(0, n), 0).events).toBe(0)
     }
     const out = pushAll(startMorse(0), SOS, 0)
     expect(out.events).toBe(1)
@@ -373,57 +412,104 @@ describe('SOSの履歴判定(Issue #57)', () => {
     }
   })
 
-  it('SOS の9押下が全て文字の確定時間をまたいでも発火する(確定した「ら」「れ」は文字として残る)', () => {
-    let state = startMorse(0)
-    let at = 0
-    let event: MorseResult['event'] = null
-    for (const symbol of SOS) {
-      at += config.letterGapMs + 500 // 押下ごとに確定される
-      state = tickMorse(state, at, config).state // 直前の符号を確定(履歴は残る)
-      const out = pushSymbol(state, symbol as '.' | '-', at)
-      state = out.state
-      event = out.event
+  describe('文字の途中から始まる偶然一致は緊急にならない', () => {
+    it('連続押下で、前の文字の末尾が SOS の先頭に続いても緊急にならない(入力中の符号は1文字)', () => {
+      // か(.-..) の途中から ...---... が始まる列を休まず押す
+      for (const prefix of ['.-', '-', '.-.-', '--']) {
+        expect(pushAll(startMorse(0), prefix + SOS, 0).events).toBe(0)
+      }
+    })
+
+    // かぜ=か せ ゛ など。各文字を確定しながら打つ(実際のかな入力)。符号の連結は SOS を含む
+    const WORDS = ['かぜ', 'かぜぐすり', 'かぜです', 'おそく', 'おぞましい', 'おせう']
+    for (const word of WORDS) {
+      it(`「${word}」は符号の連結が SOS を含むが、緊急にならない`, () => {
+        const codes = encode(word)
+        expect(codes.join('')).toContain(SOS)
+        const out = typeChars(codes)
+        expect(out.events).toBe(0)
+        // 最後の文字の確定待ちを経ても同じ
+        const ticked = tickMorse(out.state, out.at + config.letterGapMs, config)
+        expect(ticked.event).toBeNull()
+      })
     }
-    expect(event).toEqual({ type: 'emergency' })
   })
 
-  it('「...」が「ら」として確定済みでも、後続の「---...」で発火する', () => {
-    let { state, at } = pushAll(startMorse(0), '...', 0)
-    state = tickMorse(state, at + config.letterGapMs, config).state
-    expect(state.text).toBe('ら')
-    expect(state.history).toBe('...')
-    const out = pushAll(state, '---...', at + config.letterGapMs)
-    expect(out.events).toBe(1)
-    expect(out.event).toEqual({ type: 'emergency' })
+  describe('ゆっくり(確定をまたいで)打った SOS は緊急になり、SOS 由来の確定文字を巻き戻す', () => {
+    it('「...」が「ら」で確定済みでも、続く「---...」で緊急になり「ら」が消える', () => {
+      let { state, at } = pushAll(startMorse(0), '...', 0)
+      state = tickMorse(state, at + config.letterGapMs, config).state
+      expect(state.text).toBe('ら')
+      expect(state.segments.map((seg) => seg.code)).toEqual(['...'])
+      const out = pushAll(state, '---...', at + config.letterGapMs)
+      expect(out.events).toBe(1)
+      expect(out.event).toEqual({ type: 'emergency' })
+      expect(out.state.text).toBe('')
+      expect(out.state.segments).toEqual([])
+    })
+
+    it('全9押下が3文字(ら・れ・ら)に分かれても緊急になり、SOS 由来の「られ」が消える', () => {
+      const out = typeChars(['...', '---', '...'])
+      expect(out.events).toBe(1)
+      expect(out.state.text).toBe('')
+    })
+
+    it('SOS の前の無関係な確定文字は残り、SOS 由来の文字だけが消える', () => {
+      const out = typeChars(['.-', '...', '---', '...'], startMorse(0, 'あ'))
+      expect(out.events).toBe(1)
+      expect(out.state.text).toBe('あい')
+    })
+
+    it('断片は2押下+7押下などの任意の切れ目で成立する(へ・む・よ・ほ等の断片)', () => {
+      const splits = [
+        ['.', '..---...'],
+        ['..', '.---...'],
+        ['...-', '--...'],
+        ['...--', '-...'],
+        ['...---', '...'],
+        ['...---.', '..'],
+        ['.', '.', '.', '-', '-', '-', '.', '.', '.'],
+      ]
+      for (const codes of splits) {
+        expect(codes.join('')).toBe(SOS)
+        expect(typeChars(codes).events, codes.join('|')).toBe(1)
+      }
+    })
+
+    it('入力中(確定前)の符号は最後の断片として扱う: 確定済み「---」+ 入力中「...」で緊急', () => {
+      let state = typeChars(['...', '---']).state
+      expect(state.code).toBe('')
+      const out = pushAll(state, '...', 100000)
+      expect(out.events).toBe(1)
+    })
+
+    it('断片でない文字(か)を確定すると断片列が切れ、その後の「---...」だけでは緊急にならない', () => {
+      const out = typeChars(['...', '.-..', '---', '...'])
+      expect(out.events).toBe(0)
+    })
+
+    it('前に無関係な文字があっても、SOS の先頭が文字境界から始まれば緊急になる', () => {
+      const out = typeChars(['-.-.', '....', '.-', SOS])
+      expect(out.events).toBe(1)
+      expect(out.state.text).toBe('にぬい')
+    })
   })
 
-  it('前に誤符号(長い前置き)があっても、末尾9押下が SOS なら発火する', () => {
-    expect(pushAll(startMorse(0), '-....---...', 0).event).toEqual({ type: 'emergency' })
-    expect(pushAll(startMorse(0), '.-.-' + SOS, 0).event).toEqual({ type: 'emergency' })
-  })
-
-  it('履歴は最大32押下まで。長い誤入力のあとでも SOS を判定できる', () => {
-    const garbage = '.-'.repeat(40)
-    const mid = pushAll(startMorse(0), garbage, 0)
-    expect(mid.state.history.length).toBeLessThanOrEqual(32)
-    expect(pushAll(mid.state, SOS, mid.at).event).toEqual({ type: 'emergency' })
-  })
-
-  describe('15秒で履歴を捨てる(境目 MORSE_HISTORY_RESET_MS)', () => {
+  describe('15秒で断片を捨てる(境目 MORSE_HISTORY_RESET_MS)', () => {
     const after = (gap: number) => {
       const first = pushAll(startMorse(0), '...', 0)
       const ticked = tickMorse(first.state, first.at + gap, config).state
       return { ticked, at: first.at + gap }
     }
 
-    it('14,999ms 空けただけでは履歴は残る', () => {
+    it('14,999ms 空けただけでは断片は残る', () => {
       expect(MORSE_HISTORY_RESET_MS).toBe(15000)
-      expect(after(MORSE_HISTORY_RESET_MS - 1).ticked.history).toBe('...')
+      expect(after(MORSE_HISTORY_RESET_MS - 1).ticked.segments.length).toBe(1)
     })
 
-    it('15,000ms / 15,001ms で履歴を捨てる', () => {
-      expect(after(MORSE_HISTORY_RESET_MS).ticked.history).toBe('')
-      expect(after(MORSE_HISTORY_RESET_MS + 1).ticked.history).toBe('')
+    it('15,000ms / 15,001ms で断片を捨てる', () => {
+      expect(after(MORSE_HISTORY_RESET_MS).ticked.segments).toEqual([])
+      expect(after(MORSE_HISTORY_RESET_MS + 1).ticked.segments).toEqual([])
     })
 
     it('14秒空けて残りの「---...」を押すと発火する', () => {
@@ -433,67 +519,66 @@ describe('SOSの履歴判定(Issue #57)', () => {
 
     it('離れた時間(15秒)をまたぐ偶然の一致では発火しない', () => {
       const { ticked, at } = after(MORSE_HISTORY_RESET_MS)
-      const out = pushAll(ticked, '---...', at)
-      expect(out.events).toBe(0)
-      expect(out.state.history).toBe('---...')
+      expect(pushAll(ticked, '---...', at).events).toBe(0)
     })
 
-    it('履歴の破棄は文字列・入力中の符号を変えない', () => {
-      // 確定を待たせて、入力中の符号('-')が残ったまま 15 秒経った状態を作る
+    it('断片の破棄は文字列・入力中の符号を変えない', () => {
       const slow = { ...config, letterGapMs: 60000, wordGapMs: 61000 }
-      const first = pushAll(startMorse(0, 'あ'), '-', 0)
+      const seeded = {
+        ...startMorse(0, 'あ'),
+        segments: [{ code: '...', textBefore: 'あ' }],
+      }
+      const first = pushAll(seeded, '-', 0)
       expect(first.state.code).toBe('-')
       const late = tickMorse(first.state, first.at + MORSE_HISTORY_RESET_MS, slow)
-      expect(late.state.history).toBe('')
+      expect(late.state.segments).toEqual([])
       expect(late.state.code).toBe('-')
       expect(late.state.text).toBe('あ')
       expect(late.event).toBeNull()
     })
   })
 
-  describe('履歴を空にする契機', () => {
-    it('緊急のあと履歴が空になり、続けて同じ列を入れても1回ごとにだけ発火する', () => {
+  describe('断片列を空にする契機', () => {
+    it('緊急のあと断片は空で、続く「---...」では緊急にならず、SOS を入れ直せば1回ごとに発火する', () => {
       const first = pushAll(startMorse(0), SOS, 0)
-      expect(first.state.history).toBe('')
+      expect(first.state.segments).toEqual([])
       expect(pushAll(first.state, '---...', first.at).events).toBe(0)
       expect(pushAll(first.state, SOS, first.at).events).toBe(1)
     })
 
     it('・6つ(1字消す)を確定した直後の「---...」では緊急にならない', () => {
-      const { result, at } = type(startMorse(0, 'あい'), MORSE_CONTROL_CODES.backspace, 0)
-      expect(result.state.text).toBe('あ')
-      expect(result.state.history).toBe('')
-      const out = pushAll(result.state, '---...', at)
-      expect(out.events).toBe(0)
+      const out = typeChars(['...', MORSE_CONTROL_CODES.backspace], startMorse(0, 'あい'))
+      expect(out.state.segments).toEqual([])
+      expect(out.state.text).toBe('あい')
+      expect(typeChars(['---...'], out.state).events).toBe(0)
     })
 
-    it('・5つ(exit)を確定した直後も履歴は空で、「---...」では緊急にならない', () => {
+    it('・5つ(exit)を確定した直後も断片は空で、「---...」では緊急にならない', () => {
       const { result, at } = type(startMorse(0), MORSE_CONTROL_CODES.exit, 0)
       expect(result.event).toEqual({ type: 'exit' })
-      expect(result.state.history).toBe('')
+      expect(result.state.segments).toEqual([])
       expect(pushAll(result.state, '---...', at).events).toBe(0)
     })
 
-    it('確定(send)のあとも履歴は空', () => {
+    it('確定(send)のあとも断片は空', () => {
       const { result } = type(startMorse(0, 'あ'), MORSE_CONTROL_CODES.send, 0)
       expect(result.event).toEqual({ type: 'send', text: 'あ' })
-      expect(result.state.history).toBe('')
+      expect(result.state.segments).toEqual([])
     })
 
-    it('文字列が空で何も起きない確定(send)でも履歴は空', () => {
+    it('文字列が空で何も起きない確定(send)でも断片は空', () => {
       const { result } = type(startMorse(0), MORSE_CONTROL_CODES.send, 0)
       expect(result.event).toBeNull()
-      expect(result.state.history).toBe('')
+      expect(result.state.segments).toEqual([])
     })
 
-    it('通常の文字の確定では履歴を空にしない(SOS の判定は確定と独立)', () => {
-      const { result } = type(startMorse(0), '.-', 0)
-      expect(result.state.text).toBe('い')
-      expect(result.state.history).toBe('.-')
+    it('SOS の断片になる文字の確定では断片を覚え、そうでない文字の確定では空にする', () => {
+      expect(type(startMorse(0), '...', 0).result.state.segments.length).toBe(1)
+      expect(type(startMorse(0), '.-..', 0).result.state.segments).toEqual([])
     })
 
-    it('startMorse の履歴は空', () => {
-      expect(startMorse(0, 'あ').history).toBe('')
+    it('startMorse の断片は空', () => {
+      expect(startMorse(0, 'あ').segments).toEqual([])
     })
   })
 
@@ -517,6 +602,43 @@ describe('SOSの履歴判定(Issue #57)', () => {
 
     it('「・」を9つまで続けても緊急にならない', () => {
       expect(pushAll(startMorse(0), '.'.repeat(9), 0).events).toBe(0)
+    })
+  })
+
+  describe('和文符号表から機械的に列挙した、文字の連続(2〜3文字)での網羅', () => {
+    const codes = Object.values(MORSE_TABLE)
+
+    /** 独立した判定: ある文字の切れ目 i から連結した符号が SOS で始まれば、その押下で緊急になるはず */
+    const alignedStart = (seq: string[]) =>
+      seq.some((_, i) => seq.slice(i).join('').startsWith(SOS))
+
+    const combos: string[][] = []
+    for (const a of codes) {
+      for (const b of codes) {
+        combos.push([a, b])
+        for (const c of codes) combos.push([a, b, c])
+      }
+    }
+    // 連結符号が SOS を(どこかに)含む組
+    const withSos = combos.filter((seq) => seq.join('').includes(SOS))
+    const fired = withSos.filter((seq) => typeChars(seq).events > 0)
+    const notFired = withSos.filter((seq) => typeChars(seq).events === 0)
+
+    it('連結が SOS を含む組が存在する(列挙が空でない)', () => {
+      expect(withSos.length).toBeGreaterThan(0)
+    })
+
+    it('SOS が文字の途中から始まる組(偶然一致)は、どれも発火しない', () => {
+      const unaligned = withSos.filter((seq) => !alignedStart(seq))
+      expect(unaligned.length).toBeGreaterThan(0)
+      for (const seq of unaligned) expect(typeChars(seq).events, seq.join('|')).toBe(0)
+      expect(notFired.length).toBe(unaligned.length)
+    })
+
+    it('SOS が文字の切れ目から始まる組(ゆっくり打った SOS)だけが発火する', () => {
+      expect(fired.length).toBeGreaterThan(0)
+      for (const seq of fired) expect(alignedStart(seq), seq.join('|')).toBe(true)
+      expect(fired.length).toBe(withSos.filter(alignedStart).length)
     })
   })
 })
