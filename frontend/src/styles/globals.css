@@ -1541,7 +1541,7 @@ h1[data-fit='single'] {
   }
 
   .caregiver-notes {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     line-height: 1.2;
     padding: 3px 8px;
   }
@@ -1554,5 +1554,17 @@ h1[data-fit='single'] {
     padding: 2px 12px;
     font-size: 0.7rem;
     line-height: 1.15;
+  }
+}
+
+/* 低い横向き画面(例 568x320)の4列×2行ではセルの高さが53〜59pxになり、2行に折り返すラベル
+   (「痰を取ってほしい」など)が下端に接した。タイルの上下余白と行間を詰めて余白を確保する */
+@media (max-height: 500px) {
+  .tile {
+    padding: 8px 6px 5px;
+  }
+
+  .tile-label {
+    line-height: 1.08;
   }
 }
