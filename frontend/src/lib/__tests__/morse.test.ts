@@ -470,10 +470,7 @@ describe('SOSは休まず続けて入力中の符号の末尾だけを見る(Iss
       it(`「${word}」は符号の連結が SOS を含むが、緊急にならない`, () => {
         const codes = encode(word)
         const joined = codes.join('')
-        // 連結が SOS を含む語でも含まない語でも、緊急にならない(含むことは語ごとに確認)
-        if (['かぜ', 'かぜぐすり', 'かぜです', 'おそく', 'おぞましい', 'おせう'].includes(word)) {
-          expect(joined).toContain(SOS)
-        }
+        expect(joined).toContain(SOS) // 連結が SOS を含む語だけを並べている
         const out = typeChars(codes)
         expect(out.events).toBe(0)
         expect(tickMorse(out.state, out.at + config.letterGapMs, config).event).toBeNull()
