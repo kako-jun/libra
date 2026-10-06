@@ -1104,23 +1104,23 @@ describe('App', () => {
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
-  it('Issue #14: 長押し5つの連続で、確定を待たず即緊急(警告音は鳴らない)', () => {
+  it('Issue #57: SOS(・・・－－－・・・)で、確定を待たず即緊急(警告音は鳴らない)', () => {
     const { container } = enterMorse()
     oscillatorStartCount = 0
-    sendCode('----')
-    expect(h1Text(container)).not.toBe('緊急です。来てください') // 4つではまだ
-    sendCode('-')
+    sendCode('...---..')
+    expect(h1Text(container)).not.toBe('緊急です。来てください') // 8つではまだ
+    sendCode('.')
     expect(h1Text(container)).toBe('緊急です。来てください')
     expect(oscillatorStartCount).toBe(0)
     expect(container.querySelector('.morse-panel')).toBeNull() // スキャンの緊急詳細へ
     expect(scanningLabel(container)).toBe('戻る')
   })
 
-  it('Issue #14: ゆっくり押す人(0.9秒押して0.7秒空ける)でも、－5つで緊急に届く', () => {
+  it('Issue #14: ゆっくり押す人(0.9秒押して0.7秒空ける)でも、SOSで緊急に届く', () => {
     const { container } = enterMorse()
-    for (let i = 0; i < 5; i += 1) {
+    for (const symbol of '...---...') {
       fireEvent.keyDown(window, { key: ' ', code: 'Space' })
-      vi.advanceTimersByTime(900)
+      vi.advanceTimersByTime(symbol === '-' ? 900 : 100)
       fireEvent.keyUp(window, { key: ' ', code: 'Space' })
       vi.advanceTimersByTime(700)
     }
@@ -1138,10 +1138,10 @@ describe('App', () => {
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
-  it('Issue #14: 直前に誤って短押しが入っていても、続けて長押し5つで緊急になる', () => {
+  it('Issue #14: 直前に誤って符号が入っていても、続けてSOSで緊急になる', () => {
     const { container } = enterMorse()
-    sendCode('.')
-    sendCode('-----')
+    sendCode('-.')
+    sendCode('...---...')
     expect(h1Text(container)).toBe('緊急です。来てください')
   })
 

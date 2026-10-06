@@ -136,7 +136,7 @@ export const SCREEN_GUIDANCE: Record<ScreenId, string> = {
   letters: '文字の行を選んでください。',
   lettersRow: '入力する文字を選んでください。',
   lettersYesNo: '質問への答えを選んでください。',
-  morse: '短押し・長押しで文字を入力します。',
+  morse: '短押し・長押しで文字を入力します。緊急はSOS（・・・－－－・・・）です。',
 }
 
 const EMERGENCY_ITEM: MenuItem = {

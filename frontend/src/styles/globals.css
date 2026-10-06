@@ -1128,7 +1128,8 @@ h1[data-fit='single'] {
   align-content: start;
   gap: 12px;
   padding: 16px 14px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   color: var(--text);
   background: var(--surface);
 }
@@ -1157,12 +1158,17 @@ h1[data-fit='single'] {
 
 .morse-legend {
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 4px 16px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.85rem;
-  opacity: 0.85;
+  font-size: clamp(1rem, 2.6vmin, 1.35rem);
+  line-height: 1.4;
+}
+
+.morse-legend b {
+  font-weight: 800;
 }
 
 /* ===================================================================
