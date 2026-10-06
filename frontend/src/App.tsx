@@ -713,7 +713,11 @@ export default function App() {
 
   // Issue #6: 押下時間の下限・離して決定。キー/タップ/Bluetooth シャッターすべてここを通す。
   // 決定するのは押し始めにカーソルが乗っていた項目。
-  const switchInput = createSwitchInput({
+  const switchInput = createSwitchInput<{
+    index: number
+    screen: ScreenId
+    itemId: string | undefined
+  }>({
     getConfig: () => ({ minHoldMs: settings().minHoldMs, activateOn: settings().activateOn }),
     snapshot: () => {
       const index = resync(scanState(), currentMenu().length).index
@@ -736,9 +740,12 @@ export default function App() {
   // 本人のスイッチ入力の振り分け。モールス画面では押下の長さが符号になり、それ以外は
   // 従来のスキャン選択(switchInput)に渡す。解放・取り消しはどちらにも渡して取りこぼさない。
   const input = {
-    down: (sourceId: string) => {
+    down: (
+      sourceId: string,
+      tile?: { index: number; screen: ScreenId; itemId: string | undefined },
+    ) => {
       if (screen() === 'morse') morseInput.down(sourceId)
-      else switchInput.down(sourceId)
+      else switchInput.down(sourceId, tile)
     },
     up: (sourceId: string) => {
       switchInput.up(sourceId)
@@ -868,7 +875,10 @@ export default function App() {
     })
   })
 
-  // 本人のスイッチ入力: 画面タップ / 任意キー / Bluetooth シャッター(キー入力として届く)
+  // 本人の入力は2経路だけ。①タイルの直接タップ/クリック(押したタイルを実行。onTilePointerDown)
+  // ②任意キー / Bluetooth シャッター(キー入力として届く。現在のスキャン対象を実行)。
+  // 画面の背景(タイル以外)へのタップは何も実行しない。ここではポインターの「離し・取り消し」だけ拾い、
+  // 押下(離して決定・押下時間の下限)の解放を取りこぼさないようにする。
   onMount(() => {
     const onPointerDown = (event: PointerEvent) => {
       // M2: タッチでは pointerdown にユーザーアクティベーションが伴わないことがあるため、
@@ -892,13 +902,15 @@ export default function App() {
         return
       }
 
-      if (target?.closest('[data-caregiver-control]')) return
-      input.down(`pointer:${event.pointerId}`)
+      // 背景(タイル以外)のタップは本人入力として扱わない。タイルは onTilePointerDown が処理する
     }
 
     const onPointerUp = (event: PointerEvent) => input.up(`pointer:${event.pointerId}`)
     // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
-    const onPointerCancel = (event: PointerEvent) => input.cancel(`pointer:${event.pointerId}`)
+    const onPointerCancel = (event: PointerEvent) => {
+      tilePointerPending = false
+      input.cancel(`pointer:${event.pointerId}`)
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
@@ -987,6 +999,33 @@ export default function App() {
       morseInput.stop()
     })
   })
+
+  // タイルの直接タップ/クリック。押したタイルを実行する(スキャン位置とは無関係)。
+  // 実行は pointerdown で行い、続く click は無視して二重実行を防ぐ。
+  // 支援技術が合成する click(pointerdown を伴わない)だけは、フォールバックとして実行する。
+  let tilePointerPending = false
+  const onTilePointerDown = (event: PointerEvent, index: number) => {
+    if (caregiverMenuOpen()) return
+    resumeToneAudioContext()
+    tilePointerPending = true
+    input.down(`pointer:${event.pointerId}`, {
+      index,
+      screen: screen(),
+      itemId: currentMenu()[index]?.id,
+    })
+  }
+  const onTileClick = (index: number) => {
+    if (tilePointerPending) {
+      tilePointerPending = false
+      return
+    }
+    if (caregiverMenuOpen()) return
+    handleSwitchOn(Date.now(), {
+      index,
+      screen: screen(),
+      itemId: currentMenu()[index]?.id,
+    })
+  }
 
   // ARIA tablist: フォーカスを動かすと同時に選択する(自動アクティベーション)
   const onCaregiverTabKeyDown = (event: KeyboardEvent) => {
@@ -1151,7 +1190,10 @@ export default function App() {
                   ? { 'grid-column': `span ${gridLayout().lastSpan}` }
                   : undefined
               }
-              aria-hidden="true"
+              role="button"
+              aria-label={item.label}
+              onPointerDown={(event) => onTilePointerDown(event, index())}
+              onClick={() => onTileClick(index())}
             >
               <span class="tile-number">{index() + 1}</span>
               <span class="tile-label">{item.label}</span>

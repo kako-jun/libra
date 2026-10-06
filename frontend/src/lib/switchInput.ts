@@ -1,7 +1,7 @@
 // スイッチ入力の押下判定(押下時間の下限・離して決定)。
 // 正本: docs/requirements.md §3.3 / Issue #6
 //
-// キー・タップ・Bluetooth シャッターの押下/解放を同じ判定に通す。
+// キー・タイルの直接タップ・Bluetooth シャッターの押下/解放を同じ判定に通す。
 // 押下開始時点のスナップショット(カーソル位置・画面)を取り、押しっぱなし中にスキャンが
 // 進んでも、決定するのは押し始めに乗っていた項目とする。
 
@@ -34,9 +34,9 @@ interface ActivePress<C> {
 
 const PROGRESS_INTERVAL_MS = 50
 
-export interface SwitchInput {
+export interface SwitchInput<C = unknown> {
   /** スイッチが押された。sourceId は入力元(キーのコード・ポインタ ID など) */
-  down: (sourceId: string) => void
+  down: (sourceId: string, context?: C) => void
   /** スイッチが離された */
   up: (sourceId: string) => void
   /** 指定した入力元の押下だけを取り消す(決定しない)。pointercancel など */
@@ -45,7 +45,7 @@ export interface SwitchInput {
   cancelAll: () => void
 }
 
-export function createSwitchInput<C>(options: SwitchInputOptions<C>): SwitchInput {
+export function createSwitchInput<C>(options: SwitchInputOptions<C>): SwitchInput<C> {
   const active = new Map<string, ActivePress<C>>()
 
   const reportProgress = () => {
@@ -72,11 +72,12 @@ export function createSwitchInput<C>(options: SwitchInputOptions<C>): SwitchInpu
     return press
   }
 
-  const down = (sourceId: string) => {
+  const down = (sourceId: string, explicitContext?: C) => {
     // 解放を取りこぼした古い押下が残っていても、新しい押下として仕切り直す
     finish(sourceId)
     const { minHoldMs, activateOn } = options.getConfig()
-    const context = options.snapshot()
+    // タイルの直接タップは、押したタイル自身を対象にする(スキャン位置ではなく)
+    const context = explicitContext !== undefined ? explicitContext : options.snapshot()
 
     // 既定(押した瞬間・下限なし)は状態を持たず、従来どおり即決定する
     if (activateOn === 'press' && minHoldMs <= 0) {
