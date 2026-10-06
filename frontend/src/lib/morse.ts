@@ -2,7 +2,8 @@
 // 正本: docs/requirements.md §4.7 / Issue #14
 //
 // 符号は内部では '.'(短点・短押し)と '-'(長点・長押し)で持ち、表示側で ・ － に直す。
-// 緊急の符号(長押し5つの連続)は、符号の確定を待たず5つ目の長押しを離した時点で即座に出す。
+// 緊急の符号は SOS(短点3・長点3・短点3の連続9押下)。休まず続けて入力中の(確定前の)1つの符号の
+// 末尾が SOS なら、最後の押下を離した時点で即座に出す。休みを挟んで確定した文字をまたぐ並びは数えない。
 
 export type MorseSymbol = '.' | '-'
 
@@ -61,8 +62,15 @@ export const MORSE_TABLE: Record<string, string> = {
   ー: '.--.-',
 }
 
-/** 緊急: 長押し5つの連続。かなの符号には無い(数字の0にあたる)。5つ目を離した時点で即緊急 */
-export const MORSE_EMERGENCY_CODE = '-----'
+/**
+ * 緊急: SOS(・・・－－－・・・)。9つ目を離した時点で即緊急。
+ * 判定は「休まず続けて入力中の(確定前の)1つの符号」の末尾だけで行う。
+ * 休み(文字の確定時間)を挟んで確定した文字をまたぐ並びは数えないので、複数のかなの符号の連結が
+ * 偶然 SOS 配列になる語(かぜ・おそく・くよくよ・られぬ 等)では緊急にならない。
+ * 確定前の符号が6押下を超えると、どのかな(最長5押下)・操作の符号(最長6押下)にもなりえないので、
+ * 前に誤符号が続いていても(例: 誤符号+SOS を休まず連打)緊急にしてよい。
+ */
+export const MORSE_EMERGENCY_CODE = '...---...'
 
 /** 操作の符号。文字の確定(無入力)を待って判定する。かなの符号とは重ならない */
 export const MORSE_CONTROL_CODES = {
@@ -174,10 +182,17 @@ export function startMorse(now: number, text = ''): MorseState {
   return { code: '', text, lastAt: now, wordMarked: true }
 }
 
-/** 符号(短点/長点)が1つ入力された。長押し5つの連続は確定を待たず緊急にする。 */
+/**
+ * 符号(短点/長点)が1つ入力された。入力中の(確定前の)符号の末尾が SOS なら、確定を待たず
+ * その押下で即緊急にする(9つ目を離した時点)。前に誤符号が続いていても(休まず続けた
+ * 「誤符号+SOS」でも)末尾が SOS なら緊急。入力中の符号は緊急で捨てるだけで、確定済みの文字列は
+ * 汚れない。
+ * 休みを挟んで確定した符号をまたぐ並びは数えない。
+ * 操作の符号(・5つ・・6つ)は無入力で確定したときだけ実行するので、SOS の先頭・末尾の・・・が
+ * それらに食われることはない(SOS は9つ目の押下で、確定を待たず即緊急になる)。
+ */
 export function pushSymbol(state: MorseState, symbol: MorseSymbol, now: number): MorseResult {
   const code = state.code + symbol
-  // 直前に誤って別の符号が入っていても、末尾が長押し5つの連続なら緊急(取りこぼさない)
   if (code.endsWith(MORSE_EMERGENCY_CODE)) {
     return {
       state: { ...state, code: '', lastAt: now, wordMarked: false },

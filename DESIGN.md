@@ -209,3 +209,24 @@ The caregiver panel (click/tap menu) reuses the same palette as the patient scre
 Every token above is a real custom property — no color is hardcoded in `globals.css` component rules (PR#16 Opus レビュー should-5). Since Issue #44, `.caregiver-button` sits in the current-screen guidance area rather than the transmission panel; its existing theme tokens remain the source of its foreground/background colors.
 
 The warn/OK token pairing is shared by Wake Lock status and offline-ready status, so caregivers learn one visual pattern for "this needs your attention" across all of them, in either theme. The 文字サイズ (font size) and 表示 (theme: light/dark/auto) pickers both reuse the same `.caregiver-choice-options` look as the voice-mode picker (`--caregiver-status-ok-bg`/`--caregiver-action-bg` unselected/selected pair); 高コントラスト is a plain checkbox like 聴覚スキャン.
+
+## 9. Morse screen (Issue #57)
+
+The Morse input screen (`.morse-panel`) always shows its full legend (`.morse-legend`): the patient has only a switch and `touch-action: none`, so **every legend item must be visible without scrolling**. Verified at 390x844, 568x320, 844x390 and 320x568 (all items inside the viewport, `.morse-panel` `scrollHeight == clientHeight`).
+
+- Placement: below the large code (`.morse-code`) and confirmed text (`.morse-text`). While `screen() === 'morse'` the shell has `.is-morse`, which hides the breadcrumb, the accepted-selection strip and the last-message panel, and shrinks the screen-guide heading (`clamp(0.95rem, 2.4vh, 1.3rem)`), so the panel gets the room.
+- Confirmed text: capped at 3.9em (2.5em on short/narrow viewports), overflow clipped from the top so the tail of the input stays visible; it never pushes the legend out.
+- Legend type size: `clamp(0.8rem, 2.6vmin, 1.35rem)` by default; narrow width (<=480px): `clamp(0.8rem, 2.2vh, 1.1rem)`; short height (<=500px): `clamp(0.75rem, 4vh, 1rem)` (12.8px at 320px high). Line-height 1.3 (1.25 compact). Full opacity (no dimming) in every case; keywords are `<b>` weight 800.
+- Columns: `repeat(auto-fit, minmax(min(100%, 19rem), 1fr))` by default, `15rem` when narrow (<=480px wide) and `10rem` when short (<=500px high). Gap 4px 16px (2px 12px compact).
+- Panel padding/gap: 16px 14px / 12px; compact 6px 12px / 4px. Code size `clamp(2rem, 11vmin, 4.5rem)` (compact `clamp(1.4rem, 7vmin, 2.4rem)`), text `clamp(1.5rem, 7vmin, 3rem)` (compact `clamp(1.1rem, 5vmin, 1.8rem)`).
+- Content rules: no emoji; second-counts follow the caregiver settings; the "under N s presses are not counted" line appears only when the minimum press time (#6) is set.
+- Unresolved-emergency band (`.emergency-status`) while on the Morse screen: the band is compacted (padding 4px 12px, message `clamp(1rem, 3vh, 1.5rem)`, the detail list hidden — it is visible on the emergency screens), and the screen-guide keeps the heading and the caregiver button on one row (3px block padding when short) so the legend still fits.
+- `.morse-panel` is `overflow: hidden` — no scrolling is ever relied on; fit is guaranteed by the measurements below.
+
+Measured with real Chromium (playwright-core): bottom of the last legend item vs viewport height; `.morse-panel` `scrollHeight == clientHeight` in every cell.
+
+| State (items shown)                                                     | 390x844 | 568x320 | 844x390 | 320x568 |
+| ----------------------------------------------------------------------- | ------- | ------- | ------- | ------- |
+| Default, no emergency (9)                                               | 438     | 249     | 286     | 301     |
+| Unresolved emergency with 3 details (9)                                 | 474     | 275     | 312     | 329     |
+| Worst case: emergency + minimum press time + letter gap 3.0s (10 items) | 498     | 309     | 312     | 347     |

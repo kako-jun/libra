@@ -24,9 +24,10 @@ import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
 import { createSwitchInput } from './lib/switchInput'
 import { HAPTIC_STRENGTHS, playFeedback, type FeedbackEvent } from './lib/feedback'
-import { createMorseInput } from './lib/morseInput'
+import { MORSE_MAX_HOLD_MS, createMorseInput } from './lib/morseInput'
 import {
   effectiveDashMs,
+  MORSE_IDLE_EXIT_MS,
   formatMorseCode,
   morseNoiseMs,
   type MorseState,
@@ -450,7 +451,7 @@ export default function App() {
     },
     onEvent: (event) => {
       if (event.type === 'emergency') {
-        // 長押し5つの連続: 確定を待たず即緊急(モールス中でも緊急に届く)
+        // SOS(・・・－－－・・・)の連続9押下: 確定を待たず即緊急(モールス中でも緊急に届く)
         // 並び順に頼らず、緊急のアクションを直接実行する
         runAction({ id: 'emergency', label: '緊急', tone: 'urgent', action: { type: 'emergency' } })
       } else if (event.type === 'exit') {
@@ -1103,7 +1104,7 @@ export default function App() {
   }
 
   return (
-    <main class="app-shell">
+    <main class="app-shell" classList={{ 'is-morse': screen() === 'morse' }}>
       <Show when={emergencyActive()}>
         <section class="emergency-status" role="status" aria-label="未解除の緊急状態">
           <p class="emergency-status-message">{EMERGENCY_MESSAGE}</p>
@@ -1191,15 +1192,44 @@ export default function App() {
               : formatMorseCode(morseView()?.code ?? '') || '　'}
           </p>
           <p class="morse-text" aria-live="polite">
-            {morseText() || '短く押す＝・　長く押す＝－'}
+            {morseText() || '　'}
           </p>
-          <ul class="morse-legend">
-            <li>文字: 符号を入れて少し待つ</li>
-            <li>語の区切り: もう少し待つ</li>
-            <li>－を5回続ける: 緊急</li>
-            <li>・を5回 → 待つ: スキャンへ戻る</li>
-            <li>・を6回 → 待つ: 1字消す</li>
-            <li>・－・－・－ → 待つ: 確定して伝える</li>
+          <ul class="morse-legend" aria-label="モールスの操作と自動で起きること">
+            <li>
+              <b>短く押す</b>＝・　<b>{(morseConfig().dashMs / 1000).toFixed(1)}秒以上押す</b>＝－
+            </li>
+            <Show when={settings().minHoldMs > 0}>
+              <li>
+                <b>{(settings().minHoldMs / 1000).toFixed(1)}秒未満</b>の押下は数えない
+              </li>
+            </Show>
+            <li>
+              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・（<b>休まず続けて</b>
+              {'打つと、待たずにすぐ。'}
+              <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>
+              {'休むと数え直し）'}
+            </li>
+            <li>
+              <b>・・・・・</b>（・を5つ）→ <b>待つと</b>スキャンへ戻る
+            </li>
+            <li>
+              <b>・・・・・・</b>（・を6つ）→ <b>待つと</b>1字消す
+            </li>
+            <li>
+              <b>・－・－・－</b> → <b>待つと</b>確定して伝える
+            </li>
+            <li>
+              <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>押さないと、1文字が決まる
+            </li>
+            <li>
+              <b>{(settings().morseWordGapMs / 1000).toFixed(1)}秒</b>押さないと、語の区切りが入る
+            </li>
+            <li>
+              <b>{MORSE_IDLE_EXIT_MS / 1000}秒</b>何も押さないと、スキャンへ戻る
+            </li>
+            <li>
+              <b>{MORSE_MAX_HOLD_MS / 1000}秒を超えて</b>押しっぱなしの入力は、無効になる
+            </li>
           </ul>
         </section>
       </Show>
@@ -1451,7 +1481,7 @@ export default function App() {
                     }
                   />
                   <span>
-                    モールス入力を使う（上級者向け。押下と解放を同時に送るシャッターでは長押しが使えません）
+                    モールス入力を使う（上級者向け。押下と解放を同時に送るシャッターでは長押しが使えず、緊急のSOS（・・・－－－・・・）も出せません）
                   </span>
                 </label>
 

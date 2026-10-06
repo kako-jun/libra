@@ -1153,16 +1153,106 @@ h1[data-fit='single'] {
   font-weight: 800;
   line-height: 1.3;
   overflow-wrap: anywhere;
+  /* 長くなっても案内を押し出さない。入力の末尾が見えるよう、はみ出しは先頭側を切る */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: 3.9em;
+  overflow: hidden;
 }
 
 .morse-legend {
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 4px 16px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.85rem;
-  opacity: 0.85;
+  font-size: clamp(0.8rem, 2.6vmin, 1.35rem);
+  line-height: 1.3;
+}
+
+.morse-legend b {
+  font-weight: 800;
+}
+
+/* Issue #57: モールス画面は案内を常に全項目見せる(本人はスイッチのみ・touch-action:none で
+   スクロールできない)。案内の上に積まれる枠(画面名・直前の選択・直前に伝えたこと)を詰め、
+   狭い/低い画面(390x844・568x320・844x390・320x568)でも全項目が画面内に収まるようにする。
+   スクロールで逃がさず、全項目が収まること自体を保証する(DESIGN.md §9 の実測表)。 */
+.app-shell.is-morse .selection-confirmation,
+.app-shell.is-morse .message-panel,
+.app-shell.is-morse .screen-breadcrumb {
+  display: none;
+}
+
+.app-shell.is-morse .screen-guide {
+  min-height: 0;
+}
+
+/* 緊急が解除されていない状態でモールスに入ったときも、案内の全項目を収める。
+   緊急の文言(「緊急です。来てください」)は残し、伝えた状態の一覧(緊急画面で確認できる)と余白を詰める */
+.app-shell.is-morse .emergency-status {
+  gap: 0;
+  padding: 4px 12px;
+}
+
+.app-shell.is-morse .emergency-status-message {
+  font-size: clamp(1rem, 3vh, 1.5rem);
+}
+
+.app-shell.is-morse .emergency-detail-status {
+  display: none;
+}
+
+.app-shell.is-morse .screen-guide-copy {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.app-shell.is-morse .screen-guide .message-panel-controls {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.app-shell.is-morse .screen-guide h2 {
+  font-size: clamp(0.95rem, 2.4vh, 1.3rem);
+}
+
+@media (max-height: 500px), (max-width: 480px) {
+  .morse-panel {
+    gap: 4px;
+    padding: 6px 12px;
+  }
+
+  .morse-code {
+    font-size: clamp(1.4rem, 7vmin, 2.4rem);
+    line-height: 1.2;
+  }
+
+  .morse-text {
+    font-size: clamp(1.1rem, 5vmin, 1.8rem);
+    line-height: 1.2;
+    max-height: 2.5em;
+  }
+
+  .morse-legend {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: 2px 12px;
+    font-size: clamp(0.8rem, 2.2vh, 1.1rem);
+    line-height: 1.25;
+  }
+}
+
+@media (max-height: 500px) {
+  .app-shell.is-morse .screen-guide {
+    padding-block: 3px;
+  }
+
+  .morse-legend {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+    font-size: clamp(0.75rem, 4vh, 1rem);
+  }
 }
 
 /* ===================================================================

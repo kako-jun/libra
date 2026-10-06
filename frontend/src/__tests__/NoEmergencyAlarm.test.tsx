@@ -97,12 +97,12 @@ const PATHS: Path[] = [
     },
   },
   {
-    name: 'モールス長押し5回で即緊急',
+    name: 'モールスSOSで即緊急',
     start: () => {
       window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true }))
       const view = render(() => <App />)
       selectByLabel(view.container, 'モールス')
-      for (let i = 0; i < 5; i += 1) tap(600)
+      for (const symbol of '...---...') tap(symbol === '-' ? 600 : 100)
       return view
     },
   },
