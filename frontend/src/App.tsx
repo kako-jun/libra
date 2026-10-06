@@ -1105,7 +1105,7 @@ export default function App() {
   }
 
   return (
-    <main class="app-shell">
+    <main class="app-shell" classList={{ 'is-morse': screen() === 'morse' }}>
       <Show when={emergencyActive()}>
         <section class="emergency-status" role="status" aria-label="未解除の緊急状態">
           <p class="emergency-status-message">{EMERGENCY_MESSAGE}</p>
@@ -1199,17 +1199,22 @@ export default function App() {
             <li>
               <b>短く押す</b>＝・　<b>{(morseConfig().dashMs / 1000).toFixed(1)}秒以上押す</b>＝－
             </li>
+            <Show when={settings().minHoldMs > 0}>
+              <li>
+                <b>{(settings().minHoldMs / 1000).toFixed(1)}秒未満</b>の押下は数えない
+              </li>
+            </Show>
             <li>
-              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・
+              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・（<b>待たずにすぐ</b>）
             </li>
             <li>
-              <b>・・・・・</b>（・を5つ）＝スキャンへ戻る
+              <b>・・・・・</b>（・を5つ）→ <b>待つと</b>スキャンへ戻る
             </li>
             <li>
-              <b>・・・・・・</b>（・を6つ）＝1字消す
+              <b>・・・・・・</b>（・を6つ）→ <b>待つと</b>1字消す
             </li>
             <li>
-              <b>・－・－・－</b>＝確定して伝える
+              <b>・－・－・－</b> → <b>待つと</b>確定して伝える
             </li>
             <li>
               <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>押さないと、1文字が決まる
@@ -1224,7 +1229,7 @@ export default function App() {
               <b>{MORSE_HISTORY_RESET_MS / 1000}秒</b>押さないと、SOSの数え直し
             </li>
             <li>
-              <b>{MORSE_MAX_HOLD_MS / 1000}秒</b>以上押しっぱなしの入力は、無効になる
+              <b>{MORSE_MAX_HOLD_MS / 1000}秒を超えて</b>押しっぱなしの入力は、無効になる
             </li>
           </ul>
         </section>

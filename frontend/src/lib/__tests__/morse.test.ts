@@ -439,12 +439,15 @@ describe('SOSの履歴判定(Issue #57)', () => {
     })
 
     it('履歴の破棄は文字列・入力中の符号を変えない', () => {
+      // 確定を待たせて、入力中の符号('-')が残ったまま 15 秒経った状態を作る
+      const slow = { ...config, letterGapMs: 60000, wordGapMs: 61000 }
       const first = pushAll(startMorse(0, 'あ'), '-', 0)
-      const ticked = tickMorse(first.state, first.at + 1000, config).state // 確定前
-      expect(ticked.code).toBe('-')
-      const late = tickMorse({ ...ticked, code: '' }, first.at + MORSE_HISTORY_RESET_MS, config)
-      expect(late.state.text.trim()).toBe('あ')
+      expect(first.state.code).toBe('-')
+      const late = tickMorse(first.state, first.at + MORSE_HISTORY_RESET_MS, slow)
       expect(late.state.history).toBe('')
+      expect(late.state.code).toBe('-')
+      expect(late.state.text).toBe('あ')
+      expect(late.event).toBeNull()
     })
   })
 

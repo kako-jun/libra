@@ -1217,19 +1217,20 @@ describe('App', () => {
     for (const phrase of [
       '短く押す＝・',
       '0.5秒以上押す＝－',
-      '緊急＝SOS ・・・ －－－ ・・・',
-      '・・・・・（・を5つ）＝スキャンへ戻る',
-      '・・・・・・（・を6つ）＝1字消す',
-      '・－・－・－＝確定して伝える',
+      '緊急＝SOS ・・・ －－－ ・・・（待たずにすぐ）',
+      '・・・・・（・を5つ）→ 待つとスキャンへ戻る',
+      '・・・・・・（・を6つ）→ 待つと1字消す',
+      '・－・－・－ → 待つと確定して伝える',
       '1.5秒押さないと、1文字が決まる',
       '4.0秒押さないと、語の区切りが入る',
       '30秒何も押さないと、スキャンへ戻る',
       '15秒押さないと、SOSの数え直し',
-      '10秒以上押しっぱなしの入力は、無効になる',
+      '10秒を超えて押しっぱなしの入力は、無効になる',
     ]) {
       expect(text).toContain(phrase)
     }
     expect(container.querySelectorAll('.morse-legend li').length).toBe(10)
+    expect(text).not.toContain('押下は数えない') // 押下時間の下限(#6)が0のときは出さない
     expect(text).not.toMatch(/\p{Extended_Pictographic}/u) // 絵文字なし
   })
 
@@ -1244,8 +1245,8 @@ describe('App', () => {
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(5000)
     expect(legendOf(container)).toBe(before)
-    // 入力前の大表示のヒント文は案内に移したので、確定済み文字列が空のときは空白
-    expect(morseTextOf(container).trim()).not.toBe('')
+    // 時間経過で文字(・－ + 押下中の－ = や)が確定しても、案内は文字列に置き換わらず併存する
+    expect(morseTextOf(container).trim()).toBe('や')
   })
 
   it('Issue #57: 設定(文字確定・語の区切り・長押しの境目)を変えると、案内の秒数が追従する', () => {
@@ -1277,6 +1278,22 @@ describe('App', () => {
     expect(container.querySelector('.morse-panel')).not.toBeNull()
     // 実効の境目 = 1000 + 100ms
     expect(legendOf(container)).toContain('1.1秒以上押す＝－')
+  })
+
+  it('Issue #57: 押下時間の下限(#6)があるときだけ「◯秒未満の押下は数えない」が出て、設定に追従する', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, minHoldMs: 800 }))
+    const { container } = render(() => <App />)
+    for (let i = 0; i < 40 && scanningLabel(container) !== 'モールス'; i += 1) {
+      vi.advanceTimersByTime(1500)
+    }
+    vi.advanceTimersByTime(600)
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(900)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    vi.advanceTimersByTime(100)
+    expect(container.querySelector('.morse-panel')).not.toBeNull()
+    expect(legendOf(container)).toContain('0.8秒未満の押下は数えない')
+    expect(container.querySelectorAll('.morse-legend li').length).toBe(11)
   })
 
   it('Issue #57: 語の区切りの設定は文字確定+0.5秒以上に補正され、案内もそれに従う', () => {
