@@ -1249,7 +1249,14 @@ h1[data-fit='single'] {
     padding-block: 3px;
   }
 
+  /* Issue #58: 画面下の固定案内(.screen-notes)の分だけ、モールス画面の余白を詰める */
+  .morse-panel {
+    gap: 2px;
+    padding: 3px 12px;
+  }
+
   .morse-legend {
+    line-height: 1.2;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
     font-size: clamp(0.75rem, 4vh, 1rem);
   }
@@ -1435,5 +1442,75 @@ h1[data-fit='single'] {
     min-height: 26px;
     padding: 4px 12px;
     font-size: 0.78rem;
+  }
+}
+
+/* ===================================================================
+   Issue #58: 操作と自動で起きることの常時案内。
+   本人画面は画面下端の固定帯(.screen-notes)、介助者メニューは上部の固定帯(.caregiver-notes)。
+   全画面で同じ場所に出し、該当する状況・設定のときは必ず出る(隠す操作は無い)。
+   本人はスクロールできないため、帯は高さ分だけタイル/メッセージ領域を縮め、はみ出さない。
+   =================================================================== */
+.app-shell {
+  grid-template-rows: auto auto auto auto auto 1fr auto;
+}
+
+.screen-notes {
+  grid-row: 7;
+  min-width: 0;
+  padding: 4px 18px;
+  color: var(--text-muted);
+  background: var(--surface-calm);
+  border-top: var(--grid-line-width) solid var(--grid-line);
+  font-size: clamp(0.72rem, 1.9vh, 0.95rem);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.screen-notes ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.screen-notes li {
+  overflow-wrap: anywhere;
+  line-break: strict;
+}
+
+.caregiver-notes {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 0;
+  list-style: none;
+  padding: 6px 10px;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 1px solid var(--caregiver-status-ok-border);
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+
+@media (max-width: 480px), (max-height: 500px) {
+  .screen-notes {
+    padding: 2px 12px;
+    font-size: 0.7rem;
+    line-height: 1.15;
+  }
+
+  .screen-notes ul {
+    gap: 0 12px;
+  }
+
+  .caregiver-notes {
+    gap: 0 12px;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    padding: 3px 8px;
   }
 }

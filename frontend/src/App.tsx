@@ -33,11 +33,11 @@ import {
   type MorseState,
   type MorseSymbol,
 } from './lib/morse'
+import { EMERGENCY_REPEAT_MS, buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const EMERGENCY_MESSAGE = '緊急です。来てください'
-const EMERGENCY_REPEAT_MS = 3000
 /** 介助者メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
 const CAREGIVER_TABS = [
   { id: 'status', label: '状態' },
@@ -301,6 +301,15 @@ export default function App() {
     }),
   )
 
+  // Issue #58: 画面下の固定案内。該当する状況・設定のときは必ず出す(隠す操作は無い)
+  const screenNotes = createMemo(() =>
+    buildScreenNotes({
+      screen: screen(),
+      showUndo: showUndo(),
+      emergencyActive: emergencyActive(),
+      settings: settings(),
+    }),
+  )
   const currentScreenGuidance = createMemo(() => {
     if (screen() === 'painIntensity' && painChoice()) {
       return `${painChoice()?.label}の痛みの強さを選んでください。`
@@ -1298,6 +1307,14 @@ export default function App() {
         </For>
       </section>
 
+      <Show when={screenNotes().length > 0}>
+        <section class="screen-notes" aria-label="操作と自動で起きること">
+          <ul>
+            <For each={screenNotes()}>{(note) => <li>{note}</li>}</For>
+          </ul>
+        </section>
+      </Show>
+
       <Show when={caregiverMenuOpen()}>
         <div class="caregiver-overlay" data-caregiver-control>
           <div class="caregiver-panel">
@@ -1321,6 +1338,12 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            <ul class="caregiver-notes" aria-label="介助者メニューの自動で起きること">
+              <For each={buildCaregiverMenuNotes(CAREGIVER_MENU_IDLE_TIMEOUT_MS)}>
+                {(note) => <li>{note}</li>}
+              </For>
+            </ul>
 
             <div class="caregiver-tablist" role="tablist" aria-label="設定カテゴリ">
               <For each={CAREGIVER_TABS}>
