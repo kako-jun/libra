@@ -44,7 +44,7 @@ export function formatSeconds(ms: number): string {
   return `${(rounded / 1000).toFixed(rounded % 100 === 0 ? 1 : 2)}秒`
 }
 
-const SCREEN_CHANGE_NOTE_FULL = '押下中に画面が変わると無効'
+const SCREEN_CHANGE_NOTE_FULL = '押下中に画面や項目の並びが変わると無効'
 
 /**
  * 現在の状態で必ず出す案内。順序は固定: 取り消し → 緊急 → 押し方 → 読み上げ → 先頭待機。
@@ -66,7 +66,7 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
     if (emergencyActive) {
       notes.push(
         compact
-          ? '緊急中は「取り消し」なし。'
+          ? '緊急中は「取り消し」なし（取り消せないため）。'
           : '緊急中は「取り消し」なし（緊急は取り消せないため）。',
       )
     }
@@ -87,7 +87,7 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
         )
       }
     } else {
-      notes.push('この端末は振動できません（緊急は無音）。')
+      notes.push('この端末は振動できません（緊急中の周期振動なし）。')
     }
   }
   if (screen === 'morse') return notes
@@ -152,8 +152,8 @@ export function buildCaregiverMenuNotes(
       ? `${seconds}秒タップしないと閉じてホームへ（打鍵では延びず）。`
       : `${seconds}秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。`,
     compact
-      ? '外側タップ・キーでも閉じる（タブ移動キー・フレーズ欄入力は除く）。'
-      : '外側のタップやキー入力で閉じ、ホーム先頭から再開（タブ上の←/→/Home/Endはタブ移動、フレーズ欄の文字入力は閉じません）。',
+      ? '外側タップ・キーでも閉じる（入力欄等の編集キー・タブ移動キーは除く）。'
+      : '外側のタップやキー入力で閉じ、ホーム先頭から再開（入力欄・スライダー・チェックボックス操作中の文字/矢印/Home/Endキーと、タブ上の←/→/Home/Endは閉じません）。',
     compact
       ? `開く間は${options.morseEnabled ? 'スキャン・モールス時間' : 'スキャン'}停止。`
       : `開いている間は、${stops}が止まります。`,

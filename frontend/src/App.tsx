@@ -42,6 +42,8 @@ import {
 import { buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
+/** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
+const COMPACT_NOTES_QUERY = '(max-height: 500px), (max-width: 480px)'
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const EMERGENCY_MESSAGE = '緊急です。来てください'
 /** 介助者メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
@@ -332,11 +334,11 @@ export default function App() {
     for (const name of events) window.addEventListener(name, check, true)
     onCleanup(stop)
   })
-  // 低い画面(高さ500px以下)では案内を短縮形にする。本人は画面をスクロールできず、
+  // 低い画面(高さ500px以下)か狭い画面(幅480px以下)では案内を短縮形にする。本人は画面をスクロールできず、
   // 帯が格子を押し潰さないため。出す・出さないは変えない
   const compactQuery =
     typeof window !== 'undefined' && window.matchMedia
-      ? window.matchMedia('(max-height: 500px)')
+      ? window.matchMedia(COMPACT_NOTES_QUERY)
       : null
   const [compactNotes, setCompactNotes] = createSignal(compactQuery?.matches === true)
   onMount(() => {
