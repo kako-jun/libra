@@ -32,7 +32,7 @@ export interface MorseInputOptions {
 const TICK_INTERVAL_MS = 50
 
 /** 解放を取りこぼして押しっぱなしになった入力を、符号にせず捨てる時間(ms)。無操作での復帰を妨げない */
-const MAX_HOLD_MS = 10000
+export const MORSE_MAX_HOLD_MS = 10000
 
 export interface MorseInput {
   /** モールス画面に入った。text は前回までの確定済み文字列 */
@@ -81,10 +81,10 @@ export function createMorseInput(options: MorseInputOptions): MorseInput {
     const now = Date.now()
     // 解放を取りこぼした押下が残り続けると、文字確定も無操作での復帰も止まってしまう
     for (const [sourceId, startedAt] of Array.from(pressed.entries())) {
-      if (now - startedAt > MAX_HOLD_MS) pressed.delete(sourceId)
+      if (now - startedAt > MORSE_MAX_HOLD_MS) pressed.delete(sourceId)
     }
     // 押している間は、文字の確定・語の区切り・無操作での復帰を進めない。時間は離した時刻から測る。
-    // (長押しの最中に確定されると、－5つの緊急の符号がばらけて届かなくなる)
+    // (長押しの最中に確定されると、SOS の符号がばらけて届かなくなる)
     if (pressed.size === 0) {
       const before = state
       const result = tickMorse(state, now, options.getConfig())

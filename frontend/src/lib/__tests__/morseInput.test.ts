@@ -67,11 +67,11 @@ describe('morseInput', () => {
     expect(last().text).toBe('い　')
   })
 
-  it('長押し5つで緊急イベントが出る', () => {
+  it('SOSで緊急イベントが出る', () => {
     const { input, press, events } = setup()
     input.start('')
-    for (let i = 0; i < 5; i += 1) {
-      press(600)
+    for (const symbol of '...---...') {
+      press(symbol === '-' ? 600 : 100)
       vi.advanceTimersByTime(100)
     }
     expect(events).toEqual([{ type: 'emergency' }])
@@ -130,20 +130,20 @@ describe('morseInput', () => {
   })
 
   describe('ゆっくり押す人でも緊急に届く(押している間は確定・復帰を進めない)', () => {
-    it('900ms 押して 700ms 空ける、を5回繰り返しても緊急になる(押す+空ける > 文字の確定時間)', () => {
+    it('長点を900ms 押して 700ms 空ける、SOS でも緊急になる(押す+空ける > 文字の確定時間)', () => {
       const { input, events, last } = setup()
       input.start('')
-      for (let i = 0; i < 5; i += 1) {
+      for (const symbol of '...---...') {
         input.down('k')
-        vi.advanceTimersByTime(900)
+        vi.advanceTimersByTime(symbol === '-' ? 900 : 100)
         input.up('k')
         vi.advanceTimersByTime(700)
       }
       expect(events).toEqual([{ type: 'emergency' }])
-      expect(last().text).toBe('') // 途中で「む」などが確定していない
+      expect(last().text).toBe('') // 途中で「ら」などが確定していない
     })
 
-    it('長押しの境目 1.5 秒・文字の確定 0.5 秒という極端な設定でも、－5つで緊急になる', () => {
+    it('長押しの境目 1.5 秒・文字の確定 0.5 秒という極端な設定でも、SOSで緊急になる', () => {
       const extreme: MorseInputConfig = {
         ...config,
         dashMs: 1500,
@@ -152,9 +152,9 @@ describe('morseInput', () => {
       }
       const { input, events } = setup(extreme)
       input.start('')
-      for (let i = 0; i < 5; i += 1) {
+      for (const symbol of '...---...') {
         input.down('k')
-        vi.advanceTimersByTime(1600)
+        vi.advanceTimersByTime(symbol === '-' ? 1600 : 100)
         input.up('k')
         vi.advanceTimersByTime(300)
       }

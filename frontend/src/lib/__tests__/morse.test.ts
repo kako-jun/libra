@@ -73,7 +73,7 @@ describe('和文モールスの符号表', () => {
     expect(controls).not.toContain(MORSE_EMERGENCY_CODE)
   })
 
-  it('かなの符号に、長押し5つの連続(緊急)を含むものはない', () => {
+  it('かなの符号に、SOS(緊急)を含むものはない', () => {
     for (const code of Object.values(MORSE_TABLE)) {
       expect(code.includes(MORSE_EMERGENCY_CODE)).toBe(false)
     }
@@ -164,25 +164,25 @@ describe('モールス入力の状態遷移', () => {
     expect(result.state.text).toBe('あ') // 入力途中の文字列は残る
   })
 
-  describe('緊急(長押し5つの連続)', () => {
-    it('5つ目を入れた時点で、確定を待たず即 emergency', () => {
+  describe('緊急(SOS・・・－－－・・・)', () => {
+    it('9つ目を入れた時点で、確定を待たず即 emergency', () => {
       let state = startMorse(0)
-      for (let i = 0; i < 4; i += 1) {
-        const out = pushSymbol(state, '-', 100 * (i + 1))
+      for (let i = 0; i < 8; i += 1) {
+        const out = pushSymbol(state, '...---...'[i] as '.' | '-', 100 * (i + 1))
         expect(out.event).toBeNull()
         state = out.state
       }
-      const out = pushSymbol(state, '-', 500)
+      const out = pushSymbol(state, '.', 900)
       expect(out.event).toEqual({ type: 'emergency' })
       expect(out.state.code).toBe('')
     })
 
-    it('直前に誤って別の符号が入っていても、続けて長押し5つで緊急になる', () => {
+    it('直前に誤って別の符号が入っていても、続けてSOSで緊急になる', () => {
       let state = startMorse(0)
-      state = pushSymbol(state, '.', 100).state
+      state = pushSymbol(state, '-', 100).state
       let event = null as ReturnType<typeof pushSymbol>['event']
-      for (let i = 0; i < 5; i += 1) {
-        const out = pushSymbol(state, '-', 200 + i * 100)
+      for (let i = 0; i < 9; i += 1) {
+        const out = pushSymbol(state, '...---...'[i] as '.' | '-', 200 + i * 100)
         state = out.state
         event = out.event
       }
@@ -190,10 +190,10 @@ describe('モールス入力の状態遷移', () => {
       expect(state.code).toBe('')
     })
 
-    it('こ(----)の直後に長点を足すと緊急になる(意図した符号)', () => {
+    it('長押し5つ(旧・緊急の符号)では緊急にならない', () => {
       let state = startMorse(0)
       for (let i = 0; i < 4; i += 1) state = pushSymbol(state, '-', 100 * (i + 1)).state
-      expect(pushSymbol(state, '-', 500).event).toEqual({ type: 'emergency' })
+      expect(pushSymbol(state, '-', 500).event).toBeNull()
     })
   })
 

@@ -2,7 +2,8 @@
 // 正本: docs/requirements.md §4.7 / Issue #14
 //
 // 符号は内部では '.'(短点・短押し)と '-'(長点・長押し)で持ち、表示側で ・ － に直す。
-// 緊急の符号(長押し5つの連続)は、符号の確定を待たず5つ目の長押しを離した時点で即座に出す。
+// 緊急の符号は SOS(短点3・長点3・短点3の連続9押下)。文字の確定とは独立に押下の並びの
+// 履歴を持ち、末尾9押下が SOS なら、最後の押下を離した時点で即座に出す。
 
 export type MorseSymbol = '.' | '-'
 
@@ -61,8 +62,18 @@ export const MORSE_TABLE: Record<string, string> = {
   ー: '.--.-',
 }
 
-/** 緊急: 長押し5つの連続。かなの符号には無い(数字の0にあたる)。5つ目を離した時点で即緊急 */
-export const MORSE_EMERGENCY_CODE = '-----'
+/** 緊急: SOS(・・・－－－・・・)。かなの符号(最長5押下)には無い。9つ目を離した時点で即緊急 */
+export const MORSE_EMERGENCY_CODE = '...---...'
+
+/** 押下の並びの履歴に残す最大の長さ。SOS の判定は末尾だけを見るので、符号の長さに少し余裕を足せば足りる */
+const MORSE_HISTORY_MAX = 32
+
+/**
+ * 押下が途絶えてこの時間が経つと、押下の並びの履歴を捨てる(ms)。
+ * 離れた時間の偶然の一致で SOS と誤判定しないため。文字確定(既定1.5秒)・語の区切り(最大8秒)より
+ * 長く、ゆっくり押す人が SOS の途中で取りこぼされない長さ。
+ */
+export const MORSE_HISTORY_RESET_MS = 15000
 
 /** 操作の符号。文字の確定(無入力)を待って判定する。かなの符号とは重ならない */
 export const MORSE_CONTROL_CODES = {
@@ -156,13 +167,15 @@ export interface MorseState {
   lastAt: number
   /** 現在の無入力区間で語の区切りを入れ済みか */
   wordMarked: boolean
+  /**
+   * 押下の並びの履歴(内部表記)。文字の確定とは独立に持ち、SOS の判定にだけ使う。
+   * 操作の符号(・5つ・・6つ・確定)を実行したとき、MORSE_HISTORY_RESET_MS 無押下のとき、緊急のときに空にする
+   */
+  history: string
 }
 
 export type MorseEvent =
-  | { type: 'emergency' }
-  | { type: 'exit' }
-  | { type: 'send'; text: string }
-  | null
+  { type: 'emergency' } | { type: 'exit' } | { type: 'send'; text: string } | null
 
 export interface MorseResult {
   state: MorseState
@@ -171,20 +184,26 @@ export interface MorseResult {
 
 export function startMorse(now: number, text = ''): MorseState {
   // 入り直した直後に、既存の文字列へ勝手に語の区切りを足さない(次の入力まで)
-  return { code: '', text, lastAt: now, wordMarked: true }
+  return { code: '', text, lastAt: now, wordMarked: true, history: '' }
 }
 
-/** 符号(短点/長点)が1つ入力された。長押し5つの連続は確定を待たず緊急にする。 */
+/**
+ * 符号(短点/長点)が1つ入力された。押下の並びの末尾9押下が SOS なら、文字の確定を待たず緊急にする。
+ * 判定は並びの履歴で行うので、押す間隔が文字の確定時間を超えて文字として確定されていても、
+ * 誤った符号が前に混ざっていても取りこぼさない。
+ * 操作の符号(・5つ・・6つ)は無入力で確定したときだけ実行するので、SOS の先頭・末尾の・・・が
+ * それらに食われることはない(SOS は9つ目の押下で、確定を待たず即緊急になる)。
+ */
 export function pushSymbol(state: MorseState, symbol: MorseSymbol, now: number): MorseResult {
   const code = state.code + symbol
-  // 直前に誤って別の符号が入っていても、末尾が長押し5つの連続なら緊急(取りこぼさない)
-  if (code.endsWith(MORSE_EMERGENCY_CODE)) {
+  const history = (state.history + symbol).slice(-MORSE_HISTORY_MAX)
+  if (history.endsWith(MORSE_EMERGENCY_CODE)) {
     return {
-      state: { ...state, code: '', lastAt: now, wordMarked: false },
+      state: { ...state, code: '', lastAt: now, wordMarked: false, history: '' },
       event: { type: 'emergency' },
     }
   }
-  return { state: { ...state, code, lastAt: now, wordMarked: false }, event: null }
+  return { state: { ...state, code, lastAt: now, wordMarked: false, history }, event: null }
 }
 
 /** 濁点・半濁点の付いた文字から、付く前の文字を引く(ば→は、ぱ→は)。付いていなければそのまま */
@@ -212,17 +231,19 @@ function commitCode(state: MorseState): MorseResult {
   // 消した後・捨てた後に、考えている間の無入力で語の区切りが勝手に入らないよう、
   // 次の入力まで語の区切りは入れない(wordMarked)
   const cleared = { ...state, code: '', wordMarked: true }
+  // 操作の符号を実行したら、その押下は SOS の並びに数えない(・6つ→－－－・・・ を誤って緊急にしない)
+  const controlCleared = { ...cleared, history: '' }
 
-  if (code === MORSE_CONTROL_CODES.exit) return { state: cleared, event: { type: 'exit' } }
+  if (code === MORSE_CONTROL_CODES.exit) return { state: controlCleared, event: { type: 'exit' } }
   if (code === MORSE_CONTROL_CODES.backspace) {
     return {
-      state: { ...cleared, text: Array.from(state.text).slice(0, -1).join('') },
+      state: { ...controlCleared, text: Array.from(state.text).slice(0, -1).join('') },
       event: null,
     }
   }
   if (code === MORSE_CONTROL_CODES.send) {
     const text = state.text.trim()
-    return { state: cleared, event: text ? { type: 'send', text } : null }
+    return { state: controlCleared, event: text ? { type: 'send', text } : null }
   }
 
   const char = decodeMorse(code)
@@ -240,6 +261,15 @@ function commitCode(state: MorseState): MorseResult {
  * 語の区切りを入れ、MORSE_IDLE_EXIT_MS 続けばスキャンへ戻る(exit)。
  */
 export function tickMorse(state: MorseState, now: number, config: MorseConfig): MorseResult {
+  // 押下が途絶えたら並びの履歴を捨てる(長い時間をまたいだ偶然の一致を防ぐ)
+  if (state.history !== '' && now - state.lastAt >= MORSE_HISTORY_RESET_MS) {
+    const result = tickMorseInner({ ...state, history: '' }, now, config)
+    return result
+  }
+  return tickMorseInner(state, now, config)
+}
+
+function tickMorseInner(state: MorseState, now: number, config: MorseConfig): MorseResult {
   const idle = now - state.lastAt
 
   if (state.code !== '') {
