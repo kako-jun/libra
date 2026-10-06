@@ -203,8 +203,7 @@ button {
 .message-panel h1,
 .emergency-details,
 .emergency-sub,
-.tile-label,
-.audio-status-hint {
+.tile-label {
   word-break: auto-phrase;
   line-break: strict;
   overflow-wrap: anywhere;
@@ -233,7 +232,7 @@ button {
      フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
   height: 100vh;
   height: 100dvh;
-  /* kako-jun 追加指示: 介助ボタン・警告音停止中表示をメッセージ欄内(右上)へ移し、
+  /* kako-jun 追加指示: 介助ボタンをメッセージ欄内(右上)へ移し、
      下部に確保していた約130pxの帯を廃止。タイル領域を画面下端まで使う */
   padding: 0;
   overflow: hidden;
@@ -301,54 +300,16 @@ button {
   grid-area: sub;
 }
 
-/* kako-jun 追加指示: 介助ボタン・警告音停止中表示はメッセージ欄右上に置く(文字と重ならない
-   よう grid で専用列を確保する。position:fixed はやめ、通常のレイアウトに組み込む) */
+/* 介助ボタンはメッセージ欄右上に置く(文字と重ならないよう grid で専用列を確保する。
+   position:fixed はやめ、通常のレイアウトに組み込む) */
 .message-panel-controls {
   grid-area: controls;
-  /* PR#16 5巡目 should-A(試行→撤回): 4巡目の nit-b では .audio-status-hint(警告音
-     停止中表示)の出現/消失で列幅が変わる問題を、列幅を表示ありの分だけ常に確保する
-     (min-width)で直したが、5巡目でこれを「列幅は介助ボタン幅のみにし、hintは
-     position:absoluteでボタン下に重ねる」方式に変えようとした。
-     実装・検証の結果、これは新たな重なりバグを2件生んだ: (1) 幅を明示しないと
-     containing block(ボタン幅=約46px)基準のshrink-to-fitでhintが押し潰され、
-     折り返し行数が激増して高さがパネルからはみ出しタイルと重なる。(2) 幅を
-     明示(200px/128px)すると、今度はその幅がh1の列(message)側にまで水平に
-     はみ出し、h1のテキストと重なることがある(実測: 390x844ホームでh1がhintと
-     重なった)。h1は独立したgrid列(message)を持つため、controls列自体の幅を
-     hintぶん確保しておく(min-width)のがh1との重なりを構造的に防ぐ唯一の方法
-     だった。position:absolute自体(hintをflexの行送りから外す)は、パネルの
-     行の高さがhintの出現で伸びるのを防ぐ効果があるため残す。min-widthは
-     4巡目の値のまま復活させる(nit-a/nit-bの効果は維持したまま、should-Aの
-     ねらいである「hintがフローの高さ計算に影響しない」は達成できている) */
-  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-self: end;
   align-self: start;
-  min-width: 200px;
-  /* PR#16 5巡目 nit: 844x390のように横向きで縦の余裕が無い画面では、h1自体が
-     短く(このブレークポイントの下限24px×2行)、パネルの行の高さが介助ボタン
-     (44px)+隙間(6px)+hint(128px幅時34px)=84pxに届かず、position:absoluteの
-     hintの矩形(getBoundingClientRect)がgrid-boardの先頭タイルの矩形と
-     幾何学的に重なる(実際には .message-panel の overflow-y:auto にクリップ
-     されて描画はされない。document.elementFromPointで確認済みで、
-     e2e/offline.e2e.mjsの重なり判定もこれを踏まえelementFromPointで実際の
-     描画を再確認する方式に直したが、scratchpad/rv16r4.mjs 側は矩形だけを見る
-     ため引き続き検出する)。
-     素直に min-height:84px を常時足すと直るが、それは緊急詳細を5件積んだ状態
-     (emerg5+sub)のような、message/controls行(この行)と details/sub行が
-     同時に40dvhの予算を奪い合う画面で、副表示(.emergency-sub)側が溢れる
-     新規の回帰を生んだ(実測で確認)。安全に関わる緊急詳細の可視性を、見えても
-     いない警告音表示の見た目上の几帳面さより優先し、:has()でdetails/subが
-     存在しない(競合しない)ときだけ min-height を効かせる。details/subが
-     存在するときは、この行の高さは以前どおりh1基準のまま(hintの下端が
-     パネルからはみ出す可能性はあるが、上記のとおり実際には視認されない) */
   min-height: 44px;
-}
-
-.message-panel:not(:has(.emergency-details, .emergency-sub)) .message-panel-controls {
-  min-height: 84px;
 }
 
 :root[data-message-tone='urgent'] .message-panel {
@@ -982,23 +943,6 @@ h1[data-fit='single'] {
   background: var(--caregiver-close-bg);
 }
 
-/* 警告音停止中を介助者に知らせる表示。案内領域の通常フローに置いて高さを確保し、
-   タイルと重ならない。pointer-events:none で本人のタップ入力を妨げない。 */
-.audio-status-hint {
-  width: 200px;
-  max-width: 200px;
-  margin: 6px 0 0;
-  padding: 4px 8px;
-  pointer-events: none;
-  color: var(--caregiver-status-warn-text);
-  background: var(--caregiver-status-warn-bg);
-  border: 2px solid var(--caregiver-status-warn-border);
-  border-radius: 8px;
-  font-size: 0.75rem;
-  font-weight: 800;
-  text-align: right;
-}
-
 @media (orientation: portrait) {
   .message-panel {
     min-height: 148px;
@@ -1062,21 +1006,6 @@ h1[data-fit='single'] {
     /* PR#16 3巡目 must-1(should-b 撤回。上の基本ルールと同じ理由) */
     --h1-max: clamp(1.5rem, min(5.5vh, 16cqi), 2.4rem);
     --h1-min: 1.5rem;
-  }
-
-  /* 狭い画面ではメッセージ列の幅を大きく削らないよう、右上の警告音停止中表示を
-     小さめの折り返し幅にする(内容は変えず、より縦長に折り返すだけ) */
-  .audio-status-hint {
-    width: 128px;
-    max-width: 128px;
-    font-size: 0.68rem;
-  }
-
-  /* PR#16 5巡目 should-A(試行→撤回、上の .message-panel-controls のコメント参照):
-     上の .audio-status-hint の幅上書きに合わせて、min-width もこのブレークポイント
-     では128pxに縮める(4巡目 nit-b の値をそのまま復活) */
-  .message-panel-controls {
-    min-width: 128px;
   }
 
   .grid-board {

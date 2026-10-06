@@ -50,7 +50,7 @@ export function saveEmergencyState(state: { details: string[]; sub: string | nul
     const value: EmergencyState = { active: true, details: state.details, sub: state.sub }
     window.localStorage.setItem(EMERGENCY_STORAGE_KEY, JSON.stringify(value))
   } catch {
-    // 保存できなくても緊急表示・警告音は動き続ける
+    // 保存できなくても緊急表示は動き続ける
   }
 }
 

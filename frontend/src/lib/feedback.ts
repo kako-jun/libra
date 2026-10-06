@@ -4,7 +4,7 @@
 // パターンはここに集約する。Vibration API に非対応の端末(iOS Safari など)では、
 // 同じパターンを短い効果音で代替する(音声 OFF のときに鳴らすかは介助者設定)。
 
-import { playTonePattern } from './alarm'
+import { playTonePattern } from './tone'
 import type { VoiceMode } from './settings'
 
 export type FeedbackEvent =
@@ -18,7 +18,7 @@ export type FeedbackEvent =
   | 'urgentMessage'
   /** 緊急を呼び出した */
   | 'emergency'
-  /** 緊急の呼び出し中。警告音と同じ周期で繰り返し、まだ続いていることを知らせる */
+  /** 緊急の呼び出し中。一定周期で繰り返し、まだ続いていることを知らせる */
   | 'emergencyActive'
   /** 介助者が緊急を解除した */
   | 'cleared'
@@ -77,7 +77,7 @@ function canVibrate(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
 }
 
-/** 警告音が鳴っている間は、警告音そのものが状態を伝えているので、効果音を重ねない */
+/** 緊急は警告音を鳴らさない(#43)。静かな視覚表示と振動で伝え、効果音も重ねない */
 const SILENT_TONE_EVENTS: FeedbackEvent[] = ['emergency', 'emergencyActive']
 
 /** イベントに対応するフィードバックを出す。新しい呼び出しは直前の振動・効果音を置き換える。 */
@@ -89,7 +89,7 @@ export function playFeedback(event: FeedbackEvent, options: FeedbackOptions): vo
     try {
       navigator.vibrate(pattern)
     } catch {
-      // 振動に失敗しても、表示・警告音など他の動作は続ける
+      // 振動に失敗しても、表示など他の動作は続ける
     }
   }
   if (SILENT_TONE_EVENTS.includes(event)) return

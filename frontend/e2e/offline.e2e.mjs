@@ -22,8 +22,7 @@
 // - letters-scroll: 横向き小画面(844x390/667x375/320x568)で文字盤のスキャン対象が下段に
 //   来ても、document自体はスクロールせず(window.scrollY===0)、メッセージパネル(h1)と
 //   スキャン対象タイルの両方がビューポート内にあることを確認する
-// - no-overlap: 狭い横向き/縦向き/タブレット幅で、警告音停止中ヒント表示時にも
-//   案内領域・「介助者用」ボタン・ヒントがホーム/文字盤のタイルと重ならないことを確認する
+// - no-overlap: 狭い横向き/縦向き/タブレット幅で、案内領域・「介助者用」ボタンがホーム/文字盤のタイルと重ならないことを確認する
 
 import http from 'node:http'
 import fs from 'node:fs'
@@ -427,11 +426,11 @@ async function checkLettersScrollLayout(chromium, port) {
 }
 
 /**
- * kako-jun 追加指示: 「介助者用」ボタンと「警告音停止中」表示は position:fixed をやめ、
+ * kako-jun 追加指示: 「介助者用」ボタンは position:fixed をやめ、
  * メッセージ欄右上(.message-panel-controls)へ移した。下部の帯(約130px)は廃止し、
  * タイル領域は画面下端まで使う。このチェックは新配置で以下を確認する:
- * - メッセージ文字(h1)と介助ボタン・警告音停止中表示が重ならない
- * - タイル領域(grid-board)が介助ボタン・警告音停止中表示と重ならない
+ * - メッセージ文字(h1)と介助ボタンが重ならない
+ * - タイル領域(grid-board)が介助ボタンと重ならない
  *   (overflow:auto でスクロールアウトしている、実際には描画されていないタイルは対象外)
  */
 async function checkNoOverlapWithFixedControls(chromium, port) {
@@ -455,35 +454,23 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       const board = document.querySelector('.grid-board')
       const h1 = document.querySelector('h1')
       const button = document.querySelector('.caregiver-button')
-      const hint = document.querySelector('.audio-status-hint')
       const rectOf = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
       return {
         board: rectOf(board),
         h1: rectOf(h1),
         button: rectOf(button),
-        hint: rectOf(hint),
         tiles: [...document.querySelectorAll('.grid-board .tile')].map((t) => rectOf(t)),
       }
     })
-    if (!info.hint)
-      failures.push(`[missing hint ${name} ${screenLabel}] 警告音停止中表示が出ていない`)
     if (info.h1 && info.button && rectsOverlap(info.h1, info.button)) {
       failures.push(
         `[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「介助者用」ボタンと重なっている`,
-      )
-    }
-    if (info.h1 && info.hint && rectsOverlap(info.h1, info.hint)) {
-      failures.push(
-        `[overlap ${name} ${screenLabel}] メッセージ文字(h1)が「警告音停止中」表示と重なっている`,
       )
     }
     for (const tile of info.tiles) {
       if (info.board && !rectsOverlap(tile, info.board)) continue // スクロールアウトしている
       if (info.button && rectsOverlap(tile, info.button)) {
         failures.push(`[overlap ${name} ${screenLabel}] タイルが「介助者用」ボタンと重なっている`)
-      }
-      if (info.hint && rectsOverlap(tile, info.hint)) {
-        failures.push(`[overlap ${name} ${screenLabel}] タイルが「警告音停止中」表示と重なっている`)
       }
     }
   }
@@ -492,11 +479,6 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
     for (const [name, width, height] of viewports) {
       const context = await browser.newContext({ viewport: { width, height } })
       const page = await context.newPage()
-      // AudioContext非対応状態に固定し、全ビューポートでヒント表示中の配置を検査する。
-      await page.addInitScript(() => {
-        window.AudioContext = undefined
-        window.webkitAudioContext = undefined
-      })
       await page.goto(base)
       await page.waitForTimeout(700)
       await checkScreen(page, name, 'home')
@@ -966,13 +948,6 @@ async function checkFontSizeMonotonicity(chromium, port) {
           // 誤って「文字サイズを上げたら縮んだ」と判定してしまう(実際のUIロジックの
           // バグではない)
           await page.evaluate(() => document.fonts.ready)
-          // .audio-status-hint(警告音停止中表示)は AudioContext が resume 完了する
-          // (最大500msごとのポーリングで検知)までの間だけ一時的に出る。PR#16 4巡目
-          // nit-b でこの表示枠の幅を常に確保するようにしたため、表示の有無で
-          // レイアウトが変わることは無くなったが、念のため待機も残しておく
-          await page
-            .waitForSelector('.audio-status-hint', { state: 'detached', timeout: 1200 })
-            .catch(() => {})
           // PR#16 4巡目 should-b: 1つのラベルだけでなく、画面上の全 .tile-label の
           // 最小値で比較する(should-cのラベルサイズ統一が崩れた場合も検知できるように)
           const size = await page.evaluate(() => {

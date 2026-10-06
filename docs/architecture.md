@@ -54,6 +54,6 @@ localStorage に2つのキーで保存する。
 - `libra`: 介助者の設定（スキャン間隔・文字サイズ・テーマ等）。実装: `frontend/src/lib/settings.ts`
 - `libra:emergency`: 緊急状態（下記）
 
-緊急状態（有効・詳細・副表示）は設定とは別キー `libra:emergency` に保存し、起動時に未解除なら復元して警告音を再開する。介助者の緊急解除で保存ごと消す（実装: `frontend/src/lib/emergencyState.ts`）。
+緊急状態（有効・詳細・副表示）は設定とは別キー `libra:emergency` に保存し、起動時に未解除なら復元して視覚表示を再開する。介助者の緊急解除で保存ごと消す（実装: `frontend/src/lib/emergencyState.ts`）。
 
 複数タブでの同期（storage イベント）は行わない。
