@@ -25,16 +25,10 @@ import { exportSettingsJson, parseSettingsJson, type Settings } from './lib/sett
 interface PhraseEditorProps {
   settings: Settings
   updateSettings: (patch: Partial<Settings>) => void
-  /** 取り込んだ設定で丸ごと置き換える */
-  replaceSettings: (next: Settings) => void
 }
 
 export default function PhraseEditor(props: PhraseEditorProps) {
   const [group, setGroup] = createSignal<PhraseGroup>('discomfort')
-  const [backupText, setBackupText] = createSignal('')
-  const [backupStatus, setBackupStatus] = createSignal('')
-  // 取り込みは今の設定を上書きするため、1回目は確認の表示だけにして2回目で実行する
-  const [importArmed, setImportArmed] = createSignal(false)
   const overGroups = () => PHRASE_GROUPS.filter((g) => isOverItemLimit(g, props.settings.phrases))
 
   // 編集中の一覧。編集が無いグループは既定値(編集した時点で既定のコピーから始める)
@@ -70,41 +64,6 @@ export default function PhraseEditor(props: PhraseEditorProps) {
     const rest = { ...props.settings.phrases }
     delete rest[group()]
     props.updateSettings({ phrases: rest })
-  }
-
-  const doExport = () => {
-    const json = exportSettingsJson(props.settings)
-    setBackupText(json)
-    // 端末によってはクリップボードが使えない。使えなければ下の欄から手でコピーしてもらう
-    const fallback = () => setBackupStatus('書き出しました（下の欄からコピーしてください）')
-    if (!navigator.clipboard) {
-      fallback()
-      return
-    }
-    navigator.clipboard
-      .writeText(json)
-      .then(() => setBackupStatus('書き出してコピーしました'))
-      .catch(fallback)
-  }
-
-  const doImport = () => {
-    // 今の設定を土台に、書き出しに含まれる検証済みの項目だけを上書きする
-    const next = parseSettingsJson(backupText(), props.settings)
-    if (!next) {
-      setImportArmed(false)
-      setBackupStatus('取り込めません: このアプリで書き出した設定を貼り付けてください')
-      return
-    }
-    if (!importArmed()) {
-      setImportArmed(true)
-      setBackupStatus(
-        '取り込むと今の設定が書き換わります。よければもう一度「取り込み」を押してください',
-      )
-      return
-    }
-    setImportArmed(false)
-    props.replaceSettings(next)
-    setBackupStatus('取り込みました')
   }
 
   return (
@@ -229,7 +188,61 @@ export default function PhraseEditor(props: PhraseEditorProps) {
           この画面を既定に戻す
         </button>
       </div>
+    </section>
+  )
+}
 
+interface SettingsBackupProps {
+  settings: Settings
+  /** 取り込んだ設定で丸ごと置き換える */
+  replaceSettings: (next: Settings) => void
+}
+
+/** 設定の書き出し/取り込み(端末の入れ替え用)。介助者メニューの「データ」タブ */
+export function SettingsBackup(props: SettingsBackupProps) {
+  const [backupText, setBackupText] = createSignal('')
+  const [backupStatus, setBackupStatus] = createSignal('')
+  // 取り込みは今の設定を上書きするため、1回目は確認の表示だけにして2回目で実行する
+  const [importArmed, setImportArmed] = createSignal(false)
+
+  const doExport = () => {
+    const json = exportSettingsJson(props.settings)
+    setBackupText(json)
+    // 端末によってはクリップボードが使えない。使えなければ下の欄から手でコピーしてもらう
+    const fallback = () => setBackupStatus('書き出しました（下の欄からコピーしてください）')
+    if (!navigator.clipboard) {
+      fallback()
+      return
+    }
+    navigator.clipboard
+      .writeText(json)
+      .then(() => setBackupStatus('書き出してコピーしました'))
+      .catch(fallback)
+  }
+
+  const doImport = () => {
+    // 今の設定を土台に、書き出しに含まれる検証済みの項目だけを上書きする
+    const next = parseSettingsJson(backupText(), props.settings)
+    if (!next) {
+      setImportArmed(false)
+      setBackupStatus('取り込めません: このアプリで書き出した設定を貼り付けてください')
+      return
+    }
+    if (!importArmed()) {
+      setImportArmed(true)
+      setBackupStatus(
+        '取り込むと今の設定が書き換わります。よければもう一度「取り込み」を押してください',
+      )
+      return
+    }
+    setImportArmed(false)
+    props.replaceSettings(next)
+    setBackupStatus('取り込みました')
+  }
+
+  return (
+    <section class="settings-backup" aria-label="設定データ">
+      <h3>設定データ</h3>
       <div class="caregiver-field">
         <span>設定のバックアップ（端末の入れ替え用）</span>
         <textarea
