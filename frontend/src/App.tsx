@@ -54,6 +54,11 @@ const CAREGIVER_TABS = [
   { id: 'backup', label: 'データ' },
 ] as const
 const CAREGIVER_TAB_NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
+/** タブ移動に使うキーか。Ctrl/Alt/Meta 付きはブラウザ/OS のショートカット(Alt+←=戻る等)なので対象外 */
+function isCaregiverTabNavKey(event: KeyboardEvent): boolean {
+  if (event.ctrlKey || event.altKey || event.metaKey) return false
+  return CAREGIVER_TAB_NAV_KEYS.includes(event.key)
+}
 type CaregiverTabId = (typeof CAREGIVER_TABS)[number]['id']
 
 /** 介助者メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
@@ -932,7 +937,7 @@ export default function App() {
         // Issue #31: カテゴリタブにフォーカスがあるときの左右/Home/End だけは、タブ移動(ARIA tablist)に使う。
         // Enter/Space など他のキーは従来どおり本人のスイッチ入力として扱い、閉じてスキャンへ戻す
         const onTab = (event.target as HTMLElement | null)?.closest?.('.caregiver-tab')
-        if (onTab && CAREGIVER_TAB_NAV_KEYS.includes(event.key)) {
+        if (onTab && isCaregiverTabNavKey(event)) {
           resetCaregiverIdleTimer()
           return
         }
@@ -1008,7 +1013,7 @@ export default function App() {
 
   // ARIA tablist: フォーカスを動かすと同時に選択する(自動アクティベーション)
   const onCaregiverTabKeyDown = (event: KeyboardEvent) => {
-    if (!CAREGIVER_TAB_NAV_KEYS.includes(event.key)) return
+    if (!isCaregiverTabNavKey(event)) return
     const last = CAREGIVER_TABS.length - 1
     const current = CAREGIVER_TABS.findIndex((tab) => tab.id === caregiverTab())
     let next = current
@@ -1018,7 +1023,10 @@ export default function App() {
     else if (event.key === 'End') next = last
     event.preventDefault()
     setCaregiverTab(CAREGIVER_TABS[next].id)
-    document.getElementById(`caregiver-tab-${CAREGIVER_TABS[next].id}`)?.focus()
+    const nextTab = document.getElementById(`caregiver-tab-${CAREGIVER_TABS[next].id}`)
+    nextTab?.focus()
+    // 横スクロールするタブ列で、選んだタブが領域外に隠れないようにする(jsdom 未実装のため ?. ガード)
+    nextTab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }
 
   const openCaregiverMenu = () => {
