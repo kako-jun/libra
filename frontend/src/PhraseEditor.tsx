@@ -253,7 +253,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
     if (!resetArmed()) {
       setResetArmed(true)
       setBackupStatus(
-        '全設定とフレーズが既定に戻ります（元に戻せません）。よければもう一度「設定を既定に戻す」を押してください',
+        '全設定とフレーズが既定に戻ります（元に戻せません）。よければもう一度押してください',
       )
       return
     }

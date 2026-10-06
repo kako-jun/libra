@@ -2484,7 +2484,11 @@ describe('App', () => {
       delete document.documentElement.dataset.fontSize
       delete document.documentElement.dataset.highContrast
     }
-    afterEach(clearRootDataset)
+    const originalMatchMedia = window.matchMedia
+    afterEach(() => {
+      clearRootDataset()
+      ;(window as unknown as { matchMedia: unknown }).matchMedia = originalMatchMedia
+    })
     const openData = (stored: object = { intervalMs: 3000 }) => {
       window.localStorage.setItem('libra', JSON.stringify(stored))
       const view = render(() => <App />)
@@ -2503,7 +2507,7 @@ describe('App', () => {
       expect(btn(backup, ARMED)).toBeUndefined()
       clickButton(backup, RESET)
       expect(saved().intervalMs).toBe(3000)
-      expect(backup.textContent).toContain('もう一度')
+      expect(backup.textContent).toContain('もう一度押してください')
       expect(btn(backup, ARMED)).toBeTruthy()
       expect(btn(backup, RESET)).toBeUndefined()
     })
