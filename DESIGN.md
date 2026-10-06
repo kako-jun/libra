@@ -150,7 +150,7 @@ BIZ UDPGothic (400/700) is bundled via `@fontsource/biz-udpgothic` and imported 
 
 Source of truth: `docs/requirements.md`.
 
-- The patient has exactly one input: a single "on" (tap anywhere / any key / Bluetooth shutter) timed to an automatic scan cursor.
+- Scanning (any key / Bluetooth shutter = a single "on" timed to the automatic scan cursor) alone carries every message. A direct tap on a tile is an additional path that runs the tapped tile; taps on the background do nothing.
 - Scanning runs from startup and never requires the patient to start or stop it.
 - Home starts with Emergency. Ordinary child screens start with Back and put Emergency second. The emergency-detail screen starts with Back and omits a duplicate Emergency tile because the emergency state is already active. Back follows the explicit parent-screen tree in `docs/requirements.md`; returning from emergency detail keeps the unresolved emergency state visible.
 - A short breadcrumb shows the current path from Home; the latest accepted navigation, Back, or character choice gets a compact confirmation until another choice. Completed transmissions and emergency details use their dedicated regions.

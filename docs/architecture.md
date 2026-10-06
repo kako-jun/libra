@@ -21,7 +21,7 @@ libra/
 
 - 画面: home / urgent / slow / pain / discomfort / mood / letters / voice / settings
 - 状態: message / voiceMode / scanEnabled / scanIndex / letterText / history
-- 入力: タップ、数字キー、矢印キー、Space、Enter、Escape
+- 入力: タイルの直接タップ、数字キー、矢印キー、Space、Enter、Escape
 - 音声: Web Speech API
 - レイアウト: `.app-shell` は `height: 100dvh`（非対応環境は `100vh`）で固定し、`overflow: hidden` を実際に効かせる。垂直方向の溢れは `.grid-board`（`overflow-y: auto`）だけが引き受け、document 自体はスクロールしない。スキャン対象が変わるたびに `scrollIntoView({block:'nearest'})` で追従させる
 

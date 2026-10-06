@@ -108,12 +108,22 @@ describe('App', () => {
     expect(h1Text(container)).toBe('はい')
   })
 
-  it('画面クリック（pointerdown）でも同じ項目が実行される', () => {
+  it('タイルの直接クリック（pointerdown）はスキャン位置でなく押したタイルを実行する', () => {
     const { container } = render(() => <App />)
     vi.advanceTimersByTime(HEAD_HOLD_MS) // カーソルは「はい」
+    const tiles = container.querySelectorAll('.grid-board .tile')
+    fireEvent.pointerDown(tiles[2]) // 「いいえ」ではなく別のタイル
+    expect(h1Text(container)).not.toBe('はい')
+    expect(h1Text(container)).not.toBe('選んだ内容がここに大きく出ます')
+  })
+
+  it('画面背景（タイル以外）のタップは何も実行しない', () => {
+    const { container } = render(() => <App />)
+    vi.advanceTimersByTime(HEAD_HOLD_MS)
     const board = container.querySelector('.grid-board') as HTMLElement
     fireEvent.pointerDown(board)
-    expect(h1Text(container)).toBe('はい')
+    fireEvent.pointerDown(document.body)
+    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
   })
 
   it('event.repeat の keydown は無視される', () => {
@@ -833,13 +843,14 @@ describe('App', () => {
   it('Issue #6: タップ(pointerdown/pointerup)にも同じ下限が効く', () => {
     window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 500 }))
     const { container } = render(() => <App />)
-    fireEvent.pointerDown(document.body, { pointerId: 1 })
+    const emergencyTile = container.querySelector('.tile-emergency') as HTMLElement
+    fireEvent.pointerDown(emergencyTile, { pointerId: 1 })
     vi.advanceTimersByTime(200)
     fireEvent.pointerUp(document.body, { pointerId: 1 })
     vi.advanceTimersByTime(1000)
     expect(h1Text(container)).not.toBe('緊急です。来てください')
 
-    fireEvent.pointerDown(document.body, { pointerId: 1 })
+    fireEvent.pointerDown(emergencyTile, { pointerId: 1 })
     vi.advanceTimersByTime(600)
     fireEvent.pointerUp(document.body, { pointerId: 1 })
     expect(h1Text(container)).toBe('緊急です。来てください')

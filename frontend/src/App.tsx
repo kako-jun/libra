@@ -711,9 +711,13 @@ export default function App() {
     activateIndex(result.activatedIndex)
   }
 
-  // Issue #6: 押下時間の下限・離して決定。キー/タップ/Bluetooth シャッターすべてここを通す。
-  // 決定するのは押し始めにカーソルが乗っていた項目。
-  const switchInput = createSwitchInput({
+  // Issue #6: 押下時間の下限・離して決定。キー/タイルの直接タップ/Bluetooth シャッターすべてここを通す。
+  // 決定するのは押し始めの対象(キーはカーソルが乗っていた項目、タイルの直接タップは押したタイル)。
+  const switchInput = createSwitchInput<{
+    index: number
+    screen: ScreenId
+    itemId: string | undefined
+  }>({
     getConfig: () => ({ minHoldMs: settings().minHoldMs, activateOn: settings().activateOn }),
     snapshot: () => {
       const index = resync(scanState(), currentMenu().length).index
@@ -736,9 +740,12 @@ export default function App() {
   // 本人のスイッチ入力の振り分け。モールス画面では押下の長さが符号になり、それ以外は
   // 従来のスキャン選択(switchInput)に渡す。解放・取り消しはどちらにも渡して取りこぼさない。
   const input = {
-    down: (sourceId: string) => {
+    down: (
+      sourceId: string,
+      tile?: { index: number; screen: ScreenId; itemId: string | undefined },
+    ) => {
       if (screen() === 'morse') morseInput.down(sourceId)
-      else switchInput.down(sourceId)
+      else switchInput.down(sourceId, tile)
     },
     up: (sourceId: string) => {
       switchInput.up(sourceId)
@@ -868,8 +875,52 @@ export default function App() {
     })
   })
 
-  // 本人のスイッチ入力: 画面タップ / 任意キー / Bluetooth シャッター(キー入力として届く)
+  // 本人の入力は2経路だけ。①タイルの直接タップ/クリック(押したタイルを実行。onTilePointerDown)
+  // ②任意キー / Bluetooth シャッター(キー入力として届く。現在のスキャン対象を実行)。
+  // 画面の背景(タイル以外)へのタップは何も実行しない。ここではポインターの「離し・取り消し」だけ拾い、
+  // 押下(離して決定・押下時間の下限)の解放を取りこぼさないようにする。
+  // pointerdown を見たポインターの記録(ポインター単位)。続く click は同じ操作の一部なので実行しない。
+  // pointerdown を伴わない click だけを支援技術の合成として実行する。背景・オーバーレイ・介助者
+  // メニューの押下も記録し、メニューを閉じた押下の click が下のタイルへ届いても実行されないようにする。
+  // downAt: pointerdown の時刻 / upAt: pointerup の時刻(押下中は null)
+  const pointerSeen = new Map<number, { downAt: number; upAt: number | null }>()
+  const POINTER_CLICK_WINDOW_MS = 1000 // pointerup 後、click を待つ上限(取りこぼし記録の破棄)
+  const POINTER_STALE_MS = 10000 // pointerup/pointercancel が届かなかった記録の破棄(保険)
+  // 直近の click(capture で判定)が pointerdown に裏付けられていたか。タイルの click が読む
+  let clickBackedByPointer = false
   onMount(() => {
+    const onPointerDownCapture = (event: PointerEvent) =>
+      pointerSeen.set(event.pointerId, { downAt: Date.now(), upAt: null })
+    const onClickCapture = (event: MouseEvent) => {
+      const now = Date.now()
+      const pointerId = (event as PointerEvent).pointerId
+      // 判定: click の pointerId が数値なら、その記録があれば同じ操作の click(消費)、無ければ
+      // pointerdown を伴わない合成 click(実行)。pointerId が無い(undefined)環境だけは、
+      // 記録済みの押下を先頭から1つ消費する。TalkBack / Switch Access が合成する click の
+      // pointerId が実際にどうなるかは未確認で、実機確認事項(Issue #38)。
+      // 一致する記録は、期限切れの判定より先に探して消費する(メインスレッドが1秒以上止まっても、
+      // その押下の click を合成扱いして二重実行しないため)
+      let consumed: number | undefined
+      if (typeof pointerId === 'number') {
+        if (pointerSeen.delete(pointerId)) consumed = pointerId
+      }
+      // 期限切れの記録は、消費した記録以外だけを対象に破棄する
+      for (const [id, rec] of pointerSeen) {
+        const expired =
+          rec.upAt !== null
+            ? now - rec.upAt > POINTER_CLICK_WINDOW_MS
+            : now - rec.downAt > POINTER_STALE_MS
+        if (expired) pointerSeen.delete(id)
+      }
+      if (consumed === undefined && typeof pointerId !== 'number') {
+        const first = pointerSeen.keys().next()
+        if (!first.done) {
+          pointerSeen.delete(first.value)
+          consumed = first.value
+        }
+      }
+      clickBackedByPointer = consumed !== undefined
+    }
     const onPointerDown = (event: PointerEvent) => {
       // M2: タッチでは pointerdown にユーザーアクティベーションが伴わないことがあるため、
       // 介助者ボタン除外より前に resume を試みる(効果音を取りこぼさないため)
@@ -892,13 +943,19 @@ export default function App() {
         return
       }
 
-      if (target?.closest('[data-caregiver-control]')) return
-      input.down(`pointer:${event.pointerId}`)
+      // 背景(タイル以外)のタップは本人入力として扱わない。タイルは onTilePointerDown が処理する
     }
 
-    const onPointerUp = (event: PointerEvent) => input.up(`pointer:${event.pointerId}`)
+    const onPointerUp = (event: PointerEvent) => {
+      const rec = pointerSeen.get(event.pointerId)
+      if (rec) rec.upAt = Date.now()
+      input.up(`pointer:${event.pointerId}`)
+    }
     // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
-    const onPointerCancel = (event: PointerEvent) => input.cancel(`pointer:${event.pointerId}`)
+    const onPointerCancel = (event: PointerEvent) => {
+      pointerSeen.delete(event.pointerId) // 他のポインターの記録は残す
+      input.cancel(`pointer:${event.pointerId}`)
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
@@ -956,6 +1013,8 @@ export default function App() {
     // 右クリック等でコンテキストメニューを出さない(介助者ボタンの誤操作対策 S3含む)
     const onContextMenu = (event: Event) => event.preventDefault()
 
+    window.addEventListener('pointerdown', onPointerDownCapture, true)
+    window.addEventListener('click', onClickCapture, true)
     window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -970,6 +1029,8 @@ export default function App() {
     const stopVisibilityResume = initToneVisibilityResume()
 
     onCleanup(() => {
+      window.removeEventListener('pointerdown', onPointerDownCapture, true)
+      window.removeEventListener('click', onClickCapture, true)
       window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
@@ -987,6 +1048,30 @@ export default function App() {
       morseInput.stop()
     })
   })
+
+  // タイルの直接タップ/クリック。押したタイルを実行する(スキャン位置とは無関係)。
+  // 実行は pointerdown で行い、続く click は無視して二重実行を防ぐ(判定は window の capture)。
+  // 支援技術が合成する click(pointerdown を伴わない)だけは、フォールバックとして実行する。
+  const onTilePointerDown = (event: PointerEvent, index: number) => {
+    // 主ボタン(タッチ・左クリック・ペン先)以外(右/中クリック・ペンのバレルボタン)では実行しない
+    if (event.button !== 0) return
+    if (caregiverMenuOpen()) return
+    resumeToneAudioContext()
+    input.down(`pointer:${event.pointerId}`, {
+      index,
+      screen: screen(),
+      itemId: currentMenu()[index]?.id,
+    })
+  }
+  const onTileClick = (index: number) => {
+    if (clickBackedByPointer) return
+    if (caregiverMenuOpen()) return
+    handleSwitchOn(Date.now(), {
+      index,
+      screen: screen(),
+      itemId: currentMenu()[index]?.id,
+    })
+  }
 
   // ARIA tablist: フォーカスを動かすと同時に選択する(自動アクティベーション)
   const onCaregiverTabKeyDown = (event: KeyboardEvent) => {
@@ -1151,7 +1236,10 @@ export default function App() {
                   ? { 'grid-column': `span ${gridLayout().lastSpan}` }
                   : undefined
               }
-              aria-hidden="true"
+              role="button"
+              aria-label={item.label}
+              onPointerDown={(event) => onTilePointerDown(event, index())}
+              onClick={() => onTileClick(index())}
             >
               <span class="tile-number">{index() + 1}</span>
               <span class="tile-label">{item.label}</span>

@@ -8,7 +8,7 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 
 ## Features
 
-- **Single-switch input only** — The patient has exactly one input: a tap anywhere on the screen, any key (Bluetooth shutter buttons arrive as key presses), or a Bluetooth shutter itself. All of these are the same "on" signal.
+- **Two patient input paths only** — Any key press / Bluetooth shutter (arrives as a key press) is a single "on" that runs the current scan target; scanning alone can carry every message. A direct tap on a tile is an additional path that runs the tapped tile itself, regardless of the scan position. Taps on the background (anything that is not a tile) do nothing.
 - **Always-on auto scan** — Scanning runs from app startup; there is no start/stop control in the patient's path, since a stopped scan can't be restarted by someone who can't reach a "start" button.
 - **Safety-ordered screens** — Home starts with Emergency; ordinary sub-screens start with Back, then Emergency; the urgent-detail screen starts with Back followed by the remaining detail choices. Free-text letter board sits behind the structured menus, never in front.
 - **Large grid UI** — Not fixed to Esuna's 9-grid rule, but keeps the same easy-to-press grid feeling.
@@ -24,7 +24,7 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 
 | Area                                                                   | Status                                                               |
 | ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Single-switch scanning (tap / any key / BT shutter)                    | Working                                                              |
+| Single-switch scanning (any key / BT shutter) + direct tile tap        | Working                                                              |
 | Safety-ordered screens (home: Emergency; sub-screens: Back, Emergency) | Working                                                              |
 | Emergency (silent)                                                     | Working                                                              |
 | Yes / No                                                               | Working                                                              |
