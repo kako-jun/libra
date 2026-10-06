@@ -72,8 +72,11 @@ export interface FeedbackOptions {
   voiceMode: VoiceMode
 }
 
+/** 緊急中の周期振動の間隔(ms)。App.tsx の振動タイマーと案内文(guidance.ts)の秒数を一致させる */
+export const EMERGENCY_REPEAT_MS = 3000
+
 /** 振動できる端末か。非対応(iOS Safari など)なら効果音で代替する */
-function canVibrate(): boolean {
+export function canVibrate(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
 }
 
