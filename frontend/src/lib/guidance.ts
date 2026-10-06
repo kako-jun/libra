@@ -3,7 +3,8 @@
 //
 // 方針: 暗黙の操作・自動挙動を1つも作らない。該当する状況・設定のときは必ず出し、
 // 本人や介助者が任意に隠せる操作は設けない。副作用なし(テストしやすいよう文字列だけ返す)。
-// compact は低い画面(高さ500px以下)用の短縮形。文言を詰めるだけで、出す・出さないは変えない
+// compact は低い画面(高さ500px以下)か狭い画面(幅480px以下)用の短縮形。出す・出さないは変えず、
+// 省くのは「理由」の語だけ。操作に関わる事実(何が起きるか・何をしても反応しない条件)は短縮形でも残す
 // (本人は画面をスクロールできないため、帯が格子を押し潰さないようにする)。
 
 import { EMERGENCY_REPEAT_MS } from './feedback'
@@ -19,7 +20,7 @@ export interface ScreenNotesContext {
   vibrationAwaitsTouch?: boolean
   /** 端末が振動できるか(navigator.vibrate の有無)。省略時は振動できるものとして扱う */
   canVibrate?: boolean
-  /** 低い画面用の短縮文言 */
+  /** 低い画面(高さ500px以下)・狭い画面(幅480px以下)用の短縮文言。理由は省くが、操作と条件の事実は残す */
   compact?: boolean
   settings: Pick<
     Settings,
@@ -59,9 +60,7 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
 
   if (screen === 'home') {
     if (showUndo) {
-      notes.push(
-        compact ? '「取り消し」は1周だけ出ます。' : '「取り消し」は伝えた直後の1周だけ出ます。',
-      )
+      notes.push('「取り消し」は伝えた直後の1周だけ出ます。')
     }
     if (emergencyActive) {
       notes.push(
@@ -105,20 +104,20 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
     if (settings.activateOn === 'release') {
       notes.push(
         compact
-          ? `${s}以上押して離すと決定（${SCREEN_CHANGE_NOTE_FULL}）。`
+          ? `${s}以上押し続けて離すと決定（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
           : `${s}以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`,
       )
     } else {
       notes.push(
         compact
-          ? `${s}以上押し続けると決定（${SCREEN_CHANGE_NOTE_FULL}）。`
+          ? `${s}以上押し続けると決定（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
           : `${s}以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`,
       )
     }
   } else if (settings.activateOn === 'release') {
     notes.push(
       compact
-        ? `押して離すと決定（${SCREEN_CHANGE_NOTE_FULL}）。`
+        ? `押して離すと決定（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`
         : `押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`,
     )
   }
@@ -127,7 +126,7 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
   if (settings.auditoryScan && (settings.voiceMode === 'short' || settings.voiceMode === 'full')) {
     notes.push(
       compact
-        ? '伝達の読み上げは直後の1項目分だけ割り込まれません。'
+        ? '伝達の読み上げは直後の1項目分は割り込まれません（その後は切れることがあります）。'
         : '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。',
     )
   }
@@ -149,10 +148,10 @@ export function buildCaregiverMenuNotes(
   const stops = options.morseEnabled ? 'スキャンとモールス入力の時間' : 'スキャン'
   return [
     compact
-      ? `${seconds}秒タップしないと閉じてホームへ（打鍵では延びず）。`
+      ? `${seconds}秒タップなしで閉じてホームへ（打鍵では延びず）。`
       : `${seconds}秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。`,
     compact
-      ? '外側タップ・キーでも閉じる（入力欄等の編集キー・タブ移動キーは除く）。'
+      ? '外側タップ・キーで閉じ、ホーム先頭から再開（入力欄の編集・タブ移動キーは除く）。'
       : '外側のタップやキー入力で閉じ、ホーム先頭から再開（入力欄・スライダー・チェックボックス操作中の文字/矢印/Home/Endキーと、タブ上の←/→/Home/Endは閉じません）。',
     compact
       ? `開く間は${options.morseEnabled ? 'スキャン・モールス時間' : 'スキャン'}停止。`
