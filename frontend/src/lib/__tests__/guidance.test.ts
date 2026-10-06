@@ -18,7 +18,7 @@
 //   連打無視 0 / >0      | D は >0 のときだけ
 //   押下下限 0, press    | H なし
 //   押下下限 0, release  | H=「押して離すと決まります」
-//   押下下限>0, press    | H=「◯秒以上押し続けると」(いずれの H も末尾に「押下中に画面が変わると無効」)
+//   押下下限>0, press    | H=「◯秒以上押し続けると」(いずれの H も末尾に「押下中に画面や項目の並びが変わると無効」)
 //   押下下限>0, release  | H=「◯秒以上押し続けて離すと」
 //   聴覚スキャン ON/OFF  | A は ON かつ音声モード short/full のときだけ(off/tone なら出ない)
 //   端末が振動できない   | V の代わりに「この端末は振動できません」(緊急中・振動ON のとき。T は出ない)
@@ -36,14 +36,14 @@ import {
 } from '../guidance'
 
 const UNDO = '「取り消し」は伝えた直後の1周だけ出ます。'
-const NO_VIBRATE = 'この端末は振動できません（緊急は無音）。'
+const NO_VIBRATE = 'この端末は振動できません（緊急中の周期振動なし）。'
 const NO_UNDO_IN_EMERGENCY = '緊急中は「取り消し」なし（緊急は取り消せないため）。'
 const VIBRATION = '緊急中は3秒ごとに振動（呼び出し継続の合図。本人の入力直後は休む）。'
 const AWAIT_TOUCH = '再起動後は、画面に触れるかキーを押すまで振動しません。'
 const DEBOUNCE_DEFAULT = '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止）。'
 const AUDITORY =
   '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。'
-const SCREEN_CHANGE = '押下中に画面が変わると無効'
+const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効'
 const HEAD_DEFAULT = '画面を開くと先頭に3.0秒とどまります。'
 
 type SettingsOverride = Partial<ScreenNotesContext['settings']>
@@ -270,7 +270,7 @@ describe('buildCaregiverMenuNotes', () => {
   it('所定の3行が固定順で出る(60秒タップ・外側タップ/キー・スキャン停止)', () => {
     expect(buildCaregiverMenuNotes(60000)).toEqual([
       '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
-      '外側のタップやキー入力で閉じ、ホーム先頭から再開（タブ上の←/→/Home/Endはタブ移動、フレーズ欄の文字入力は閉じません）。',
+      '外側のタップやキー入力で閉じ、ホーム先頭から再開（入力欄・スライダー・チェックボックス操作中の文字/矢印/Home/Endキーと、タブ上の←/→/Home/Endは閉じません）。',
       '開いている間は、スキャンが止まります。',
     ])
   })
@@ -288,7 +288,7 @@ describe('buildCaregiverMenuNotes', () => {
     expect(compact).toHaveLength(full.length)
     expect(compact[0]).toContain('60秒タップ')
     expect(compact[0]).toContain('打鍵では延びず')
-    expect(compact[1]).toContain('フレーズ欄入力')
+    expect(compact[1]).toContain('入力欄等の編集キー')
     expect(compact[2]).toContain('モールス')
     for (let i = 0; i < full.length; i += 1) expect(compact[i].length).toBeLessThan(full[i].length)
   })

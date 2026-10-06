@@ -301,3 +301,45 @@ describe('computeGridLayout', () => {
     })
   })
 })
+
+// Issue #58: 低い横向き画面(568x320)で、案内の帯などの分だけ格子領域が足りず 2列×4行が成り立たない
+// 7〜8項目は、最後の手段として最小セル幅を120pxまで緩め、4列×2行にする。
+// 候補が無かったときだけ働き、これまで候補があった画面の選択は変えない。
+describe('computeGridLayout: 幅を緩める最後の手段(Issue #58)', () => {
+  it('568x184 の7項目: 既定の幅160では候補が無いが、4列×2行(最後の1枚は2列分)で埋まる', () => {
+    expect(computeGridLayout(7, 568, 184, BASE_FACTORS)).toEqual({
+      fill: true,
+      cols: 4,
+      rows: 2,
+      lastSpan: 2,
+    })
+  })
+
+  it('568x105 / 568x100 の8項目も、4列×2行で埋まる(高さ50pxの下限は守る)', () => {
+    for (const height of [100, 105]) {
+      expect(computeGridLayout(8, 568, height, BASE_FACTORS)).toEqual({
+        fill: true,
+        cols: 4,
+        rows: 2,
+        lastSpan: 1,
+      })
+    }
+  })
+
+  it('適用されない通常ケース: 候補があるときは従来の選択のまま(568x203 の7項目は2列×4行)', () => {
+    expect(computeGridLayout(7, 568, 203, BASE_FACTORS)).toEqual({
+      fill: true,
+      cols: 2,
+      rows: 4,
+      lastSpan: 2,
+    })
+    expect(computeGridLayout(7, 568, 250, BASE_FACTORS)).toMatchObject({ cols: 2, rows: 4 })
+    expect(computeGridLayout(6, 1000, 500, BASE_FACTORS)).toMatchObject({ cols: 3, rows: 2 })
+  })
+
+  it('緩めても高さ50pxの下限や幅120pxを満たせないときは fill しない(スクロールへ)', () => {
+    expect(computeGridLayout(8, 568, 92, BASE_FACTORS).fill).toBe(false) // セル高さ46px
+    expect(computeGridLayout(7, 568, 90, BASE_FACTORS).fill).toBe(false)
+    expect(computeGridLayout(8, 300, 184, BASE_FACTORS).fill).toBe(false) // 4列だと幅75px
+  })
+})

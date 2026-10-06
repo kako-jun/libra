@@ -49,7 +49,7 @@ const UNDO = '「取り消し」は伝えた直後の1周だけ出ます。'
 const VIBRATION_FRAGMENT = '3秒ごとに振動'
 const AWAIT_TOUCH = '再起動後は、画面に触れるかキーを押すまで振動しません。'
 const AUDITORY_FRAGMENT = '伝達の読み上げは、直後の1項目分は割り込まれません'
-const SCREEN_CHANGE = '押下中に画面が変わると無効'
+const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効'
 
 function tileLabels(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('.tile-label')).map((el) => el.textContent ?? '')
@@ -468,8 +468,8 @@ describe('Issue #58: 常時案内(App 結合)', () => {
         '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
       )
       expect(notes[1]).toContain('外側のタップやキー入力')
-      expect(notes[1]).toContain('タブ移動')
-      expect(notes[1]).toContain('フレーズ欄の文字入力は閉じません')
+      expect(notes[1]).toContain('タブ上の←/→/Home/End')
+      expect(notes[1]).toContain('入力欄・スライダー・チェックボックス操作中')
       // モールス入力が無効(既定)なので、モールスの時間停止は出さずスキャン停止だけ
       expect(notes[2]).toBe('開いている間は、スキャンが止まります。')
       expect(container.querySelector('.caregiver-notes')?.getAttribute('aria-label')).toBe(
@@ -575,7 +575,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       delete (navigator as unknown as { vibrate?: unknown }).vibrate
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
-      expect(notesText(container)).toContain('この端末は振動できません（緊急は無音）。')
+      expect(notesText(container)).toContain('この端末は振動できません（緊急中の周期振動なし）。')
       expect(notesText(container)).not.toContain('秒ごとに振動')
     })
 
@@ -583,6 +583,63 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' })
       expect(notesText(container)).not.toContain('振動できません')
+    })
+  })
+
+  describe('低い画面の短縮文言(matchMedia)', () => {
+    type Listener = (event: { matches: boolean }) => void
+    function mockMatchMedia(initial: boolean) {
+      const listeners: Listener[] = []
+      let matches = initial
+      ;(window as unknown as { matchMedia?: unknown }).matchMedia = vi.fn((query: string) => ({
+        get matches() {
+          return query === '(max-height: 500px), (max-width: 480px)' ? matches : false
+        },
+        media: query,
+        addEventListener: (_: string, l: Listener) => listeners.push(l),
+        removeEventListener: (_: string, l: Listener) => {
+          const at = listeners.indexOf(l)
+          if (at >= 0) listeners.splice(at, 1)
+        },
+      }))
+      return (next: boolean) => {
+        matches = next
+        for (const l of [...listeners]) l({ matches: next })
+      }
+    }
+    afterEach(() => {
+      delete (window as unknown as { matchMedia?: unknown }).matchMedia
+    })
+
+    it('高さ500px以下か幅480px以下なら短縮形で出て、行数と順序は変わらない', () => {
+      mockMatchMedia(true)
+      const { container } = render(() => <App />)
+      expect(screenNotes(container)).toEqual([
+        '0.5秒以内の連打は無視（遷移直後も）。',
+        '先頭に3.0秒とどまります。',
+      ])
+    })
+
+    it('高さの条件が変わると(回転など)、その場で通常形と短縮形が切り替わる', () => {
+      const setShort = mockMatchMedia(false)
+      const { container } = render(() => <App />)
+      expect(screenNotes(container)).toHaveLength(2)
+      expect(notesText(container)).toContain('画面を開くと先頭に3.0秒とどまります。')
+      setShort(true)
+      expect(screenNotes(container)).toHaveLength(2)
+      expect(notesText(container)).toContain('先頭に3.0秒とどまります。')
+      expect(notesText(container)).not.toContain('画面を開くと')
+      setShort(false)
+      expect(notesText(container)).toContain('画面を開くと先頭に3.0秒とどまります。')
+    })
+
+    it('介助者メニューの帯も、短縮形でも3行のまま', () => {
+      mockMatchMedia(true)
+      const { container } = render(() => <App />)
+      openCaregiverMenu(container)
+      const notes = caregiverNotes(container)
+      expect(notes).toHaveLength(3)
+      expect(notes[0]).toBe('60秒タップしないと閉じてホームへ（打鍵では延びず）。')
     })
   })
 
@@ -619,13 +676,63 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(css).not.toMatch(/\.screen-notes[^{]*\{[^}]*grid-row:\s*(?!7\b)\d/)
     })
 
-    it('.caregiver-notes はタブ列の前の固定帯(flex: none)で、本文の文字は 0.7rem 以上', () => {
+    it('.caregiver-notes はタブ列の前の固定帯(flex: none)', () => {
       expect(ruleBody('.caregiver-notes')).toMatch(/flex:\s*none/)
-      const sizes = [...css.matchAll(/\.screen-notes\s*\{[^}]*font-size:\s*([\d.]+)rem/g)].map(
-        (m) => Number(m[1]),
+    })
+
+    /** CSS 全体から、指定セレクタの規則(メディアクエリの内側も含む)の font-size の下限(rem)を全部集める */
+    const fontSizesRem = (selector: string): number[] => {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const rules = [...css.matchAll(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, 'g'))]
+      const sizes: number[] = []
+      for (const rule of rules) {
+        const decl = rule[1].match(/font-size:\s*([^;]+);/)
+        if (!decl) continue
+        // clamp(下限, 推奨, 上限) は下限(1つ目)が実効の最小。単独の rem 指定はその値
+        const first = decl[1].match(/(?:clamp\(\s*)?([\d.]+)rem/)
+        expect(first, `${selector} の font-size「${decl[1]}」は rem で読めること`).not.toBeNull()
+        sizes.push(Number(first?.[1]))
+      }
+      return sizes
+    }
+
+    it('帯の本文の文字は、画面案内・介助者メニューとも 0.7rem 以上(下限を静的に縛る)', () => {
+      for (const selector of ['.screen-notes', '.caregiver-notes']) {
+        const sizes = fontSizesRem(selector)
+        expect(sizes.length, `${selector} の font-size 宣言`).toBeGreaterThan(0)
+        for (const size of sizes) expect(size).toBeGreaterThanOrEqual(0.7)
+      }
+    })
+
+    /** `@media <条件> { ... }` ブロックの本文(波括弧の対応を数えて取り出す) */
+    const mediaBlocks = (): Array<{ query: string; body: string }> => {
+      const blocks: Array<{ query: string; body: string }> = []
+      for (const m of css.matchAll(/@media\s*([^{]+)\{/g)) {
+        let depth = 1
+        let k = (m.index ?? 0) + m[0].length
+        const start = k
+        while (k < css.length && depth > 0) {
+          if (css[k] === '{') depth += 1
+          else if (css[k] === '}') depth -= 1
+          k += 1
+        }
+        blocks.push({ query: m[1].trim(), body: css.slice(start, k - 1) })
+      }
+      return blocks
+    }
+
+    it('帯の文字を縮める条件は「高さ」だけ(幅が狭いだけの縦長スマホは基本の clamp のまま)', () => {
+      // 基本規則は clamp(0.72rem, 1.9vh, 0.95rem)
+      expect(ruleBody('.screen-notes')).toMatch(
+        /font-size:\s*clamp\(0\.72rem,\s*1\.9vh,\s*0\.95rem\)/,
       )
-      expect(sizes.length).toBeGreaterThan(0)
-      for (const size of sizes) expect(size).toBeGreaterThanOrEqual(0.7)
+      for (const { query, body } of mediaBlocks()) {
+        const shrinks = /\.screen-notes\s*\{[^}]*font-size/.test(body)
+        if (shrinks) {
+          expect(query).toMatch(/max-height/)
+          expect(query).not.toMatch(/max-width/)
+        }
+      }
     })
   })
 })
