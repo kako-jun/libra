@@ -1027,9 +1027,11 @@ async function checkFontSizeMonotonicity(chromium, port) {
     // 22〜28%縮小(390x844で22.0px等)へ戻ったら検知できるよう、実測よりわずかに
     // 低い値を下限にする(rendering jitter の許容と、回帰検知の両立)
     const standardLabelMinimums = [
-      // 実測23.33px(4巡目の回帰値は22.0px)
-      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 23 },
-      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['4'], minPx: 23 },
+      // 実測21.80px。Issue #47 で縦長が 2列×4行の固定格子になり(従来は項目数に応じて3行)、
+      // Issue #34 でスキャン枠の厚みぶん余白を取るためセルが低くなった結果。
+      // 4巡目の回帰値(22.0px)より下だが、固定格子の仕様上の値なので新しい実測を基準にする
+      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 21 },
+      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['4'], minPx: 21 },
       // 実測41.17px
       { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
       // 実測28.79px
