@@ -89,6 +89,12 @@ export const DEFAULT_LABEL_HEIGHT_FACTOR = 0.2
  *  候補があれば常にそちらが優先される(この値はあくまで最後の手段としての下限) */
 const RELAXED_MIN_CELL_HEIGHT = 50
 
+/** Issue #58: 高さを緩めても候補が無い低い横向き画面(例: 568x320 の7項目+メッセージ)で、
+ *  2列×4行に必要な高さ(約200px)に届かず、案内の帯の分だけでスクロールへ落ちていた。
+ *  最後の手段として幅の下限も120pxまで緩め、4列×2行を許す(日本語の短いラベルは142px幅でも収まる)。
+ *  これまで候補が無かった(=スクロールになっていた)場合にだけ効き、候補があった画面の選択は変えない */
+const RELAXED_MIN_CELL_WIDTH = 120
+
 /** 空きセル1つあたりの減点(px相当)。labelScore(px)からこれを引いた値で
  *  ソートする。空きセルの見た目上の悪さは労力に比べ小さいので、僅差の候補間の
  *  タイブレークとしてだけ効くよう、絶対値を小さくしてある */
@@ -198,6 +204,18 @@ export function computeGridLayout(
       height,
       minCellWidth,
       RELAXED_MIN_CELL_HEIGHT,
+      labelWidthFactor,
+      labelHeightFactor,
+    )
+  }
+
+  if (candidates.length === 0 && minCellWidth > RELAXED_MIN_CELL_WIDTH) {
+    candidates = findCandidates(
+      itemCount,
+      width,
+      height,
+      RELAXED_MIN_CELL_WIDTH,
+      Math.min(minCellHeight, RELAXED_MIN_CELL_HEIGHT),
       labelWidthFactor,
       labelHeightFactor,
     )

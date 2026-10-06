@@ -1370,7 +1370,16 @@ h1[data-fit='single'] {
 }
 
 .screen-guide .message-panel-controls {
+  /* Issue #58: 旧 grid-area 名(controls)が未定義のため、介助者ボタンが2段目に落ちて
+     案内の枠が約44px高くなっていた。見出しと同じ行の右端に置く(モールス画面と同じ配置) */
+  grid-column: 2;
+  grid-row: 1;
   min-height: 44px;
+}
+
+.screen-guide .screen-guide-copy {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .message-panel {
@@ -1495,6 +1504,13 @@ h1[data-fit='single'] {
 }
 
 @media (max-width: 480px), (max-height: 500px) {
+  /* 低い画面では案内の枠の上下余白を詰め、帯の分の高さを作る(ボタンの44pxは保つ) */
+  .screen-guide {
+    min-height: 0;
+    padding-block: 3px;
+  }
+
+  /* 本人が読める下限は 0.7rem(約11px)。これより小さくせず、低い画面では短縮文言(guidance.ts の compact)で収める */
   .screen-notes {
     padding: 2px 12px;
     font-size: 0.7rem;
@@ -1510,18 +1526,5 @@ h1[data-fit='single'] {
     font-size: 0.72rem;
     line-height: 1.2;
     padding: 3px 8px;
-  }
-}
-
-/* 横向きの低い画面(例 568x320)は、案内が最大7項目になっても格子が埋まるよう、さらに詰める */
-@media (max-height: 500px) {
-  .screen-notes {
-    padding: 1px 10px;
-    font-size: 0.66rem;
-    line-height: 1.08;
-  }
-
-  .screen-notes li {
-    margin-right: 0.8em;
   }
 }
