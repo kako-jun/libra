@@ -18,26 +18,32 @@
 //   連打無視 0 / >0      | D は >0 のときだけ
 //   押下下限 0, press    | H なし
 //   押下下限 0, release  | H=「押して離すと決まります」
-//   押下下限>0, press    | H=「◯秒以上押し続けると」
+//   押下下限>0, press    | H=「◯秒以上押し続けると」(いずれの H も末尾に「押下中に画面が変わると無効」)
 //   押下下限>0, release  | H=「◯秒以上押し続けて離すと」
-//   聴覚スキャン ON/OFF  | A は ON のときだけ
-//   先頭待機             | P は常に末尾。秒数=間隔×倍率(toFixed(1))
+//   聴覚スキャン ON/OFF  | A は ON かつ音声モード short/full のときだけ(off/tone なら出ない)
+//   端末が振動できない   | V の代わりに「この端末は振動できません」(緊急中・振動ON のとき。T は出ない)
+//   compact              | 同じ行が短縮文言で出る(出る/出ないは不変)
+//   先頭待機             | P は常に末尾。秒数=間隔×倍率(100ms 刻みは小数1桁・それ以外は小数2桁)
 import { describe, expect, it } from 'vitest'
 import { PATIENT_SCREEN_IDS, type ScreenId } from '../menus'
 import { DEFAULT_SETTINGS } from '../settings'
+import { EMERGENCY_REPEAT_MS } from '../feedback'
 import {
-  EMERGENCY_REPEAT_MS,
   buildCaregiverMenuNotes,
   buildScreenNotes,
+  formatSeconds,
   type ScreenNotesContext,
 } from '../guidance'
 
 const UNDO = '「取り消し」は伝えた直後の1周だけ出ます。'
+const NO_VIBRATE = 'この端末は振動できません（緊急は無音）。'
 const NO_UNDO_IN_EMERGENCY = '緊急中は「取り消し」なし（緊急は取り消せないため）。'
 const VIBRATION = '緊急中は3秒ごとに振動（呼び出し継続の合図。本人の入力直後は休む）。'
-const AWAIT_TOUCH = '再起動後は、一度画面に触れるまで振動しません。'
+const AWAIT_TOUCH = '再起動後は、画面に触れるかキーを押すまで振動しません。'
 const DEBOUNCE_DEFAULT = '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止）。'
-const AUDITORY = '伝達の読み上げは、次項目の読み上げで途切れません。'
+const AUDITORY =
+  '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。'
+const SCREEN_CHANGE = '押下中に画面が変わると無効'
 const HEAD_DEFAULT = '画面を開くと先頭に3.0秒とどまります。'
 
 type SettingsOverride = Partial<ScreenNotesContext['settings']>
@@ -55,6 +61,8 @@ function notes(
     settings: { ...DEFAULT_SETTINGS, ...settings },
   })
 }
+
+const SPEAKING = { auditoryScan: true, voiceMode: 'short' as const }
 
 describe('buildScreenNotes: 状態の表引き(既定設定)', () => {
   it('何もない既定のホームは連打無視と先頭待機だけ', () => {
@@ -132,11 +140,7 @@ describe('buildScreenNotes: モールス画面', () => {
 
   it('連打無視・離して決定・押下下限・聴覚スキャンの設定があっても出ない', () => {
     expect(
-      notes(
-        'morse',
-        {},
-        { debounceMs: 1000, minHoldMs: 500, activateOn: 'release', auditoryScan: true },
-      ),
+      notes('morse', {}, { debounceMs: 1000, minHoldMs: 500, activateOn: 'release', ...SPEAKING }),
     ).toEqual([])
   })
 
@@ -145,26 +149,38 @@ describe('buildScreenNotes: モールス画面', () => {
     expect(
       notes('morse', { emergencyActive: true, vibrationAwaitsTouch: true }, { debounceMs: 800 }),
     ).toEqual([VIBRATION, AWAIT_TOUCH])
+    expect(notes('morse', { emergencyActive: true, canVibrate: false })).toEqual([NO_VIBRATE])
     expect(notes('morse', { emergencyActive: true }, { hapticsEnabled: false })).toEqual([])
   })
 })
 
 describe('buildScreenNotes: 設定の表引き(ホーム・状態なし)', () => {
-  it('連打無視 0 なら出ず、>0 なら秒数に追従する(最小の境界 1ms も 0.0秒表記)', () => {
+  it('連打無視 0 なら出ず、>0 なら秒数に追従する(0.05 秒刻みも丸めない)', () => {
     expect(notes('home', {}, { debounceMs: 0 })).toEqual([HEAD_DEFAULT])
     expect(notes('home', {}, { debounceMs: 1200 })[0]).toBe(
       '1.2秒以内の連打は数えません（画面遷移直後も。誤作動防止）。',
     )
-    expect(notes('home', {}, { debounceMs: 1 })[0]).toContain('0.0秒以内')
+    expect(notes('home', {}, { debounceMs: 1 })[0]).toContain('0.01秒未満以内')
+    // 0.05 秒刻みは丸めずに表示する(0.05 が 0.1 や 0.0 に化けない)
+    expect(notes('home', {}, { debounceMs: 50 })[0]).toContain('0.05秒以内')
+    expect(notes('home', {}, { debounceMs: 250 })[0]).toContain('0.25秒以内')
   })
 
   const holdCases: Array<[number, 'press' | 'release', string | null]> = [
     [0, 'press', null],
-    [0, 'release', '押して離すと決まります（押した瞬間は決まりません）。'],
-    [500, 'press', '0.5秒以上押し続けると決まります（短押しは数えません）。'],
-    [500, 'release', '0.5秒以上押し続けて離すと決まります（短押しは数えません）。'],
-    [2000, 'release', '2.0秒以上押し続けて離すと決まります（短押しは数えません）。'],
-    [1, 'press', '0.0秒以上押し続けると決まります（短押しは数えません）。'],
+    [0, 'release', `押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE}）。`],
+    [500, 'press', `0.5秒以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE}）。`],
+    [
+      500,
+      'release',
+      `0.5秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
+    ],
+    [
+      2000,
+      'release',
+      `2.0秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
+    ],
+    [1, 'press', `0.01秒未満以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE}）。`],
   ]
   for (const [minHoldMs, activateOn, expected] of holdCases) {
     it(`押下下限 ${minHoldMs}ms × ${activateOn}: ${expected ?? '行なし'}`, () => {
@@ -174,20 +190,26 @@ describe('buildScreenNotes: 設定の表引き(ホーム・状態なし)', () =>
   }
 
   it('聴覚スキャンONのときだけ読み上げ割り込み抑止の案内が、先頭待機の直前に出る', () => {
-    expect(notes('home', {}, { debounceMs: 0, auditoryScan: true })).toEqual([
+    expect(notes('home', {}, { debounceMs: 0, ...SPEAKING })).toEqual([AUDITORY, HEAD_DEFAULT])
+    expect(notes('home', {}, { debounceMs: 0, auditoryScan: true, voiceMode: 'full' })).toContain(
       AUDITORY,
-      HEAD_DEFAULT,
-    ])
-    expect(notes('home', {}, { auditoryScan: false })).not.toContain(AUDITORY)
+    )
+    expect(notes('home', {}, { auditoryScan: false, voiceMode: 'short' })).not.toContain(AUDITORY)
   })
 
-  it('先頭待機の秒数は 間隔×倍率 に追従する(toFixed(1))', () => {
+  it('音声モードが OFF・効果音だけのときは、聴覚スキャン ON でも読み上げ案内は出ない(読み上げが無いため)', () => {
+    for (const voiceMode of ['off', 'tone'] as const) {
+      expect(notes('home', {}, { auditoryScan: true, voiceMode })).not.toContain(AUDITORY)
+    }
+  })
+
+  it('先頭待機の秒数は 間隔×倍率 に追従する(端数は丸めない)', () => {
     const head = (intervalMs: number, headHoldMultiplier: number) =>
       notes('home', {}, { debounceMs: 0, intervalMs, headHoldMultiplier })
     expect(head(500, 1)).toEqual(['画面を開くと先頭に0.5秒とどまります。'])
     expect(head(5000, 5)).toEqual(['画面を開くと先頭に25.0秒とどまります。'])
     expect(head(1500, 3)).toEqual(['画面を開くと先頭に4.5秒とどまります。'])
-    expect(head(700, 1.5)).toEqual(['画面を開くと先頭に1.1秒とどまります。']) // 1050ms → 1.1(丸め)
+    expect(head(700, 1.5)).toEqual(['画面を開くと先頭に1.05秒とどまります。']) // 1050ms は 1.1 に丸めない
   })
 
   it('全部入りの順序: 取り消し → 緊急 → 振動 → 触れる前 → 連打 → 押し方 → 聴覚 → 先頭待機', () => {
@@ -195,7 +217,7 @@ describe('buildScreenNotes: 設定の表引き(ホーム・状態なし)', () =>
       notes(
         'home',
         { showUndo: true, emergencyActive: true, vibrationAwaitsTouch: true },
-        { debounceMs: 300, minHoldMs: 400, activateOn: 'release', auditoryScan: true },
+        { debounceMs: 300, minHoldMs: 400, activateOn: 'release', ...SPEAKING },
       ),
     ).toEqual([
       UNDO,
@@ -203,7 +225,7 @@ describe('buildScreenNotes: 設定の表引き(ホーム・状態なし)', () =>
       VIBRATION,
       AWAIT_TOUCH,
       '0.3秒以内の連打は数えません（画面遷移直後も。誤作動防止）。',
-      '0.4秒以上押し続けて離すと決まります（短押しは数えません）。',
+      `0.4秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
       AUDITORY,
       HEAD_DEFAULT,
     ])
@@ -245,24 +267,79 @@ describe('案内の共通性質', () => {
 })
 
 describe('buildCaregiverMenuNotes', () => {
-  it('所定の3行が固定順で出る(60秒・外側タップ/キー・モールス時間停止)', () => {
+  it('所定の3行が固定順で出る(60秒タップ・外側タップ/キー・スキャン停止)', () => {
     expect(buildCaregiverMenuNotes(60000)).toEqual([
-      '60秒操作しないと、自動で閉じてホームに戻ります。',
-      '外側のタップやキー入力（タブ上の←/→/Home/Endはタブ移動）で閉じ、ホーム先頭から再開。',
-      '開いている間は、モールス入力の時間が止まります。',
+      '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
+      '外側のタップやキー入力で閉じ、ホーム先頭から再開（タブ上の←/→/Home/Endはタブ移動、フレーズ欄の文字入力は閉じません）。',
+      '開いている間は、スキャンが止まります。',
     ])
+  })
+
+  it('モールス入力が有効なときだけ、モールス入力の時間停止も出す', () => {
+    expect(buildCaregiverMenuNotes(60000, { morseEnabled: true })[2]).toBe(
+      '開いている間は、スキャンとモールス入力の時間が止まります。',
+    )
+    expect(buildCaregiverMenuNotes(60000, { morseEnabled: false })[2]).not.toContain('モールス')
+  })
+
+  it('短縮形も3行・同じ事実を保つ(出る行数は変わらない)', () => {
+    const full = buildCaregiverMenuNotes(60000, { morseEnabled: true })
+    const compact = buildCaregiverMenuNotes(60000, { morseEnabled: true, compact: true })
+    expect(compact).toHaveLength(full.length)
+    expect(compact[0]).toContain('60秒タップ')
+    expect(compact[0]).toContain('打鍵では延びず')
+    expect(compact[1]).toContain('フレーズ欄入力')
+    expect(compact[2]).toContain('モールス')
+    for (let i = 0; i < full.length; i += 1) expect(compact[i].length).toBeLessThan(full[i].length)
   })
 
   it('自動で閉じる秒数は引数に追従し、他の行は変わらない', () => {
     const a = buildCaregiverMenuNotes(60000)
     const b = buildCaregiverMenuNotes(30000)
-    expect(b[0]).toBe('30秒操作しないと、自動で閉じてホームに戻ります。')
+    expect(b[0]).toBe('30秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。')
     expect(b.slice(1)).toEqual(a.slice(1))
   })
 
   it('絵文字を含まない', () => {
-    for (const note of buildCaregiverMenuNotes(60000)) {
+    for (const note of buildCaregiverMenuNotes(60000, { morseEnabled: true })) {
       expect(/\p{Extended_Pictographic}/u.test(note)).toBe(false)
     }
+  })
+})
+
+describe('formatSeconds', () => {
+  it('100ms 刻みは小数1桁、それ以外は小数2桁で丸めない', () => {
+    expect(formatSeconds(500)).toBe('0.5秒')
+    expect(formatSeconds(2000)).toBe('2.0秒')
+    expect(formatSeconds(50)).toBe('0.05秒')
+    expect(formatSeconds(1050)).toBe('1.05秒')
+    expect(formatSeconds(0)).toBe('0.0秒')
+    expect(formatSeconds(5)).toBe('0.01秒未満')
+  })
+})
+
+describe('buildScreenNotes: 低い画面の短縮形・振動できない端末', () => {
+  it('compact でも出る行の数と順序は同じで、文言だけが短い', () => {
+    const state = { showUndo: false, emergencyActive: true, vibrationAwaitsTouch: true }
+    const settings = { minHoldMs: 800, activateOn: 'release' as const, ...SPEAKING }
+    const full = notes('home', state, settings)
+    const compact = notes('home', { ...state, compact: true }, settings)
+    expect(compact).toHaveLength(full.length)
+    for (let i = 0; i < full.length; i += 1) expect(compact[i].length).toBeLessThan(full[i].length)
+  })
+
+  it('振動できない端末では、緊急中の振動案内を出さず「振動できません」という事実を出す', () => {
+    const result = notes('home', {
+      emergencyActive: true,
+      canVibrate: false,
+      vibrationAwaitsTouch: true,
+    })
+    expect(result).toContain(NO_VIBRATE)
+    expect(result.join('')).not.toContain('秒ごとに振動')
+    expect(result).not.toContain(AWAIT_TOUCH)
+    // 振動 OFF の設定なら、振動できない端末でも何も出ない
+    expect(
+      notes('home', { emergencyActive: true, canVibrate: false }, { hapticsEnabled: false }),
+    ).not.toContain(NO_VIBRATE)
   })
 })
