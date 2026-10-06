@@ -23,7 +23,13 @@ import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
 import { createSwitchInput } from './lib/switchInput'
-import { HAPTIC_STRENGTHS, playFeedback, type FeedbackEvent } from './lib/feedback'
+import {
+  EMERGENCY_REPEAT_MS,
+  HAPTIC_STRENGTHS,
+  canVibrate,
+  playFeedback,
+  type FeedbackEvent,
+} from './lib/feedback'
 import { MORSE_MAX_HOLD_MS, createMorseInput } from './lib/morseInput'
 import {
   effectiveDashMs,
@@ -33,11 +39,13 @@ import {
   type MorseState,
   type MorseSymbol,
 } from './lib/morse'
+import { buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
+/** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
+const COMPACT_NOTES_QUERY = '(max-height: 500px), (max-width: 480px)'
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const EMERGENCY_MESSAGE = '緊急です。来てください'
-const EMERGENCY_REPEAT_MS = 3000
 /** 介助者メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
 const CAREGIVER_TABS = [
   { id: 'status', label: '状態' },
@@ -301,6 +309,56 @@ export default function App() {
     }),
   )
 
+  // 再起動で復元した緊急は、ブラウザが振動を許す(ユーザー操作を一度受ける)まで振動しない。
+  // 案内の出し分け用。解除はブラウザ自身の判定(navigator.userActivation.hasBeenActive)に合わせ、
+  // 非対応環境では最初の触れる/キー操作で解除する。音量キー等が操作として数えられない端末では、
+  // 操作しても解除されず案内が残る(実際にまだ振動しないので正しい)
+  const [awaitingFirstTouch, setAwaitingFirstTouch] = createSignal(restoredEmergency !== null)
+  onMount(() => {
+    if (!awaitingFirstTouch()) return
+    const events = ['pointerdown', 'pointerup', 'click', 'keydown'] as const
+    const stop = () => {
+      for (const name of events) window.removeEventListener(name, check, true)
+    }
+    const check = () => {
+      // 操作の種類によって activation が付くのは次のタスク。そこで判定する
+      window.setTimeout(() => {
+        const activation = (
+          navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }
+        ).userActivation
+        if (activation && !activation.hasBeenActive) return
+        setAwaitingFirstTouch(false)
+        stop()
+      }, 0)
+    }
+    for (const name of events) window.addEventListener(name, check, true)
+    onCleanup(stop)
+  })
+  // 低い画面(高さ500px以下)か狭い画面(幅480px以下)では案内を短縮形にする。本人は画面をスクロールできず、
+  // 帯が格子を押し潰さないため。出す・出さないは変えない
+  const compactQuery =
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia(COMPACT_NOTES_QUERY)
+      : null
+  const [compactNotes, setCompactNotes] = createSignal(compactQuery?.matches === true)
+  onMount(() => {
+    if (!compactQuery) return
+    const onChange = () => setCompactNotes(compactQuery.matches)
+    compactQuery.addEventListener?.('change', onChange)
+    onCleanup(() => compactQuery.removeEventListener?.('change', onChange))
+  })
+  // Issue #58: 画面下の固定案内。該当する状況・設定のときは必ず出す(隠す操作は無い)
+  const screenNotes = createMemo(() =>
+    buildScreenNotes({
+      screen: screen(),
+      showUndo: showUndo(),
+      emergencyActive: emergencyActive(),
+      vibrationAwaitsTouch: awaitingFirstTouch(),
+      canVibrate: canVibrate(),
+      compact: compactNotes(),
+      settings: settings(),
+    }),
+  )
   const currentScreenGuidance = createMemo(() => {
     if (screen() === 'painIntensity' && painChoice()) {
       return `${painChoice()?.label}の痛みの強さを選んでください。`
@@ -1298,6 +1356,14 @@ export default function App() {
         </For>
       </section>
 
+      <Show when={screenNotes().length > 0}>
+        <section class="screen-notes" aria-label="操作と自動で起きること">
+          <ul>
+            <For each={screenNotes()}>{(note) => <li>{note}</li>}</For>
+          </ul>
+        </section>
+      </Show>
+
       <Show when={caregiverMenuOpen()}>
         <div class="caregiver-overlay" data-caregiver-control>
           <div class="caregiver-panel">
@@ -1321,6 +1387,17 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            <ul class="caregiver-notes" aria-label="介助者メニューの自動で起きること">
+              <For
+                each={buildCaregiverMenuNotes(CAREGIVER_MENU_IDLE_TIMEOUT_MS, {
+                  morseEnabled: settings().morseEnabled,
+                  compact: compactNotes(),
+                })}
+              >
+                {(note) => <li>{note}</li>}
+              </For>
+            </ul>
 
             <div class="caregiver-tablist" role="tablist" aria-label="設定カテゴリ">
               <For each={CAREGIVER_TABS}>

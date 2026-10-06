@@ -1249,7 +1249,14 @@ h1[data-fit='single'] {
     padding-block: 3px;
   }
 
+  /* Issue #58: 画面下の固定案内(.screen-notes)の分だけ、モールス画面の余白を詰める */
+  .morse-panel {
+    gap: 2px;
+    padding: 3px 12px;
+  }
+
   .morse-legend {
+    line-height: 1.2;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
     font-size: clamp(0.75rem, 4vh, 1rem);
   }
@@ -1363,7 +1370,16 @@ h1[data-fit='single'] {
 }
 
 .screen-guide .message-panel-controls {
+  /* Issue #58: 旧 grid-area 名(controls)が未定義のため、介助者ボタンが2段目に落ちて
+     案内の枠が約44px高くなっていた。見出しと同じ行の右端に置く(モールス画面と同じ配置) */
+  grid-column: 2;
+  grid-row: 1;
   min-height: 44px;
+}
+
+.screen-guide .screen-guide-copy {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .message-panel {
@@ -1435,5 +1451,120 @@ h1[data-fit='single'] {
     min-height: 26px;
     padding: 4px 12px;
     font-size: 0.78rem;
+  }
+}
+
+/* ===================================================================
+   Issue #58: 操作と自動で起きることの常時案内。
+   本人画面は画面下端の固定帯(.screen-notes)、介助者メニューは上部の固定帯(.caregiver-notes)。
+   全画面で同じ場所に出し、該当する状況・設定のときは必ず出る(隠す操作は無い)。
+   本人はスクロールできないため、帯は高さ分だけタイル/メッセージ領域を縮め、はみ出さない。
+   =================================================================== */
+.app-shell {
+  grid-template-rows: auto auto auto auto auto 1fr auto;
+}
+
+.screen-notes {
+  grid-row: 7;
+  min-width: 0;
+  padding: 4px 18px;
+  color: var(--text-muted);
+  background: var(--surface-calm);
+  border-top: var(--grid-line-width) solid var(--grid-line);
+  font-size: clamp(0.72rem, 1.9vh, 0.95rem);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.screen-notes ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.screen-notes li,
+.caregiver-notes li {
+  /* 文として続けて流し込み、行を無駄にしない(1項目1行にすると帯が高くなる) */
+  display: inline;
+  margin-right: 1em;
+  overflow-wrap: anywhere;
+  line-break: strict;
+}
+
+.caregiver-notes {
+  flex: none;
+  margin: 0;
+  list-style: none;
+  padding: 6px 10px;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 1px solid var(--caregiver-status-ok-border);
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+
+@media (max-width: 480px), (max-height: 500px) {
+  /* 低い画面では案内の枠の上下余白を詰め、帯の分の高さを作る(ボタンの44pxは保つ) */
+  .screen-guide {
+    min-height: 0;
+    padding-block: 3px;
+  }
+
+  /* 緊急の帯・直前に伝えたこと・選択確認の余白も詰め、案内の帯の分の高さを作る
+     (緊急+伝達メッセージ+選択確認が重なる 568x320 でも8項目の格子を埋めるため) */
+  .emergency-status {
+    padding-block: 4px;
+  }
+
+  .message-panel {
+    padding-block: 3px;
+  }
+
+  .message-panel-label {
+    margin: 0;
+    font-size: 0.7rem;
+    line-height: 1.1;
+  }
+
+  .selection-confirmation {
+    min-height: 0;
+    padding-block: 2px;
+  }
+
+  .screen-notes {
+    padding: 3px 12px;
+  }
+
+  /* 帯が増えた分、短い画面では設定ペインの下限を詰める(ペインはスクロールする) */
+  .caregiver-tabpanel {
+    min-height: 4.5rem;
+  }
+
+  .caregiver-notes {
+    font-size: 0.7rem;
+    line-height: 1.2;
+    padding: 3px 8px;
+  }
+}
+
+/* 帯の文字を縮めるのは「高さが足りない」ときだけ(縦長スマホ 390x844・320x568 は基本の clamp のまま読みやすい大きさ)。
+   本人が読める下限は 0.7rem(約11px)。これより小さくせず、収まらないときは短縮文言(guidance.ts の compact)で収める */
+@media (max-height: 500px) {
+  .screen-notes {
+    padding: 2px 12px;
+    font-size: 0.7rem;
+    line-height: 1.15;
+  }
+}
+
+/* 低い横向き画面(例 568x320)の4列×2行ではセルの高さが53〜59pxになり、2行に折り返すラベル
+   (「痰を取ってほしい」など)が下端に接した。タイルの上下余白と行間を詰めて余白を確保する */
+@media (max-height: 500px) {
+  .tile {
+    padding: 8px 6px 5px;
+  }
+
+  .tile-label {
+    line-height: 1.08;
   }
 }
