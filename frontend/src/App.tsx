@@ -1005,9 +1005,11 @@ export default function App() {
   // 支援技術が合成する click(pointerdown を伴わない)だけは、フォールバックとして実行する。
   let tilePointerPending = false
   const onTilePointerDown = (event: PointerEvent, index: number) => {
+    // メニュー表示中の押下でも、続く click(同じ操作)は捨てる。さもないと、この押下でメニューが
+    // 閉じた直後の click がタイルを実行してしまう
+    tilePointerPending = true
     if (caregiverMenuOpen()) return
     resumeToneAudioContext()
-    tilePointerPending = true
     input.down(`pointer:${event.pointerId}`, {
       index,
       screen: screen(),
