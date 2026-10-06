@@ -25,6 +25,12 @@
   --urgent-text-muted: #ffd9d6;
   --scan-ring: #facc15;
   --scan-ring-width: 6px;
+  /* Issue #34: スキャン枠(.tile.scanning::after)がセルの縁から占める厚み
+     = 外側のずれ(inset 4px) + 黄色リングの太さ + 内側アウトライン(2px)。
+     タイルの文字・予告・山形アイコンは、スキャン中でなくてもこの内側に置き、
+     枠が来ても隠さず、選択で位置・大きさが変わらないようにする。
+     高コントラストでリングが太くなる(9px)と自動で追従する */
+  --scan-ring-inset: calc(4px + var(--scan-ring-width) + 2px);
   /* 通常セル(surface-scanning)向けの濃色アウトライン。urgentセル(赤地)では
      コントラストが足りない(2.5:1程度)ため、urgent用に別トークンを持つ */
   --scan-ring-outline: #0f241d;
@@ -56,10 +62,8 @@
      CSS変数にしてある) */
   --label-ratio: 0.85;
   /* PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数を CSS 変数にする。
-     App.tsx が getComputedStyle(gridBoardEl) でこの実効値を読み、
-     computeGridLayout の labelWidthFactor/labelHeightFactor(0〜1の比率、
-     この値を100で割ったもの)にそのまま渡す。JS側にハードコードしないことで、
-     ブレークポイントごとに違う値(下の @media 参照)と常に一致させる */
+     ブレークポイントごとに違う値(下の @media 参照)をここ1か所で持つ
+     (Issue #47 で固定格子にしたため、JS側(gridLayout.ts)はもうこの値を読まない) */
   --label-cqi: 15;
   --label-cqb: 20;
   /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る */
@@ -550,7 +554,7 @@ h1[data-fit='single'] {
   place-items: center;
   min-width: 0;
   min-height: 126px;
-  padding: 18px 12px 12px;
+  padding: var(--scan-ring-inset);
   color: var(--text);
   background: var(--surface);
   /* Issue #3 再々レビュー: 枠線ではなく、右+下だけの細い区切り線(box-shadow inset)で
@@ -708,7 +712,7 @@ h1[data-fit='single'] {
 .tile-chevron {
   position: absolute;
   top: 50%;
-  right: 6px;
+  right: var(--scan-ring-inset);
   width: clamp(14px, 9cqi, 28px);
   height: auto;
   color: currentColor;
@@ -718,9 +722,9 @@ h1[data-fit='single'] {
 
 .tile-preview {
   position: absolute;
-  right: 8px;
-  bottom: 6px;
-  left: 8px;
+  right: var(--scan-ring-inset);
+  bottom: var(--scan-ring-inset);
+  left: var(--scan-ring-inset);
   overflow: hidden;
   color: var(--text-muted);
   /* kako-jun 追加指示: ラベルの45〜55%程度(ここでは50%)、最小でも0.85rem相当にする。
@@ -982,7 +986,7 @@ h1[data-fit='single'] {
 
   .tile {
     min-height: 112px;
-    padding: 18px 8px 10px;
+    padding: var(--scan-ring-inset);
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
@@ -1027,7 +1031,7 @@ h1[data-fit='single'] {
 
   .tile {
     min-height: 84px;
-    padding: 14px 6px 8px;
+    padding: var(--scan-ring-inset);
   }
 }
 
@@ -1567,13 +1571,10 @@ h1[data-fit='single'] {
   }
 }
 
-/* 低い横向き画面(例 568x320)の4列×2行ではセルの高さが53〜59pxになり、2行に折り返すラベル
-   (「痰を取ってほしい」など)が下端に接した。タイルの上下余白と行間を詰めて余白を確保する */
+/* 低い横向き画面(例 568x320)の4列×2行ではセルの高さが低くなり、2行に折り返すラベル
+   (「痰を取ってほしい」など)が下端に接した。行間を詰めて余白を確保する
+   (タイルの余白は Issue #34 でスキャン枠の厚み --scan-ring-inset に統一したため、ここでは詰めない) */
 @media (max-height: 500px) {
-  .tile {
-    padding: 8px 6px 5px;
-  }
-
   .tile-label {
     line-height: 1.08;
   }
