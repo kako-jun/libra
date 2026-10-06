@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import * as offlineReadyModule from '../lib/offlineReady'
-import { resumeAlarmAudioContext } from '../lib/alarm'
+import { resumeToneAudioContext } from '../lib/tone'
 import { HAPTIC_PATTERNS } from '../lib/feedback'
 import {
   DEFAULT_SETTINGS,
@@ -257,7 +257,7 @@ describe('Issue #43: 緊急の警告音廃止', () => {
   describe('回帰: 効果音・読み上げ・聴覚スキャンは残っている', () => {
     it('効果音ONなら通常操作(はい)で oscillator が鳴る', () => {
       window.localStorage.setItem('libra', JSON.stringify({ hapticSoundAlso: true }))
-      resumeAlarmAudioContext() // 実アプリは最初の pointerdown で呼ぶ
+      resumeToneAudioContext() // 実アプリは最初の pointerdown で呼ぶ
       const { container } = render(() => <App />)
       oscillatorCount = 0
       selectByLabel(container, 'はい')
@@ -266,7 +266,7 @@ describe('Issue #43: 緊急の警告音廃止', () => {
 
     it('効果音ONでも、緊急(選択・周期)では効果音を重ねず振動だけ出す', () => {
       window.localStorage.setItem('libra', JSON.stringify({ hapticSoundAlso: true }))
-      resumeAlarmAudioContext()
+      resumeToneAudioContext()
       render(() => <App />)
       oscillatorCount = 0
       fireEvent.keyDown(window, { key: ' ' })

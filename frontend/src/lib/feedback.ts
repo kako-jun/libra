@@ -4,7 +4,7 @@
 // パターンはここに集約する。Vibration API に非対応の端末(iOS Safari など)では、
 // 同じパターンを短い効果音で代替する(音声 OFF のときに鳴らすかは介助者設定)。
 
-import { playTonePattern } from './alarm'
+import { playTonePattern } from './tone'
 import type { VoiceMode } from './settings'
 
 export type FeedbackEvent =

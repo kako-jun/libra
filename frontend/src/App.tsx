@@ -12,7 +12,7 @@ import {
 } from './lib/menus'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
-import { initAlarmVisibilityResume, resumeAlarmAudioContext } from './lib/alarm'
+import { initToneVisibilityResume, resumeToneAudioContext } from './lib/tone'
 import { initWakeLock, type WakeLockStatus } from './lib/wakeLock'
 import {
   initOfflineReadyWatch,
@@ -873,7 +873,7 @@ export default function App() {
     const onPointerDown = (event: PointerEvent) => {
       // M2: タッチでは pointerdown にユーザーアクティベーションが伴わないことがあるため、
       // 介助者ボタン除外より前に resume を試みる(効果音を取りこぼさないため)
-      resumeAlarmAudioContext()
+      resumeToneAudioContext()
       const target = event.target as HTMLElement | null
 
       // 通常タップで開く介助者ボタン自身の pointerdown は、ボタンのハンドラだけで
@@ -902,7 +902,7 @@ export default function App() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
-      resumeAlarmAudioContext()
+      resumeToneAudioContext()
 
       if (caregiverMenuOpen()) {
         // Issue #8: フレーズ編集の入力欄での「文字を打つキー」では閉じない。入力欄にフォーカスが
@@ -951,7 +951,7 @@ export default function App() {
 
     // M2: タッチ端末では pointerdown だけでは AudioContext の resume が保証されないため、
     // pointerup/touchend/click(capture) でも試す。介助者ボタンを含め常に呼んでよい。
-    const onUserActivation = () => resumeAlarmAudioContext()
+    const onUserActivation = () => resumeToneAudioContext()
 
     // 右クリック等でコンテキストメニューを出さない(介助者ボタンの誤操作対策 S3含む)
     const onContextMenu = (event: Event) => event.preventDefault()
@@ -967,7 +967,7 @@ export default function App() {
     window.addEventListener('touchend', onUserActivation, true)
     window.addEventListener('click', onUserActivation, true)
     window.addEventListener('contextmenu', onContextMenu)
-    const stopVisibilityResume = initAlarmVisibilityResume()
+    const stopVisibilityResume = initToneVisibilityResume()
 
     onCleanup(() => {
       window.removeEventListener('pointerdown', onPointerDown)

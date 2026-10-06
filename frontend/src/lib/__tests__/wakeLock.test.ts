@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WakeLockStatus, initWakeLock, requestWakeLock } from '../wakeLock'
 
-// wakeLock.ts はモジュール内に sentinel/status をキャッシュするため、alarm.test.ts と同様に
+// wakeLock.ts はモジュール内に sentinel/status をキャッシュするため、tone.test.ts と同様に
 // テスト間の状態漏れを防ぐため各テストで vi.resetModules() してから動的 import する。
 let mod: {
   initWakeLock: typeof initWakeLock

@@ -29,7 +29,7 @@ function ensureAudioContext(): AudioContext | null {
 }
 
 /** 最初のユーザー入力で呼ぶ。AudioContext は自動再生ポリシーのため resume が要る。 */
-export function resumeAlarmAudioContext(): void {
+export function resumeToneAudioContext(): void {
   try {
     const ctx = ensureAudioContext()
     if (!ctx) return
@@ -39,7 +39,7 @@ export function resumeAlarmAudioContext(): void {
       })
     }
   } catch {
-    // AudioContext が使えない環境ではアラームなしで動作を続ける
+    // AudioContext が使えない環境では効果音なしで動作を続ける
   }
 }
 
@@ -93,11 +93,11 @@ export function playTonePattern(pattern: number[], frequency = 520): void {
  * なることがあり、フォアグラウンド復帰時に効果音が出ないままになるのを防ぐ。
  * App.tsx の onMount から呼び、返り値の解除関数を onCleanup に渡す。
  */
-export function initAlarmVisibilityResume(): () => void {
+export function initToneVisibilityResume(): () => void {
   if (typeof document === 'undefined') return () => {}
   const onVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
-      resumeAlarmAudioContext()
+      resumeToneAudioContext()
     }
   }
   document.addEventListener('visibilitychange', onVisibilityChange)

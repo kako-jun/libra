@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { initAlarmVisibilityResume, playTonePattern, resumeAlarmAudioContext } from '../alarm'
+import type { initToneVisibilityResume, playTonePattern, resumeToneAudioContext } from '../tone'
 
-// alarm.ts はモジュール内に audioContext をキャッシュするため、テスト間の状態漏れを防ぐため
+// tone.ts はモジュール内に audioContext をキャッシュするため、テスト間の状態漏れを防ぐため
 // 各テストで vi.resetModules() してから動的 import する。
 let mod: {
-  resumeAlarmAudioContext: typeof resumeAlarmAudioContext
-  initAlarmVisibilityResume: typeof initAlarmVisibilityResume
+  resumeToneAudioContext: typeof resumeToneAudioContext
+  initToneVisibilityResume: typeof initToneVisibilityResume
   playTonePattern: typeof playTonePattern
 }
 
@@ -48,14 +48,14 @@ class MockAudioContext {
   }
 }
 
-describe('alarm(効果音用 AudioContext)', () => {
+describe('tone(効果音用 AudioContext)', () => {
   beforeEach(async () => {
     vi.useFakeTimers()
     beepCount = 0
     createdOscillators.length = 0
     vi.resetModules()
     ;(window as unknown as { AudioContext?: unknown }).AudioContext = MockAudioContext
-    mod = await import('../alarm')
+    mod = await import('../tone')
   })
 
   afterEach(() => {
@@ -66,7 +66,7 @@ describe('alarm(効果音用 AudioContext)', () => {
 
   describe('playTonePattern (Issue #13: 振動の代替の効果音)', () => {
     it('AudioContext が running なら、パターンの振動する区間の数だけ音を鳴らす', () => {
-      mod.resumeAlarmAudioContext() // AudioContext を作る(MockAudioContext は running)
+      mod.resumeToneAudioContext() // AudioContext を作る(MockAudioContext は running)
       mod.playTonePattern([80, 100, 80])
       expect(beepCount).toBe(2)
     })
@@ -77,14 +77,14 @@ describe('alarm(効果音用 AudioContext)', () => {
     })
 
     it('AudioContext が suspended のときは何も鳴らさない', () => {
-      mod.resumeAlarmAudioContext()
+      mod.resumeToneAudioContext()
       lastContext.state = 'suspended'
       mod.playTonePattern([80])
       expect(beepCount).toBe(0)
     })
 
     it('新しい効果音は、直前の効果音を止めて置き換える(重ならない)', () => {
-      mod.resumeAlarmAudioContext()
+      mod.resumeToneAudioContext()
       mod.playTonePattern([80, 100, 80])
       const first = createdOscillators.slice()
       mod.playTonePattern([120])
@@ -92,12 +92,12 @@ describe('alarm(効果音用 AudioContext)', () => {
     })
   })
 
-  it('AudioContext 非対応環境でも resumeAlarmAudioContext は例外を出さない', () => {
+  it('AudioContext 非対応環境でも resumeToneAudioContext は例外を出さない', () => {
     delete (window as unknown as { AudioContext?: unknown }).AudioContext
-    expect(() => mod.resumeAlarmAudioContext()).not.toThrow()
+    expect(() => mod.resumeToneAudioContext()).not.toThrow()
   })
 
-  describe('M2: initAlarmVisibilityResume', () => {
+  describe('M2: initToneVisibilityResume', () => {
     const captured: { instance?: { resume: ReturnType<typeof vi.fn> } } = {}
     const getInstance = () => captured.instance
 
@@ -114,14 +114,14 @@ describe('alarm(効果音用 AudioContext)', () => {
       vi.resetModules()
       captured.instance = undefined
       ;(window as unknown as { AudioContext?: unknown }).AudioContext = TrackedAudioContext
-      mod = await import('../alarm')
-      mod.resumeAlarmAudioContext() // audioContext を作らせておく(この呼び出し自体もresumeする)
+      mod = await import('../tone')
+      mod.resumeToneAudioContext() // audioContext を作らせておく(この呼び出し自体もresumeする)
       // resume 進行中フラグが解除されるまでマイクロタスクを進める(多重resume防止と競合しないように)
       await Promise.resolve()
       await Promise.resolve()
       getInstance()?.resume.mockClear()
 
-      const stop = mod.initAlarmVisibilityResume()
+      const stop = mod.initToneVisibilityResume()
 
       Object.defineProperty(document, 'visibilityState', {
         value: 'visible',
@@ -137,10 +137,10 @@ describe('alarm(効果音用 AudioContext)', () => {
       vi.resetModules()
       captured.instance = undefined
       ;(window as unknown as { AudioContext?: unknown }).AudioContext = TrackedAudioContext
-      mod = await import('../alarm')
-      mod.resumeAlarmAudioContext()
+      mod = await import('../tone')
+      mod.resumeToneAudioContext()
 
-      const stop = mod.initAlarmVisibilityResume()
+      const stop = mod.initToneVisibilityResume()
       stop()
       getInstance()?.resume.mockClear()
 
@@ -154,7 +154,7 @@ describe('alarm(効果音用 AudioContext)', () => {
     })
 
     it('document が存在しない等の環境でも例外を出さず、呼ばれても何もしない解除関数を返す', () => {
-      const stop = mod.initAlarmVisibilityResume()
+      const stop = mod.initToneVisibilityResume()
       expect(() => stop()).not.toThrow()
     })
   })
@@ -172,13 +172,13 @@ describe('alarm(効果音用 AudioContext)', () => {
       vi.resetModules()
       beepCount = 0
       ;(window as unknown as { AudioContext?: unknown }).AudioContext = TrackedAudioContext
-      mod = await import('../alarm')
+      mod = await import('../tone')
 
-      mod.resumeAlarmAudioContext() // 1つ目のインスタンスを作る
+      mod.resumeToneAudioContext() // 1つ目のインスタンスを作る
       expect(instances.length).toBe(1)
 
       instances[0].state = 'closed'
-      mod.resumeAlarmAudioContext() // closed を検出し、新しいインスタンスを作るはず
+      mod.resumeToneAudioContext() // closed を検出し、新しいインスタンスを作るはず
       expect(instances.length).toBe(2)
       expect(instances[0]).not.toBe(instances[1])
     })

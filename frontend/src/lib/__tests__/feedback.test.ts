@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import * as alarm from '../alarm'
+import * as toneModule from '../tone'
 import {
   HAPTIC_PATTERNS,
   HAPTIC_STRENGTHS,
@@ -68,7 +68,7 @@ describe('playFeedback', () => {
   let tone: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
-    tone = vi.spyOn(alarm, 'playTonePattern').mockImplementation(() => {})
+    tone = vi.spyOn(toneModule, 'playTonePattern').mockImplementation(() => {})
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -135,7 +135,7 @@ describe('playFeedback: 効果音(振動モーターのない端末向け)', () 
       writable: true,
       value: vibrate,
     })
-    const tone = vi.spyOn(alarm, 'playTonePattern').mockImplementation(() => {})
+    const tone = vi.spyOn(toneModule, 'playTonePattern').mockImplementation(() => {})
     playFeedback('yes', { ...base, soundAlso: true })
     expect(vibrate).toHaveBeenCalledWith(HAPTIC_PATTERNS.yes)
     expect(tone).toHaveBeenCalledWith(HAPTIC_PATTERNS.yes)
@@ -151,7 +151,7 @@ describe('playFeedback: 効果音(振動モーターのない端末向け)', () 
       writable: true,
       value: vibrate,
     })
-    const tone = vi.spyOn(alarm, 'playTonePattern').mockImplementation(() => {})
+    const tone = vi.spyOn(toneModule, 'playTonePattern').mockImplementation(() => {})
     playFeedback('emergency', { ...base, soundAlso: true })
     playFeedback('emergencyActive', { ...base, soundAlso: true })
     expect(vibrate).toHaveBeenCalledTimes(2)
