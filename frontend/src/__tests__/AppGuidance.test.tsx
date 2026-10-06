@@ -639,7 +639,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       openCaregiverMenu(container)
       const notes = caregiverNotes(container)
       expect(notes).toHaveLength(3)
-      expect(notes[0]).toBe('60秒タップしないと閉じてホームへ（打鍵では延びず）。')
+      expect(notes[0]).toBe('60秒タップなしで閉じてホームへ（打鍵では延びず）。')
     })
   })
 

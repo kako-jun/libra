@@ -22,7 +22,7 @@
 //   押下下限>0, release  | H=「◯秒以上押し続けて離すと」
 //   聴覚スキャン ON/OFF  | A は ON かつ音声モード short/full のときだけ(off/tone なら出ない)
 //   端末が振動できない   | V の代わりに「この端末は振動できません」(緊急中・振動ON のとき。T は出ない)
-//   compact              | 同じ行が短縮文言で出る(出る/出ないは不変)
+//   compact              | 同じ行が短縮文言で出る(出る/出ないは不変。省くのは理由の語だけで、操作・条件の事実は残る)
 //   先頭待機             | P は常に末尾。秒数=間隔×倍率(100ms 刻みは小数1桁・それ以外は小数2桁)
 import { describe, expect, it } from 'vitest'
 import { PATIENT_SCREEN_IDS, type ScreenId } from '../menus'
@@ -288,7 +288,7 @@ describe('buildCaregiverMenuNotes', () => {
     expect(compact).toHaveLength(full.length)
     expect(compact[0]).toContain('60秒タップ')
     expect(compact[0]).toContain('打鍵では延びず')
-    expect(compact[1]).toContain('入力欄等の編集キー')
+    expect(compact[1]).toContain('入力欄の編集')
     expect(compact[2]).toContain('モールス')
     for (let i = 0; i < full.length; i += 1) expect(compact[i].length).toBeLessThan(full[i].length)
   })
@@ -341,5 +341,59 @@ describe('buildScreenNotes: 低い画面の短縮形・振動できない端末'
     expect(
       notes('home', { emergencyActive: true, canVibrate: false }, { hapticsEnabled: false }),
     ).not.toContain(NO_VIBRATE)
+  })
+})
+
+describe('短縮形(compact)にも操作・条件の事実が残る', () => {
+  const compactNotes = (
+    state: Partial<Omit<ScreenNotesContext, 'screen' | 'settings'>>,
+    settings: SettingsOverride,
+  ) => notes('home', { ...state, compact: true }, settings).join('\n')
+
+  it('取り消しは「伝えた直後の1周だけ」出ること(取り消し項目が消える条件)を含む', () => {
+    expect(compactNotes({ showUndo: true }, {})).toContain('伝えた直後の1周だけ')
+  })
+
+  it('緊急中の取り消しなし・振動の周期と、入力直後は休むことを含む', () => {
+    const text = compactNotes({ emergencyActive: true }, {})
+    expect(text).toContain('「取り消し」なし')
+    expect(text).toContain('3秒ごと')
+    expect(text).toContain('入力直後は休む')
+  })
+
+  it('押下の条件: 連打・遷移直後も数えない/短押しは数えない/押した瞬間は決まらない/画面や並びの変化で無効', () => {
+    expect(compactNotes({}, {})).toContain('連打は無視（遷移直後も）')
+    const press = compactNotes({}, { minHoldMs: 800, activateOn: 'press' })
+    expect(press).toContain('0.8秒以上押し続けると決定')
+    expect(press).toContain('短押しは数えません')
+    expect(press).toContain(SCREEN_CHANGE)
+    const release = compactNotes({}, { minHoldMs: 800, activateOn: 'release' })
+    expect(release).toContain('押し続けて離すと決定')
+    expect(release).toContain('短押しは数えません')
+    expect(release).toContain(SCREEN_CHANGE)
+    const releaseOnly = compactNotes({}, { minHoldMs: 0, activateOn: 'release' })
+    expect(releaseOnly).toContain('押して離すと決定')
+    expect(releaseOnly).toContain('押した瞬間は決まりません')
+    expect(releaseOnly).toContain(SCREEN_CHANGE)
+  })
+
+  it('読み上げ: 直後の1項目分は割り込まれず、その後は切れることがある', () => {
+    const text = compactNotes({}, { ...SPEAKING })
+    expect(text).toContain('直後の1項目分は割り込まれません')
+    expect(text).toContain('その後は切れることがあります')
+  })
+
+  it('介助者メニュー: タップで延びる/打鍵では延びない/閉じるとホーム先頭から再開/停止するもの', () => {
+    const [idle, outside, stops] = buildCaregiverMenuNotes(60000, {
+      morseEnabled: true,
+      compact: true,
+    })
+    expect(idle).toContain('60秒タップなしで閉じてホームへ')
+    expect(idle).toContain('打鍵では延びず')
+    expect(outside).toContain('外側タップ・キーで閉じ')
+    expect(outside).toContain('ホーム先頭から再開')
+    expect(outside).toContain('入力欄の編集・タブ移動キーは除く')
+    expect(stops).toContain('スキャン')
+    expect(stops).toContain('モールス')
   })
 })
