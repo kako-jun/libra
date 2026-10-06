@@ -711,8 +711,8 @@ export default function App() {
     activateIndex(result.activatedIndex)
   }
 
-  // Issue #6: 押下時間の下限・離して決定。キー/タップ/Bluetooth シャッターすべてここを通す。
-  // 決定するのは押し始めにカーソルが乗っていた項目。
+  // Issue #6: 押下時間の下限・離して決定。キー/タイルの直接タップ/Bluetooth シャッターすべてここを通す。
+  // 決定するのは押し始めの対象(キーはカーソルが乗っていた項目、タイルの直接タップは押したタイル)。
   const switchInput = createSwitchInput<{
     index: number
     screen: ScreenId
@@ -879,7 +879,27 @@ export default function App() {
   // ②任意キー / Bluetooth シャッター(キー入力として届く。現在のスキャン対象を実行)。
   // 画面の背景(タイル以外)へのタップは何も実行しない。ここではポインターの「離し・取り消し」だけ拾い、
   // 押下(離して決定・押下時間の下限)の解放を取りこぼさないようにする。
+  // pointerdown を見たポインターの記録(ポインター単位)。値は pointerup の時刻(押下中は null)。
+  // 続く click は同じ操作の一部なので実行しない。pointerdown を伴わない click だけを支援技術の
+  // 合成として実行する。背景・オーバーレイ・介助者メニューの押下も記録し、メニューを閉じた
+  // 押下の click が下のタイルへ届いても実行されないようにする。
+  const pointerSeen = new Map<number, number | null>()
+  const POINTER_CLICK_WINDOW_MS = 1000
+  // 直近の click(capture で判定)が pointerdown に裏付けられていたか。タイルの click が読む
+  let clickBackedByPointer = false
   onMount(() => {
+    const onPointerDownCapture = (event: PointerEvent) => pointerSeen.set(event.pointerId, null)
+    const onClickCapture = (event: MouseEvent) => {
+      const now = Date.now()
+      for (const [id, upAt] of pointerSeen) {
+        if (upAt !== null && now - upAt > POINTER_CLICK_WINDOW_MS) pointerSeen.delete(id) // 取りこぼしの残留
+      }
+      const pointerId = (event as PointerEvent).pointerId
+      // click が pointerId を持たない環境では、記録済みの押下を1つ消費する
+      const key = pointerSeen.has(pointerId) ? pointerId : pointerSeen.keys().next().value
+      clickBackedByPointer = key !== undefined
+      if (key !== undefined) pointerSeen.delete(key)
+    }
     const onPointerDown = (event: PointerEvent) => {
       // M2: タッチでは pointerdown にユーザーアクティベーションが伴わないことがあるため、
       // 介助者ボタン除外より前に resume を試みる(効果音を取りこぼさないため)
@@ -905,10 +925,13 @@ export default function App() {
       // 背景(タイル以外)のタップは本人入力として扱わない。タイルは onTilePointerDown が処理する
     }
 
-    const onPointerUp = (event: PointerEvent) => input.up(`pointer:${event.pointerId}`)
+    const onPointerUp = (event: PointerEvent) => {
+      if (pointerSeen.has(event.pointerId)) pointerSeen.set(event.pointerId, Date.now())
+      input.up(`pointer:${event.pointerId}`)
+    }
     // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
     const onPointerCancel = (event: PointerEvent) => {
-      tilePointerPending = false
+      pointerSeen.delete(event.pointerId) // 他のポインターの記録は残す
       input.cancel(`pointer:${event.pointerId}`)
     }
 
@@ -968,6 +991,8 @@ export default function App() {
     // 右クリック等でコンテキストメニューを出さない(介助者ボタンの誤操作対策 S3含む)
     const onContextMenu = (event: Event) => event.preventDefault()
 
+    window.addEventListener('pointerdown', onPointerDownCapture, true)
+    window.addEventListener('click', onClickCapture, true)
     window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -982,6 +1007,8 @@ export default function App() {
     const stopVisibilityResume = initToneVisibilityResume()
 
     onCleanup(() => {
+      window.removeEventListener('pointerdown', onPointerDownCapture, true)
+      window.removeEventListener('click', onClickCapture, true)
       window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
@@ -1001,13 +1028,9 @@ export default function App() {
   })
 
   // タイルの直接タップ/クリック。押したタイルを実行する(スキャン位置とは無関係)。
-  // 実行は pointerdown で行い、続く click は無視して二重実行を防ぐ。
+  // 実行は pointerdown で行い、続く click は無視して二重実行を防ぐ(判定は window の capture)。
   // 支援技術が合成する click(pointerdown を伴わない)だけは、フォールバックとして実行する。
-  let tilePointerPending = false
   const onTilePointerDown = (event: PointerEvent, index: number) => {
-    // メニュー表示中の押下でも、続く click(同じ操作)は捨てる。さもないと、この押下でメニューが
-    // 閉じた直後の click がタイルを実行してしまう
-    tilePointerPending = true
     if (caregiverMenuOpen()) return
     resumeToneAudioContext()
     input.down(`pointer:${event.pointerId}`, {
@@ -1017,10 +1040,7 @@ export default function App() {
     })
   }
   const onTileClick = (index: number) => {
-    if (tilePointerPending) {
-      tilePointerPending = false
-      return
-    }
+    if (clickBackedByPointer) return
     if (caregiverMenuOpen()) return
     handleSwitchOn(Date.now(), {
       index,

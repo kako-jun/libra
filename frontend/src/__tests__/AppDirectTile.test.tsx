@@ -267,11 +267,45 @@ describe('Issue #38: タイル直接選択', () => {
       expect(screenLabel(container)).toBe(screenBefore)
     })
 
-    it('背景の pointerdown は、続くタイルの click 単独を捨てない(pending を立てない)', () => {
+    it('背景の pointerdown に続くタイルの click は実行されない(同じ操作の click)', () => {
       const { container } = render(() => <App />)
       fireEvent.pointerDown(container.querySelector('.grid-board') as HTMLElement, {
         pointerId: 1,
       })
+      fireEvent.pointerUp(container.querySelector('.grid-board') as HTMLElement, { pointerId: 1 })
+      fireEvent.click(tile(container, 'はい'))
+      expect(h1Text(container)).not.toBe('はい')
+      // 消費済みなので、次の pointerdown なしの click は合成として実行される
+      fireEvent.click(tile(container, 'いいえ'))
+      expect(h1Text(container)).toBe('いいえ')
+    })
+
+    it('マルチタッチ: 一方の pointercancel は他方の click 消費を壊さない', () => {
+      const { container } = render(() => <App />)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      fireEvent.pointerDown(board, { pointerId: 1 })
+      fireEvent.pointerDown(board, { pointerId: 2 })
+      fireEvent.pointerCancel(window, { pointerId: 2 })
+      fireEvent.pointerUp(board, { pointerId: 1 })
+      fireEvent.click(tile(container, 'はい'), { pointerId: 1 } as MouseEventInit)
+      expect(h1Text(container)).not.toBe('はい')
+    })
+
+    it('pointercancel した押下の記録は残らず、次の合成 click は捨てられない', () => {
+      const { container } = render(() => <App />)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      fireEvent.pointerDown(board, { pointerId: 1 })
+      fireEvent.pointerCancel(window, { pointerId: 1 })
+      fireEvent.click(tile(container, 'はい'))
+      expect(h1Text(container)).toBe('はい')
+    })
+
+    it('click が届かなかった押下の記録は、時間が経てば次の合成 click を捨てない', () => {
+      const { container } = render(() => <App />)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      fireEvent.pointerDown(board, { pointerId: 1 })
+      fireEvent.pointerUp(board, { pointerId: 1 }) // click は祖先にも来ず消費されなかった
+      vi.advanceTimersByTime(2000)
       fireEvent.click(tile(container, 'はい'))
       expect(h1Text(container)).toBe('はい')
     })
@@ -312,16 +346,18 @@ describe('Issue #38: タイル直接選択', () => {
     const open = (container: HTMLElement) =>
       fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
 
-    it('表示中はタイルの pointerdown / click に反応せず、パネル外タップとして閉じる', () => {
+    it('オーバーレイの pointerdown でメニューが閉じ、続くタイルの click は実行されない', () => {
       const { container } = render(() => <App />)
       open(container)
-      const yes = tile(container, 'はい')
-      fireEvent.pointerDown(yes, { pointerId: 1 })
-      fireEvent.pointerUp(yes, { pointerId: 1 })
-      fireEvent.click(yes)
-      expect(h1Text(container)).not.toBe('はい')
+      const overlay = container.querySelector('.caregiver-overlay') as HTMLElement
+      fireEvent.pointerDown(overlay, { pointerId: 1 })
+      fireEvent.pointerUp(overlay, { pointerId: 1 })
       expect(container.querySelector('.caregiver-overlay')).toBeNull()
+      fireEvent.click(tile(container, 'はい')) // 指を離した位置の下のタイルへ届く click
+      expect(h1Text(container)).not.toBe('はい')
       expect(scanningLabel(container)).toBe('緊急') // ホーム先頭から再開
+      fireEvent.click(tile(container, 'いいえ')) // 次の合成 click は実行される
+      expect(h1Text(container)).toBe('いいえ')
     })
 
     it('表示中のタイル click 単独も何も実行しない', () => {
@@ -332,15 +368,13 @@ describe('Issue #38: タイル直接選択', () => {
       expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
     })
 
-    it('メニュー表示中のタイル pointerdown+click は実行されず、次の click 単独は実行される', () => {
+    it('メニュー表示中のタイル pointerdown+click も実行されない', () => {
       const { container } = render(() => <App />)
       open(container)
       fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1 })
       fireEvent.click(tile(container, 'はい'))
       expect(container.querySelector('.caregiver-overlay')).toBeNull()
       expect(h1Text(container)).not.toBe('はい')
-      fireEvent.click(tile(container, 'いいえ'))
-      expect(h1Text(container)).toBe('いいえ')
     })
 
     it('介助者ボタン上の Enter / Space は本人入力にならず、タイル実行も起こさない(#30/#31)', () => {
