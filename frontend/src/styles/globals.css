@@ -866,7 +866,8 @@ h1[data-fit='single'] {
 }
 
 /* キーボード操作用のフォーカス表示。tablist が overflow で外側を切るため内側に描く。
-   通常・高コントラスト・夜間とも、タブ背景(ok-bg/action-bg)と地(panel-bg)の両方から離れる --text 色 */
+   未選択タブは --text 色(通常・高コントラスト・夜間とも ok-bg/panel-bg から離れる)、
+   選択中タブは反転背景(action-bg)上なので --caregiver-action-text 色(下の .active 規則) */
 .caregiver-tab:focus-visible {
   outline: 3px solid var(--text);
   outline-offset: -5px;

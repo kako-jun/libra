@@ -2246,8 +2246,9 @@ describe('App', () => {
 
     it('タブのキー移動では無操作タイマーを延ばさない(キー連打でも最後の pointerdown から 60 秒で閉じる)', () => {
       const { container } = render(() => <App />)
-      openCaregiverMenu(container)
-      fireEvent.pointerDown(tabByLabel(container, '状態')) // 最後の延長(t=0)
+      openCaregiverMenu(container) // 開いた時刻(t=0)
+      vi.advanceTimersByTime(20000)
+      fireEvent.pointerDown(tabByLabel(container, '状態')) // 最後の延長(t=20s)
       const tab = tabByLabel(container, '状態')
       tab.focus()
       let focused: HTMLElement = tab
@@ -2256,11 +2257,11 @@ describe('App', () => {
         fireEvent.keyDown(focused, { key: 'ArrowRight' })
         focused = document.activeElement as HTMLElement
       }
-      expect(menuOpen(container)).toBe(true) // 50 秒時点では開いたまま
+      expect(menuOpen(container)).toBe(true) // pointerdown から 50 秒時点では開いたまま
       vi.advanceTimersByTime(IDLE_MS - 50000 - 1)
-      expect(menuOpen(container)).toBe(true)
+      expect(menuOpen(container)).toBe(true) // pointerdown から 59,999ms
       vi.advanceTimersByTime(1)
-      expect(menuOpen(container)).toBe(false) // キー移動で延びていれば 110 秒まで開いたままのはず
+      expect(menuOpen(container)).toBe(false) // pointerdown から 60,000ms(キー移動で延びていれば 110 秒後)
     })
 
     it('タブのクリック(pointerdown)でも無操作タイマーが延長される', () => {
