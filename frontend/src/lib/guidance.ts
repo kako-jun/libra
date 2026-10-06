@@ -15,6 +15,8 @@ export interface ScreenNotesContext {
   /** 伝達直後の1周だけ「取り消し」が出ている状態 */
   showUndo: boolean
   emergencyActive: boolean
+  /** 再起動で復元した緊急で、まだ画面に一度も触れていない(ブラウザは触れるまで振動を無視する) */
+  vibrationAwaitsTouch?: boolean
   settings: Pick<
     Settings,
     | 'intervalMs'
@@ -23,6 +25,7 @@ export interface ScreenNotesContext {
     | 'minHoldMs'
     | 'activateOn'
     | 'hapticsEnabled'
+    | 'auditoryScan'
   >
 }
 
@@ -36,7 +39,7 @@ function seconds(ms: number): string {
  * (押下時間の下限はモールスの凡例側に出る)。
  */
 export function buildScreenNotes(context: ScreenNotesContext): string[] {
-  const { screen, showUndo, emergencyActive, settings } = context
+  const { screen, showUndo, emergencyActive, vibrationAwaitsTouch, settings } = context
   const notes: string[] = []
 
   if (screen === 'home') {
@@ -44,16 +47,23 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
       notes.push('「取り消し」は伝えた直後の1周だけ出ます。')
     }
     if (emergencyActive) {
-      notes.push('緊急中は「取り消し」を出しません（緊急は取り消せないため）。')
+      notes.push('緊急中は「取り消し」なし（緊急は取り消せないため）。')
     }
   }
   if (emergencyActive && settings.hapticsEnabled) {
-    notes.push(`緊急中は${EMERGENCY_REPEAT_MS / 1000}秒ごとに振動します（呼び出し継続の合図）。`)
+    notes.push(
+      `緊急中は${EMERGENCY_REPEAT_MS / 1000}秒ごとに振動（呼び出し継続の合図。本人の入力直後は休む）。`,
+    )
+    if (vibrationAwaitsTouch) {
+      notes.push('再起動後は、一度画面に触れるまで振動しません。')
+    }
   }
   if (screen === 'morse') return notes
 
   if (settings.debounceMs > 0) {
-    notes.push(`${seconds(settings.debounceMs)}以内の連打は数えません（誤作動防止）。`)
+    notes.push(
+      `${seconds(settings.debounceMs)}以内の連打は数えません（画面遷移直後も。誤作動防止）。`,
+    )
   }
   if (settings.minHoldMs > 0) {
     notes.push(
@@ -63,6 +73,9 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
     )
   } else if (settings.activateOn === 'release') {
     notes.push('押して離すと決まります（押した瞬間は決まりません）。')
+  }
+  if (settings.auditoryScan) {
+    notes.push('伝達の読み上げは、次項目の読み上げで途切れません。')
   }
   notes.push(
     `画面を開くと先頭に${seconds(settings.intervalMs * settings.headHoldMultiplier)}とどまります。`,
@@ -74,6 +87,7 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
 export function buildCaregiverMenuNotes(idleTimeoutMs: number): string[] {
   return [
     `${idleTimeoutMs / 1000}秒操作しないと、自動で閉じてホームに戻ります。`,
+    '外側のタップやキー入力（タブ上の←/→/Home/Endはタブ移動）で閉じ、ホーム先頭から再開。',
     '開いている間は、モールス入力の時間が止まります。',
   ]
 }

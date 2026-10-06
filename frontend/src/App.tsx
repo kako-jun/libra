@@ -301,12 +301,25 @@ export default function App() {
     }),
   )
 
+  // 再起動で復元した緊急は、画面に一度触れるまで振動しない(ブラウザの仕様)。案内の出し分け用
+  const [awaitingFirstTouch, setAwaitingFirstTouch] = createSignal(restoredEmergency !== null)
+  onMount(() => {
+    if (!awaitingFirstTouch()) return
+    const done = () => setAwaitingFirstTouch(false)
+    window.addEventListener('pointerdown', done, { once: true, capture: true })
+    window.addEventListener('keydown', done, { once: true, capture: true })
+    onCleanup(() => {
+      window.removeEventListener('pointerdown', done, { capture: true })
+      window.removeEventListener('keydown', done, { capture: true })
+    })
+  })
   // Issue #58: 画面下の固定案内。該当する状況・設定のときは必ず出す(隠す操作は無い)
   const screenNotes = createMemo(() =>
     buildScreenNotes({
       screen: screen(),
       showUndo: showUndo(),
       emergencyActive: emergencyActive(),
+      vibrationAwaitsTouch: awaitingFirstTouch(),
       settings: settings(),
     }),
   )

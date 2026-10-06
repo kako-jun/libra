@@ -1468,24 +1468,22 @@ h1[data-fit='single'] {
 }
 
 .screen-notes ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1px 16px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.screen-notes li {
+.screen-notes li,
+.caregiver-notes li {
+  /* 文として続けて流し込み、行を無駄にしない(1項目1行にすると帯が高くなる) */
+  display: inline;
+  margin-right: 1em;
   overflow-wrap: anywhere;
   line-break: strict;
 }
 
 .caregiver-notes {
-  display: flex;
   flex: none;
-  flex-wrap: wrap;
-  gap: 2px 16px;
   margin: 0;
   list-style: none;
   padding: 6px 10px;
@@ -1503,14 +1501,27 @@ h1[data-fit='single'] {
     line-height: 1.15;
   }
 
-  .screen-notes ul {
-    gap: 0 12px;
+  /* 帯が増えた分、短い画面では設定ペインの下限を詰める(ペインはスクロールする) */
+  .caregiver-tabpanel {
+    min-height: 4.5rem;
   }
 
   .caregiver-notes {
-    gap: 0 12px;
     font-size: 0.72rem;
     line-height: 1.2;
     padding: 3px 8px;
+  }
+}
+
+/* 横向きの低い画面(例 568x320)は、案内が最大7項目になっても格子が埋まるよう、さらに詰める */
+@media (max-height: 500px) {
+  .screen-notes {
+    padding: 1px 10px;
+    font-size: 0.66rem;
+    line-height: 1.08;
+  }
+
+  .screen-notes li {
+    margin-right: 0.8em;
   }
 }
