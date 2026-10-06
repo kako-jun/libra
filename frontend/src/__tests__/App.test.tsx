@@ -2463,4 +2463,228 @@ describe('App', () => {
       },
     )
   })
+
+  // Issue #53: データタブの「設定を既定に戻す」(2 段階確認)
+  //
+  // デシジョンテーブル(確認状態 × 押したボタン → 結果)。確認状態は「リセット確認中 / 取り込み確認中 / なし」
+  //   なし        × リセット → リセット確認中へ(設定不変)
+  //   リセット確認中 × リセット → 実行(既定へ)・確認解除
+  //   リセット確認中 × 取り込み → リセット実行されない・取り込み確認中へ
+  //   取り込み確認中 × リセット → 取り込み実行されない・リセット確認中へ
+  //   リセット確認中 × textarea 入力 / タブ切替 / メニュー閉→再開 → なし(次の1回目は確認に戻る)
+  describe('Issue #53: 設定を既定に戻す', () => {
+    const RESET = '設定を既定に戻す'
+    const ARMED = 'もう一度押すと既定に戻す'
+    const saved = () => JSON.parse(window.localStorage.getItem('libra') ?? '{}')
+    const btn = (root: Element, text: string) =>
+      Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes(text)) as
+        HTMLElement | undefined
+    const clearRootDataset = () => {
+      delete document.documentElement.dataset.theme
+      delete document.documentElement.dataset.fontSize
+      delete document.documentElement.dataset.highContrast
+    }
+    afterEach(clearRootDataset)
+    const openData = (stored: object = { intervalMs: 3000 }) => {
+      window.localStorage.setItem('libra', JSON.stringify(stored))
+      const view = render(() => <App />)
+      openCaregiverMenu(view.container)
+      selectCaregiverTab(view.container, 'データ')
+      const backup = view.container.querySelector('.settings-backup') as HTMLElement
+      return { ...view, backup }
+    }
+    const importJson = (backup: HTMLElement, body: object) =>
+      fireEvent.input(backup.querySelector('textarea') as HTMLTextAreaElement, {
+        target: { value: JSON.stringify({ app: 'libra', version: 1, ...body }) },
+      })
+
+    it('1 回目の押下では設定が変わらず、確認文言とボタン表記の変化だけが出る', () => {
+      const { backup } = openData()
+      expect(btn(backup, ARMED)).toBeUndefined()
+      clickButton(backup, RESET)
+      expect(saved().intervalMs).toBe(3000)
+      expect(backup.textContent).toContain('もう一度')
+      expect(btn(backup, ARMED)).toBeTruthy()
+      expect(btn(backup, RESET)).toBeUndefined()
+    })
+
+    it('2 回目の押下で設定が既定に戻り、localStorage にも既定で保存される', () => {
+      const { backup } = openData({
+        intervalMs: 3000,
+        headHoldMultiplier: 4,
+        activateOn: 'release',
+      })
+      clickButton(backup, RESET)
+      clickButton(backup, ARMED)
+      const s = saved()
+      expect(s.intervalMs).toBe(1500)
+      expect(s.headHoldMultiplier).toBe(2)
+      expect(s.activateOn).toBe('press')
+      expect(backup.textContent).toContain('既定に戻しました')
+      expect(btn(backup, RESET)).toBeTruthy() // 確認状態は解除される
+    })
+
+    it('編集済みのフレーズも既定のプリセットへ戻る', () => {
+      const { container } = openData({
+        phrases: { moodRequest: [{ id: 'c1', label: 'ユニーク印', text: 'x' }] },
+      })
+      const labels = () =>
+        Array.from(
+          container.querySelectorAll('.phrase-editor .phrase-row label:first-child input'),
+        ).map((i) => (i as HTMLInputElement).value)
+      selectCaregiverTab(container, 'フレーズ')
+      clickButton(container.querySelector('.phrase-editor') as HTMLElement, '要望')
+      expect(labels()).toContain('ユニーク印')
+      selectCaregiverTab(container, 'データ')
+      const backup = container.querySelector('.settings-backup') as HTMLElement
+      clickButton(backup, RESET)
+      clickButton(backup, ARMED)
+      expect(JSON.stringify(saved().phrases ?? {})).not.toContain('ユニーク印')
+      selectCaregiverTab(container, 'フレーズ')
+      clickButton(container.querySelector('.phrase-editor') as HTMLElement, '要望')
+      expect(labels().length).toBeGreaterThan(0)
+      expect(labels()).not.toContain('ユニーク印')
+    })
+
+    it('実行後もメニューは開いたままデータタブに留まる', () => {
+      const { container, backup } = openData()
+      clickButton(backup, RESET)
+      clickButton(backup, ARMED)
+      expect(container.querySelector('.caregiver-panel')).not.toBeNull()
+      expect(
+        Array.from(container.querySelectorAll('[role="tab"]')).find(
+          (t) => t.getAttribute('aria-selected') === 'true',
+        )?.textContent,
+      ).toBe('データ')
+      expect(container.querySelector('.settings-backup')).not.toBeNull()
+    })
+
+    it('実行すると文字サイズ・高コントラスト・テーマの既定値が即座に画面へ反映される', () => {
+      // OS は明るい設定。他テストの matchMedia モックに依存しないよう明示する
+      ;(window as unknown as { matchMedia: unknown }).matchMedia = vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })
+      const { backup } = openData({ fontSize: 'xlarge', highContrast: true, theme: 'dark' })
+      const root = document.documentElement.dataset
+      expect(root.fontSize).toBe('xlarge')
+      expect(root.highContrast).toBe('true')
+      expect(root.theme).toBe('dark')
+      clickButton(backup, RESET)
+      expect(root.fontSize).toBe('xlarge') // 1 回目ではまだ変わらない
+      clickButton(backup, ARMED)
+      expect(root.fontSize).toBe('standard')
+      expect(root.highContrast).toBe('false')
+      expect(root.theme).toBe('light') // 既定は auto(OS 設定に追従)
+    })
+
+    it('確認中に textarea へ入力すると確認が解除され、次の押下は 1 回目に戻る', () => {
+      const { backup } = openData()
+      clickButton(backup, RESET)
+      fireEvent.input(backup.querySelector('textarea') as HTMLTextAreaElement, {
+        target: { value: 'x' },
+      })
+      expect(btn(backup, ARMED)).toBeUndefined()
+      clickButton(backup, RESET)
+      expect(saved().intervalMs).toBe(3000)
+      expect(btn(backup, ARMED)).toBeTruthy()
+    })
+
+    it('確認中にタブを切り替えて戻ると確認が解除され、1 回目に戻る', () => {
+      const { container, backup } = openData()
+      clickButton(backup, RESET)
+      selectCaregiverTab(container, '表示')
+      selectCaregiverTab(container, 'データ')
+      const fresh = container.querySelector('.settings-backup') as HTMLElement
+      expect(btn(fresh, ARMED)).toBeUndefined()
+      clickButton(fresh, RESET)
+      expect(saved().intervalMs).toBe(3000)
+    })
+
+    it('確認中にメニューを閉じて開き直すと確認が解除され、1 回目に戻る', () => {
+      const { container, backup } = openData()
+      clickButton(backup, RESET)
+      clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
+      openCaregiverMenu(container)
+      selectCaregiverTab(container, 'データ')
+      const fresh = container.querySelector('.settings-backup') as HTMLElement
+      expect(btn(fresh, ARMED)).toBeUndefined()
+      clickButton(fresh, RESET)
+      expect(saved().intervalMs).toBe(3000)
+    })
+
+    it('リセット確認中に取り込みを押してもリセットされず、確認はリセット側から取り込み側へ移る', () => {
+      const { backup } = openData()
+      importJson(backup, { headHoldMultiplier: 4 })
+      clickButton(backup, RESET)
+      clickButton(backup, '取り込み') // 取り込みの 1 回目
+      expect(saved().intervalMs).toBe(3000)
+      expect(saved().headHoldMultiplier).toBeUndefined()
+      expect(btn(backup, ARMED)).toBeUndefined() // リセット側の確認は解除
+      clickButton(backup, RESET) // 1 回目に戻る。実行されない
+      expect(saved().intervalMs).toBe(3000)
+      expect(btn(backup, ARMED)).toBeTruthy()
+    })
+
+    it('取り込み確認中にリセットを押しても取り込みは実行されず、リセットも 1 回目になる', () => {
+      const { backup } = openData()
+      importJson(backup, { headHoldMultiplier: 4 })
+      clickButton(backup, '取り込み') // 取り込み確認中
+      clickButton(backup, RESET) // リセットの 1 回目
+      expect(saved().headHoldMultiplier).toBeUndefined()
+      expect(saved().intervalMs).toBe(3000)
+      expect(btn(backup, ARMED)).toBeTruthy()
+      clickButton(backup, '取り込み') // 取り込みの 1 回目に戻る。実行されない
+      expect(saved().headHoldMultiplier).toBeUndefined()
+      expect(btn(backup, ARMED)).toBeUndefined()
+    })
+
+    it('緊急中でもリセットで緊急表示は維持され、libra:emergency は消えない', () => {
+      window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 3000 }))
+      const { container } = render(() => <App />)
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      openCaregiverMenu(container)
+      selectCaregiverTab(container, 'データ')
+      const backup = container.querySelector('.settings-backup') as HTMLElement
+      clickButton(backup, RESET)
+      clickButton(backup, ARMED)
+      expect(saved().intervalMs).toBe(1500)
+      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(JSON.parse(window.localStorage.getItem('libra:emergency') ?? 'null')).toEqual({
+        active: true,
+        details: [],
+        sub: null,
+      })
+    })
+
+    it('localStorage が使えなくても例外にならず、画面上の設定は既定に戻る', () => {
+      const { container, backup } = openData({ fontSize: 'xlarge' })
+      const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('quota')
+      })
+      try {
+        expect(() => {
+          clickButton(backup, RESET)
+          clickButton(backup, ARMED)
+        }).not.toThrow()
+        expect(backup.textContent).toContain('既定に戻しました')
+        expect(document.documentElement.dataset.fontSize).toBe('standard')
+        expect(container.querySelector('.caregiver-panel')).not.toBeNull()
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
+    it('既定のまま 2 回続けて実行しても壊れず、既定値のまま保存される(冪等)', () => {
+      const { backup } = openData({})
+      for (let i = 0; i < 2; i += 1) {
+        clickButton(backup, RESET)
+        clickButton(backup, ARMED)
+      }
+      expect(saved().intervalMs).toBe(1500)
+      expect(backup.textContent).toContain('既定に戻しました')
+    })
+  })
 })
