@@ -120,7 +120,7 @@ describe('playFeedback', () => {
   })
 })
 
-describe('playFeedback: 効果音(振動モーターのない端末向け・警告音との関係)', () => {
+describe('playFeedback: 効果音(振動モーターのない端末向け)', () => {
   const original = Object.getOwnPropertyDescriptor(navigator, 'vibrate')
   afterEach(() => {
     vi.restoreAllMocks()
@@ -144,7 +144,7 @@ describe('playFeedback: 効果音(振動モーターのない端末向け・警�
     expect(tone).not.toHaveBeenCalled()
   })
 
-  it('緊急・緊急の呼び出し中は、警告音と重ならないよう効果音を出さない(振動は出す)', () => {
+  it('緊急・緊急の呼び出し中は、効果音を重ねない(振動は出す)', () => {
     const vibrate = vi.fn()
     Object.defineProperty(navigator, 'vibrate', {
       configurable: true,

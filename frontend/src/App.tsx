@@ -12,13 +12,7 @@ import {
 } from './lib/menus'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
-import {
-  getAlarmAudioStatus,
-  initAlarmVisibilityResume,
-  resumeAlarmAudioContext,
-  startAlarm,
-  stopAlarm,
-} from './lib/alarm'
+import { initAlarmVisibilityResume, resumeAlarmAudioContext } from './lib/alarm'
 import { initWakeLock, type WakeLockStatus } from './lib/wakeLock'
 import {
   initOfflineReadyWatch,
@@ -42,7 +36,7 @@ import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './l
 
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
 const EMERGENCY_MESSAGE = '緊急です。来てください'
-const ALARM_REPEAT_MS = 3000
+const EMERGENCY_REPEAT_MS = 3000
 /** 介助者メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
 const CAREGIVER_TABS = [
   { id: 'status', label: '状態' },
@@ -275,8 +269,6 @@ export default function App() {
   const [painChoice, setPainChoice] = createSignal<PainChoice | undefined>(undefined)
   // 文字盤の文字段階で表示している行(LETTER_ROWS の添字)
   const [letterRow, setLetterRow] = createSignal(0)
-  // 警告音が鳴らない状態(AudioContextがrunningでない)を介助者に知らせる表示の元
-  const [alarmAudioRunning, setAlarmAudioRunning] = createSignal(false)
   // Issue #5: 画面スリープ防止の状態。介助者メニューに表示する
   const [wakeLockStatus, setWakeLockStatus] = createSignal<WakeLockStatus>('unsupported')
   const fullscreenSupported =
@@ -550,7 +542,6 @@ export default function App() {
     setEmergencyActive(false)
     setEmergencyDetails([])
     setEmergencySubMessage(null)
-    stopAlarm()
     feedback('cleared')
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
@@ -582,7 +573,7 @@ export default function App() {
     switch (action.type) {
       case 'emergency': {
         setAcceptedSelection(null)
-        // S1: 緊急の再選択は詳細を消さずアラーム再開のみ。緊急主文は専用領域に立てる
+        // S1: 緊急の再選択は詳細を消さない。緊急主文は専用領域に立てる
         const alreadyActive = emergencyActive()
         setEmergencyActive(true)
         // S2: 緊急発生時は取り消しの猶予を必ず終わらせる
@@ -599,7 +590,6 @@ export default function App() {
         } else {
           feedback('emergency')
         }
-        startAlarm(ALARM_REPEAT_MS)
         goTo('urgentDetail')
         return
       }
@@ -733,13 +723,13 @@ export default function App() {
     onProgress: setHoldProgress,
   })
 
-  // 緊急の呼び出し中は、警告音と同じ周期で振動も繰り返し、まだ続いていることを本人が知れるようにする
+  // 緊急の呼び出し中は、一定周期で振動を繰り返し、まだ続いていることを本人が知れるようにする
   createEffect(() => {
     if (!emergencyActive()) return
     const id = window.setInterval(() => {
-      if (Date.now() - lastFeedbackAt < ALARM_REPEAT_MS) return // 本人の直前の振動を打ち消さない
+      if (Date.now() - lastFeedbackAt < EMERGENCY_REPEAT_MS) return // 本人の直前の振動を打ち消さない
       feedback('emergencyActive')
-    }, ALARM_REPEAT_MS)
+    }, EMERGENCY_REPEAT_MS)
     onCleanup(() => window.clearInterval(id))
   })
 
@@ -773,22 +763,11 @@ export default function App() {
     }
   })
 
-  // 復元した緊急は警告音も再開する。自動再生制限で鳴らなければ
-  // 既存の「警告音停止中：画面をタップしてください」表示になる。
+  // 復元した緊急は、静かな視覚表示(緊急パネル)だけで再開する
   onMount(() => {
     if (restoredEmergency) {
       document.documentElement.dataset.messageTone = 'neutral'
-      startAlarm(ALARM_REPEAT_MS)
     }
-  })
-
-  // 警告音が鳴らない状態(AudioContext が running でない)を介助者に知らせるための定期確認。
-  // ミリ秒単位の精度は不要なので、スキャンループとは別に緩い間隔でポーリングする。
-  onMount(() => {
-    const checkAlarmAudioStatus = () => setAlarmAudioRunning(getAlarmAudioStatus() === 'running')
-    checkAlarmAudioStatus()
-    const id = window.setInterval(checkAlarmAudioStatus, 500)
-    onCleanup(() => window.clearInterval(id))
   })
 
   // Issue #3 再レビュー: grid-board の実測サイズを追従し、列数計算(computeGridLayout)へ渡す
@@ -893,7 +872,7 @@ export default function App() {
   onMount(() => {
     const onPointerDown = (event: PointerEvent) => {
       // M2: タッチでは pointerdown にユーザーアクティベーションが伴わないことがあるため、
-      // 介助者ボタン除外より前に resume を試みる(緊急の警告音を取りこぼさないため)
+      // 介助者ボタン除外より前に resume を試みる(効果音を取りこぼさないため)
       resumeAlarmAudioContext()
       const target = event.target as HTMLElement | null
 
@@ -1006,7 +985,6 @@ export default function App() {
       stopVisibilityResume()
       clearCaregiverIdleTimer()
       morseInput.stop()
-      stopAlarm()
     })
   })
 
@@ -1087,10 +1065,6 @@ export default function App() {
           >
             介助者用
           </button>
-
-          <Show when={!alarmAudioRunning()}>
-            <p class="audio-status-hint">警告音停止中：画面をタップしてください</p>
-          </Show>
         </div>
       </section>
 

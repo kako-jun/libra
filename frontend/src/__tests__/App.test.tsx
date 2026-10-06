@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
-import * as alarmModule from '../lib/alarm'
 import * as wakeLockModule from '../lib/wakeLock'
 import * as offlineReadyModule from '../lib/offlineReady'
 import { HAPTIC_PATTERNS, feedbackPattern } from '../lib/feedback'
@@ -10,7 +9,7 @@ import { HAPTIC_PATTERNS, feedbackPattern } from '../lib/feedback'
 const HEAD_HOLD_MS = 3000
 const INTERVAL_MS = 1500
 
-// createOscillator が呼ばれる = 実際に警告音を鳴らそうとした回数(S6用)
+// createOscillator が呼ばれる = 実際に音を鳴らそうとした回数(緊急中に鳴らないことの確認用)
 let oscillatorStartCount = 0
 
 class MockAudioContext {
@@ -1094,14 +1093,14 @@ describe('App', () => {
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
-  it('Issue #14: 長押し5つの連続で、確定を待たず即緊急(警告音も鳴る)', () => {
+  it('Issue #14: 長押し5つの連続で、確定を待たず即緊急(警告音は鳴らない)', () => {
     const { container } = enterMorse()
     oscillatorStartCount = 0
     sendCode('----')
     expect(h1Text(container)).not.toBe('緊急です。来てください') // 4つではまだ
     sendCode('-')
     expect(h1Text(container)).toBe('緊急です。来てください')
-    expect(oscillatorStartCount).toBeGreaterThan(0)
+    expect(oscillatorStartCount).toBe(0)
     expect(container.querySelector('.morse-panel')).toBeNull() // スキャンの緊急詳細へ
     expect(scanningLabel(container)).toBe('戻る')
   })
@@ -1426,19 +1425,14 @@ describe('App', () => {
     expect(tileLabels(container)).not.toContain('取り消し')
   })
 
-  it('S6: voiceMode=off でも緊急選択で警告音(oscillator)が鳴る', () => {
-    render(() => <App />)
-    expect(oscillatorStartCount).toBe(0)
-    fireEvent.keyDown(window, { key: ' ' }) // 緊急選択(音声モードは既定でOFF)
-    expect(oscillatorStartCount).toBeGreaterThan(0)
-  })
-
-  it('S6: 緊急解除でアラームが止まる(以後 oscillator が増えない)', () => {
+  it('Issue #43: 緊急選択・緊急中の周期経過・解除のどれでも音(oscillator)が鳴らない', () => {
     const { container } = render(() => <App />)
+    expect(oscillatorStartCount).toBe(0)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急選択
-    vi.advanceTimersByTime(3000) // アラーム周期を1回進める
-    const countBeforeClear = oscillatorStartCount
-    expect(countBeforeClear).toBeGreaterThan(0)
+    expect(oscillatorStartCount).toBe(0)
+    vi.advanceTimersByTime(10000) // 旧警告音の周期を何度も進める
+    expect(oscillatorStartCount).toBe(0)
+    expect(container.querySelector('.emergency-status-message')).not.toBeNull() // 静かな視覚表示は残る
 
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
@@ -1447,9 +1441,8 @@ describe('App', () => {
       b.textContent?.includes('緊急解除'),
     ) as HTMLElement
     fireEvent.click(clearButton)
-
-    vi.advanceTimersByTime(10000) // アラーム周期を何度も進める
-    expect(oscillatorStartCount).toBe(countBeforeClear)
+    vi.advanceTimersByTime(10000)
+    expect(oscillatorStartCount).toBe(0)
   })
 
   it('nit: 取り消しで戻したメッセージのトーン(緊急以外)も復元される', () => {
@@ -1471,43 +1464,6 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 「はい」に戻る
     expect(h1Text(container)).toBe('はい')
     expect(document.documentElement.dataset.messageTone).toBe('positive')
-  })
-
-  it('nit: AudioContextがrunningでない間は警告音停止中の表示が出て、runningになると消える', () => {
-    // alarm.ts はモジュール内に audioContext をキャッシュし他テストとも共有されるため、
-    // getAlarmAudioStatus 自体を spy して状態を確定的に制御する
-    const statusSpy = vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
-    const { container } = render(() => <App />)
-    expect(container.querySelector('.audio-status-hint')).not.toBeNull()
-
-    statusSpy.mockReturnValue('running')
-    vi.advanceTimersByTime(500) // ポーリング反映
-    expect(container.querySelector('.audio-status-hint')).toBeNull()
-  })
-
-  it('nit: not-running のままではヒントが出続ける', () => {
-    const statusSpy = vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
-    const { container } = render(() => <App />)
-    expect(container.querySelector('.audio-status-hint')).not.toBeNull()
-
-    vi.advanceTimersByTime(2000) // 何度ポーリングしても not-running のままならヒントは残る
-    expect(container.querySelector('.audio-status-hint')).not.toBeNull()
-    expect(statusSpy).toHaveBeenCalled()
-  })
-
-  it('S-new-4: 「警告音停止中」表示にはdata-caregiver-controlが無く、その位置へのタップはスイッチとして扱われる', () => {
-    vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
-    const { container } = render(() => <App />)
-    const hint = container.querySelector('.audio-status-hint') as HTMLElement
-    expect(hint).not.toBeNull()
-    expect(hint.closest('[data-caregiver-control]')).toBeNull()
-
-    // pointer-events:none は実ブラウザでのヒットテストにのみ影響するため、jsdom上では
-    // このタップがハンドラの除外対象(data-caregiver-control)に当たらないことを確認する
-    fireEvent.pointerDown(hint) // カーソルは index0(緊急、先頭待機中)
-    expect(container.querySelector('.emergency-status-message')?.textContent).toBe(
-      '緊急です。来てください',
-    )
   })
 
   it('Issue #5: 介助者メニューに Wake Lock 取得中の状態が表示される', () => {
@@ -1719,7 +1675,7 @@ describe('App', () => {
       expect(stored()).toEqual({ active: true, details: [], sub: null })
     })
 
-    it('詳細・副表示ごと再マウントで復元され、警告音が再開し、振動・読み上げは出ない', () => {
+    it('詳細・副表示ごと再マウントで復元され、警告音は鳴らず、振動・読み上げは出ない', () => {
       const first = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
       vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
@@ -1749,13 +1705,12 @@ describe('App', () => {
         '直前に伝えたこと',
       )
       expect(second.container.querySelector('.message-panel h1')?.textContent).toBe('はい')
-      expect(oscillatorStartCount).toBeGreaterThan(0)
+      expect(oscillatorStartCount).toBe(0)
       expect(vibrate).not.toHaveBeenCalled() // 復元の直後に、緊急発生時の振動は出さない
       vi.advanceTimersByTime(3000)
-      const afterOneCycle = oscillatorStartCount
       vi.advanceTimersByTime(3000)
-      expect(oscillatorStartCount).toBeGreaterThan(afterOneCycle)
-      // 呼び出し中の周期の振動(#13)だけが、警告音と同じ周期で出る
+      expect(oscillatorStartCount).toBe(0)
+      // 呼び出し中の周期の振動(#13)だけが一定周期で出る
       expect(vibrate).toHaveBeenCalled()
       for (const call of vibrate.mock.calls) {
         expect(call[0]).toEqual(HAPTIC_PATTERNS.emergencyActive)
@@ -1791,14 +1746,6 @@ describe('App', () => {
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
       fireEvent.keyDown(window, { key: ' ' }) // 取り消し
       expect(h1Text(container)).toBe('はい')
-    })
-
-    it('復元後に警告音が鳴れない状態なら「警告音停止中」表示が出る', () => {
-      window.localStorage.setItem(KEY, JSON.stringify({ active: true, details: [], sub: null }))
-      vi.spyOn(alarmModule, 'getAlarmAudioStatus').mockReturnValue('not-running')
-      const { container } = render(() => <App />)
-      expect(h1Text(container)).toBe('緊急です。来てください')
-      expect(container.querySelector('.audio-status-hint')).not.toBeNull()
     })
 
     it('介助者メニューの緊急解除で保存が消え、再マウントで通常起動・警告音なし', () => {
