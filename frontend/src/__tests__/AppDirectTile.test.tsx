@@ -280,15 +280,76 @@ describe('Issue #38: タイル直接選択', () => {
       expect(h1Text(container)).toBe('いいえ')
     })
 
-    it('マルチタッチ: 一方の pointercancel は他方の click 消費を壊さない', () => {
+    // click に pointerId を載せる(本番の pointerId 一致経路)。fireEvent.click は pointerId が undefined
+    const pointerClick = (el: Element, pointerId: number) =>
+      fireEvent(el, new PointerEvent('click', { pointerId, bubbles: true, cancelable: true }))
+
+    it('マルチタッチ: 1と2を押し、2を離して id2 の click を消費しても、id1 の記録は残る', () => {
+      const { container } = render(() => <App />)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      fireEvent.pointerDown(board, { pointerId: 1 })
+      fireEvent.pointerDown(board, { pointerId: 2 })
+      fireEvent.pointerUp(board, { pointerId: 2 })
+      pointerClick(tile(container, 'はい'), 2)
+      expect(h1Text(container)).not.toBe('はい')
+      // id1 はまだ押下中(記録が残っている)。その click は消費される
+      pointerClick(tile(container, 'いいえ'), 1)
+      expect(h1Text(container)).not.toBe('いいえ')
+      // 記録は尽きた。次の click は合成として実行される
+      pointerClick(tile(container, 'いいえ'), 1)
+      expect(h1Text(container)).toBe('いいえ')
+    })
+
+    it('マルチタッチ: id2 を cancel しても、id1 の click は消費される(id2 の記録だけが消える)', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
       fireEvent.pointerDown(board, { pointerId: 1 })
       fireEvent.pointerDown(board, { pointerId: 2 })
       fireEvent.pointerCancel(window, { pointerId: 2 })
+      pointerClick(tile(container, 'はい'), 2) // id2 の記録は無い → 合成として実行される
+      expect(h1Text(container)).toBe('はい')
+      vi.advanceTimersByTime(1000)
       fireEvent.pointerUp(board, { pointerId: 1 })
-      fireEvent.click(tile(container, 'はい'), { pointerId: 1 } as MouseEventInit)
+      pointerClick(tile(container, 'いいえ'), 1) // id1 の記録は残っている → 消費
+      expect(h1Text(container)).not.toBe('いいえ')
+    })
+
+    it('記録されていない pointerId(-1)の click は合成として実行される', () => {
+      const { container } = render(() => <App />)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      fireEvent.pointerDown(board, { pointerId: 1 }) // 別ポインターの記録があっても消費しない
+      pointerClick(tile(container, 'はい'), -1)
+      expect(h1Text(container)).toBe('はい')
+    })
+
+    it('pointerup 後に1秒以上経っても、同じ pointerId の click は消費される(合成扱いで二重実行しない)', () => {
+      const { container } = render(() => <App />)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      fireEvent.pointerDown(board, { pointerId: 1 })
+      fireEvent.pointerUp(board, { pointerId: 1 })
+      vi.advanceTimersByTime(2500) // メインスレッドが止まった想定
+      pointerClick(tile(container, 'はい'), 1)
       expect(h1Text(container)).not.toBe('はい')
+    })
+
+    it('pointerup が届かなかった記録も、10秒を超えれば次の合成 click を捨てない', () => {
+      const { container } = render(() => <App />)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      fireEvent.pointerDown(board, { pointerId: 1 })
+      vi.advanceTimersByTime(11000)
+      fireEvent.click(tile(container, 'はい')) // pointerId なし → 期限切れ破棄後に合成として実行
+      expect(h1Text(container)).toBe('はい')
+    })
+
+    it('右/中クリック・ペンのバレルボタンの pointerdown ではタイルを実行しない', () => {
+      const { container } = render(() => <App />)
+      for (const button of [1, 2, 5]) {
+        fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1, button })
+        fireEvent.pointerUp(window, { pointerId: 1, button })
+      }
+      expect(h1Text(container)).not.toBe('はい')
+      fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1, button: 0 })
+      expect(h1Text(container)).toBe('はい')
     })
 
     it('pointercancel した押下の記録は残らず、次の合成 click は捨てられない', () => {
