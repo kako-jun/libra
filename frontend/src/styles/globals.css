@@ -806,12 +806,14 @@ h1[data-fit='single'] {
 }
 
 .caregiver-panel {
-  display: grid;
-  gap: 14px;
-  width: min(480px, 100%);
-  max-height: 90vh;
-  padding: 20px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(960px, 100%);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  padding: 16px;
+  overflow: hidden;
   color: var(--text);
   background: var(--caregiver-panel-bg);
   border-radius: 14px;
@@ -822,6 +824,69 @@ h1[data-fit='single'] {
   user-select: text;
   -webkit-user-select: text;
   -webkit-touch-callout: default;
+}
+
+/* Issue #31: 見出し・緊急解除・閉じるはカテゴリ切替と独立して常に見える(スクロールしない) */
+.caregiver-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex: none;
+}
+
+.caregiver-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 狭い画面では横スクロール、広い画面では均等配置(同一DOMで切り替える) */
+.caregiver-tablist {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 2px solid var(--caregiver-action-bg);
+  scrollbar-width: thin;
+}
+
+.caregiver-tab {
+  flex: 1 0 auto;
+  min-height: 48px;
+  padding: 8px 14px;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 2px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 現在タブは色だけに頼らず、太字・太い下線・反転色で判別できるようにする */
+.caregiver-tab.active {
+  color: var(--caregiver-action-text);
+  background: var(--caregiver-action-bg);
+  border-color: var(--caregiver-action-bg);
+  font-weight: 800;
+  box-shadow: inset 0 -4px 0 var(--caregiver-status-ok-border);
+}
+
+.caregiver-tabpanel {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+  padding: 4px 2px 8px;
+  overflow-y: auto;
+}
+
+.caregiver-section-title {
+  margin: 0;
+  font-size: 1.05rem;
 }
 
 .caregiver-panel input,
