@@ -401,11 +401,11 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(4 + high + 2).toBe(15)
     })
 
-    it('枠 ::after の inset(4px)・アウトライン(2px)と --scan-ring-inset の式が一致する', () => {
+    it('枠 ::after の inset(4px)と --scan-ring-inset の式が一致し、白縁・二重枠(box-shadow)を持たない(#33)', () => {
       const after = css.match(/\.tile\.scanning::after\s*\{([^}]*)\}/s)?.[1] ?? ''
       expect(after).toMatch(/inset:\s*4px/)
       expect(after).toMatch(/border:\s*var\(--scan-ring-width\) solid/)
-      expect(after).toMatch(/0 0 0 2px/)
+      expect(after).not.toMatch(/box-shadow/)
     })
 
     it('タイル本体・山形・予告が --scan-ring-inset の内側に置かれ、選択状態でパディングを変えない', () => {
