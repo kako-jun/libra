@@ -808,14 +808,22 @@ async function checkTightScreenLabelsAndRing(chromium, port) {
     )
 
   try {
-    // ①
-    {
+    // ①(緊急詳細を1つだけ選んだ場合と、5件すべて選んだ場合。後者は緊急帯の詳細が最も長い)
+    const emergencyPaths = [
+      ['緊急', '苦しい', '不快', '痰を取ってほしい', '不快'],
+      [
+        ...['苦しい', '痛い', '息ができない', '吐きそう', '胸が痛い'].flatMap((d) => ['緊急', d]),
+        '不快',
+        '痰を取ってほしい',
+        '不快',
+      ],
+    ]
+    for (const path of emergencyPaths) {
       const { context, page } = await open(
         { width: 568, height: 320 },
         { fontSize: 'standard', highContrast: true, ...maxNotes },
       )
-      for (const label of ['緊急', '苦しい', '不快', '痰を取ってほしい', '不快'])
-        await hold(page, label)
+      for (const label of path) await hold(page, label)
       const result = await page.evaluate(() => {
         const ringW = Number.parseFloat(
           getComputedStyle(document.documentElement).getPropertyValue('--scan-ring-width'),
@@ -847,16 +855,24 @@ async function checkTightScreenLabelsAndRing(chromium, port) {
           count: tiles.length,
           worst,
           emergency: !!document.querySelector('.emergency-status'),
+          emergencyHeight:
+            document.querySelector('.emergency-status')?.getBoundingClientRect().height ?? 0,
           sizes: new Set(tiles.map((t) => `${t.offsetWidth}x${t.offsetHeight}`)).size,
         }
       })
       const px = await labelMinPx(page)
       if (result.count !== 8 || !result.emergency) {
         failures.push(
-          `[tight 568x320] 想定の状態(緊急+8項目)に到達していない ${JSON.stringify(result)}`,
+          `[tight 568x320] 想定の状態(緊急+8項目)に到達していない(緊急帯 ${result.emergencyHeight}px) ${JSON.stringify(result)}`,
         )
       }
       if (result.sizes !== 1) failures.push(`[tight 568x320] 全タイルが同サイズでない`)
+      // 短い画面の緊急帯は、詳細が長くても1行に保つ(2行に戻るとセルが低くなる)
+      if (result.emergencyHeight > 40) {
+        failures.push(
+          `[tight 568x320] 緊急帯が1行でない(高さ ${result.emergencyHeight.toFixed(1)}px)`,
+        )
+      }
       if (result.worst > 0.5) {
         failures.push(`[tight 568x320] 文字が枠の帯へ ${result.worst.toFixed(1)}px 食い込んでいる`)
       }
@@ -865,20 +881,21 @@ async function checkTightScreenLabelsAndRing(chromium, port) {
       }
       await context.close()
     }
-    // ②
-    {
+    // ②(390x844 は枠9px・幅で頭打ち、768x1024 は枠9px・高さで頭打ち。補正が無いと 0.8〜1.2px 以上小さくなる。
+    // 高コントラストは区切り線が太くセルが約1px低くなるため、許容は 0.5px)
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 768, height: 1024 },
+    ]) {
       const sizes = {}
       for (const highContrast of [false, true]) {
-        const { context, page } = await open(
-          { width: 390, height: 844 },
-          { fontSize: 'standard', highContrast },
-        )
+        const { context, page } = await open(viewport, { fontSize: 'standard', highContrast })
         sizes[highContrast] = await labelMinPx(page)
         await context.close()
       }
-      if (sizes[true] < sizes[false] - 0.05) {
+      if (sizes[true] < sizes[false] - 0.5) {
         failures.push(
-          `[tight 390x844 home] 高コントラストで標準より小さい(標準 ${sizes[false].toFixed(2)}px / 高コントラスト ${sizes[true].toFixed(2)}px)`,
+          `[tight ${viewport.width}x${viewport.height} home] 高コントラストで標準より小さい(標準 ${sizes[false].toFixed(2)}px / 高コントラスト ${sizes[true].toFixed(2)}px)`,
         )
       }
     }

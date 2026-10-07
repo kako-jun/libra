@@ -427,12 +427,26 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(font.match(/--ring-extra/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
     })
 
-    it('短い・狭い画面の高コントラストは枠を 7px に細くして帯を 13px にし、短い画面の緊急帯は1行になる', () => {
+    it('高コントラストの枠は短い画面、または狭くて低い画面(幅480以下かつ高さ700以下)だけ 7px にする', () => {
       expect(css).toMatch(
-        /@media \(max-height: 500px\), \(max-width: 480px\) \{\s*:root\[data-high-contrast='true'\]\s*\{[^}]*--scan-ring-width:\s*7px/s,
+        /@media \(max-height: 500px\), \(max-width: 480px\) and \(max-height: 700px\) \{\s*:root\[data-high-contrast='true'\]\s*\{[^}]*--scan-ring-width:\s*7px/s,
       )
+      // 390x844 のような高さに余裕のある縦向きスマホは 9px のまま(条件が (max-width: 480px) 単独でない)
+      expect(css).not.toMatch(
+        /@media \(max-height: 500px\), \(max-width: 480px\) \{\s*:root\[data-high-contrast/,
+      )
+    })
+
+    it('短い画面の緊急帯は1行(nowrap)で、詳細は長くても省略記号で収める', () => {
       const short = css.slice(css.lastIndexOf('@media (max-height: 500px) {'))
       expect(short).toMatch(/\.emergency-status\s*\{[^}]*display:\s*flex/s)
+      expect(short).toMatch(/\.emergency-status\s*\{[^}]*flex-wrap:\s*nowrap/s)
+      expect(short).toMatch(
+        /\.emergency-status \.emergency-details\s*\{[^}]*text-overflow:\s*ellipsis/s,
+      )
+      expect(short).toMatch(
+        /\.emergency-status \.emergency-details\s*\{[^}]*white-space:\s*nowrap/s,
+      )
     })
 
     it('高コントラスト設定で documentElement に data-high-contrast=true が付く(15px 側の CSS が効く前提)', () => {
