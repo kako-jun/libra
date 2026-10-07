@@ -546,12 +546,16 @@ h1[data-fit='single'] {
      content-box が標準(12px)より縮み、ラベルまで小さくなっていた(弱視向けの設定で
      文字が小さくなるのは逆効果)。基準を標準の帯(12px)相当に戻すため、上限側の項に
      --ring-extra(帯の標準との差。標準では 0)の分を足す。
-     Issue #34 追加(2行ラベルを帯に入れない): 下限 1.05rem は、セルの高さが低い(2行ぶんの
-     content 高さが無い)と2行ラベルが枠の帯に食い込む。content 高さで2行(行間1.08×2 ≒ 2.2)が
-     入らないときだけ、下限をその高さに合わせて下げる */
+     Issue #34 追加(2行ラベルを帯に入れない。ただし縮めすぎない): 下限 1.05rem は、セルの高さが
+     低い(content 高さに2行が入らない)と2行ラベルが枠の帯に食い込む。content 高さに2行
+     (.tile-label の line-height 1.08〜1.15 → 約2.3em 必要)が入らないときだけ、下限を
+     content 高さ/2.4 まで下げる。ただし 13px を下回らせない(弱視向けの設定ほど小さくなる
+     のは逆効果。足りない高さは、短い画面で帯・余白を詰めてセル側に確保する。下の
+     @media (max-height: 500px) 参照)。この項にも --ring-extra を足し、高コントラストの
+     太い帯でも標準と同じ下限にそろえる(高コントラストのほうが標準より小さくならない) */
   --ring-extra: calc(var(--scan-ring-inset) - 12px);
   --tile-label-font: clamp(
-    min(1.05rem, calc(100cqb / 2.4)),
+    min(1.05rem, max(13px, calc((100cqb + 2 * var(--ring-extra)) / 2.4))),
     calc(
       var(--label-ratio) *
         min(
@@ -1204,7 +1208,7 @@ h1[data-fit='single'] {
 /* Issue #57: モールス画面は案内を常に全項目見せる(本人はスイッチのみ・touch-action:none で
    スクロールできない)。案内の上に積まれる枠(画面名・直前の選択・直前に伝えたこと)を詰め、
    狭い/低い画面(390x844・568x320・844x390・320x568)でも全項目が画面内に収まるようにする。
-   スクロールで逃がさず、全項目が収まること自体を保証する(DESIGN.md §9 の実測表)。 */
+   スクロールで逃がさず、全項目が収まること自体を保証する(DESIGN.md §10 の実測表)。 */
 .app-shell.is-morse .selection-confirmation,
 .app-shell.is-morse .message-panel,
 .app-shell.is-morse .screen-breadcrumb {
@@ -1588,5 +1592,33 @@ h1[data-fit='single'] {
 @media (max-height: 500px) {
   .tile-label {
     line-height: 1.08;
+  }
+}
+
+/* Issue #34 (短い画面で、2行ラベルを 13px 以上で枠の帯に入れないためのセル高さの確保)。
+   568x320 の緊急+伝達メッセージ+案内帯最大(8項目)では、格子の1行が約49pxしか取れず、
+   帯に入らない2行ラベルが 13px を割っていた。ラベルは縮めず、次の2つでセル側を確保する。
+   (1) 緊急の帯を1行にする(「緊急です。来てください」と「伝えた状態: …」を横に並べる)。
+   (2) 高コントラストの枠(9px)を、短い・狭い画面だけ 7px にする(帯 15px → 13px。標準の 6px よりは
+       太く、黄色+二重アウトラインの対比は変わらない。下の別の @media 参照)。 */
+@media (max-height: 500px) {
+  .emergency-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.8em;
+    row-gap: 0;
+  }
+
+  .emergency-status-message {
+    font-size: clamp(1.1rem, 3.6vh, 1.6rem);
+  }
+}
+
+/* 高コントラストの枠は、短い画面と狭い画面(スマホ縦 320x568 の緊急+伝達でもセルの高さが約65px)で
+   7px にする(--ring-extra を 1px に抑え、補正した下限が content 高さを超えないようにする) */
+@media (max-height: 500px), (max-width: 480px) {
+  :root[data-high-contrast='true'] {
+    --scan-ring-width: 7px;
   }
 }
