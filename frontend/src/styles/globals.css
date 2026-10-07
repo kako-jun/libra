@@ -573,12 +573,18 @@ h1[data-fit='single'] {
   --ring-extra: calc(var(--scan-ring-inset) - 12px);
   --tile-label-font: clamp(
     min(1.05rem, max(13px, calc((100cqb + 2 * var(--ring-extra)) / 2.4))),
-    calc(
-      var(--label-ratio) *
-        min(
-          calc(var(--label-cqi) * 1cqi + var(--label-cqi) * 0.02 * var(--ring-extra)),
-          calc(var(--label-cqb) * 1cqb + var(--label-cqb) * 0.02 * var(--ring-extra))
-        )
+    min(
+      calc(
+        var(--label-ratio) *
+          min(
+            calc(var(--label-cqi) * 1cqi + var(--label-cqi) * 0.02 * var(--ring-extra)),
+            calc(var(--label-cqb) * 1cqb + var(--label-cqb) * 0.02 * var(--ring-extra))
+          )
+      ),
+      /* Issue #65: 4文字の語(「モールス」「快・要望」)が山形アイコンを避けたラベル幅に
+         1行で入る大きさを上限にする(語の途中で改行しない)。避け幅は文字サイズ設定に
+         よらない(下の .tile-nav .tile-label) */
+      calc((100cqi - clamp(20px, 12cqi, 36px)) / 4.02)
     ),
     min(calc(var(--font-scale) * 4.8vh), 3.4rem)
   );
@@ -693,8 +699,8 @@ h1[data-fit='single'] {
    予告(下)の分だけ狭まり・中央からずれて避ける(margin はコンテナの
    place-items:center の中央位置を非対称にずらす効果を持つ) */
 .tile-nav .tile-label {
-  max-width: calc(100% - var(--font-scale) * clamp(20px, 14cqi, 42px));
-  margin-right: calc(var(--font-scale) * clamp(20px, 14cqi, 42px));
+  max-width: calc(100% - clamp(20px, 12cqi, 36px));
+  margin-right: clamp(20px, 12cqi, 36px);
   margin-bottom: calc(var(--font-scale) * clamp(22px, 20cqb, 48px));
 }
 

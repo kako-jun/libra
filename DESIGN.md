@@ -87,16 +87,21 @@ Three CSS variables drive this. `--font-scale`/`--label-ratio` are set via `:roo
 
 --tile-label-font: clamp(
   min(1.05rem, max(13px, calc((100cqb + 2 * var(--ring-extra)) / 2.4))),
-  calc(
-    var(--label-ratio) *
-      min(
-        calc(var(--label-cqi) * 1cqi + var(--label-cqi) * 0.02 * var(--ring-extra)),
-        calc(var(--label-cqb) * 1cqb + var(--label-cqb) * 0.02 * var(--ring-extra))
-      )
+  min(
+    calc(
+      var(--label-ratio) *
+        min(
+          calc(var(--label-cqi) * 1cqi + var(--label-cqi) * 0.02 * var(--ring-extra)),
+          calc(var(--label-cqb) * 1cqb + var(--label-cqb) * 0.02 * var(--ring-extra))
+        )
+    ),
+    calc((100cqi - clamp(20px, 12cqi, 36px)) / 4.02)   /* Issue #65: a 4-character word fits on one line */
   ),
   min(calc(var(--font-scale) * 4.8vh), 3.4rem)
 );
 ```
+
+**Word-boundary wrapping (Issue #65)**: once the light theme got the same coefficients as dark, a 4-character word such as 「モールス」 or 「快・要望」 broke mid-word (「モール/ス」) at 特大 on phone widths, because the navigate tile's label width (cell content width minus the chevron avoidance) could not hold four characters at the 22cqi size. Two changes, theme-independent: the chevron avoidance (`.tile-nav .tile-label` `max-width`/`margin-right`, `clamp(20px, 12cqi, 36px)`) no longer scales with `--font-scale` (the chevron itself never did), and the font has an upper bound of `(100cqi - avoidance) / 4.02`, i.e. four full-width characters fit on one line. The bound only binds at 特大 on phone widths (標準 and 大 are below it) and never lowers a label under the 13px floor. Cost: at 390x844 特大 the home label is 37.43px instead of the uncapped 37.62px (36.07px with high contrast, whose ring band narrows the cell by 6px; still above 標準).
 
 The cqi/cqb coefficients (`--label-cqi`/`--label-cqb`) now live only in CSS: since Issue #47 the grid shape no longer depends on label scoring, so `App.tsx` no longer reads them and `gridLayout.ts` has no label-factor options.
 
@@ -291,9 +296,12 @@ What the fix changed (the same matrix measured on the pre-fix build, 390x844 and
 - Short viewports (`max-height: 500px`): the emergency band is one line (28-30px high in every measured state, including all five details). The details are cut with an ellipsis when they do not fit (`.emergency-details` is `white-space: nowrap; text-overflow: ellipsis`); their full text is on the emergency detail screen. The band's main sentence is a little smaller there (about 17.6px instead of 19.2px at 568x320).
 - Where the cell is bound by the label floor (the tightest cells), a one-line label is also lowered toward 13px: CSS cannot tell a one-line label from a two-line one, so the floor is lowered by cell height alone. Normal cells are unaffected.
 - 特大 and 標準 give the same minimum (13.08px) because those cells are bound by the label floor, not by the font-size setting.
-- 390x844 home labels (both themes): 標準 31.98px / 特大 37.62px with the default band; 31.89px / 37.52px with high contrast; 29.19px / 34.34px with the guidance band at its maximum; 28.98px / 34.10px with both.
+- 390x844 home labels (both themes): 標準 31.98px / 特大 37.43px with the default band; 31.89px / 36.07px with high contrast; 29.19px / 34.34px with the guidance band at its maximum; 28.98px / 34.10px with both (after the Issue #65 word-fit bound, see §2). 360x640 / 375x667 light home labels: 19.71px / 20.92px (標準, default band).
+- Wrapping check after the word-fit bound (light and dark identical, line breaks compared label by label): 390x844 / 568x320 / 320x568 x 標準/特大 x home / 不快 / 快・要望 show no mid-word break (「モールス」 and 「快・要望」 stay on one line). Remaining known wraps (phrase breaks, not mid-word, same in both themes): at 390x844 特大 不快, 「痰を取ってほしい」 and 「体の向きを変えたい」 take three lines (「痰を/取って/ほしい」, 「体の/向きを/変えたい」) because five characters do not fit the label width at 36.56px; the cells stay the same size and nothing leaves its tile.
 - Guidance band height (`.screen-notes`, both themes identical, 標準, 390x844 / 844x390 / 568x320 / 320x568): home 45 / 17.9 / 17.9 / 35.8 by default and 102 / 30.8 / 43.6 / 79.0 at the maximum; emergency + transmitted message 83 / 17.9 / 30.8 / 64.6 by default and 140 / 43.6 / 56.5 / 107.7 at the maximum. (The §10 table uses a different, older set of states, so its rows are not directly comparable.)
 - Morse (both themes, 標準/特大 x high contrast x band, with and without an emergency; 192 measurements): legend bottom 標準 / default band: 408 / 268 / 233 / 293 / 511 / 451 px at 390x844 / 844x390 / 568x320 / 320x568 / 768x1024 / 1024x768 (panel bottom = band top = viewport height with no band); with an emergency 444 / 295 / 259 / 321 / 546 / 485 px with the band top at 818 / 372 / 302 / 547 / 996 / 741 px.
+
+Timing of the emergency + transmitted-message rows: the guidance band is taller right after a transmission (the undo note is shown for one lap), so the cell heights in those rows depend on when the state is measured. In this run the state was measured about 0.9 s after the last tap; measured shortly later the band can be shorter (e.g. 320x568 emergency + message, default band 64.6 vs 50.2px; 1024x768 emergency + message home cell heights 214-235 vs 223-235; 320x568 emergency + message home cell heights 68-81 vs 68-84). The label minimums are unaffected (they are bound at the heights shown).
 
 Table: items + empty cells per state; each cell is `tile width x tile height (range over the four high contrast x guidance-band combinations, 標準 and 特大 identical) / smallest label px over all 8 combinations (標準/特大 x high contrast x guidance band)`. 明るい and 夜間 are identical, so one table is shown. States of the earlier table that were not re-measured here (不快>その他, 不快>痛い>頭>強さ, 快要望 and its sub-screens, 緊急中+痰伝達 variants) and the 360x640 / 375x667 viewports have unchanged cell sizes (the grid is fixed and theme-independent) but their light label px were measured before this fix and are not valid for the light theme.
 
