@@ -13,7 +13,7 @@
 - **フロントエンド**: Vite + SolidJS + TypeScript（`frontend/`）
 - **バックエンド**: Hono on Cloudflare Workers（`backend/`）
 - **デプロイ**: フロントエンド → CF Pages（push to main = auto deploy）、バックエンド → `wrangler deploy`
-- **CI**: `.github/workflows/ci.yml` - push/PR to main で tsc + vite build
+- **CI**: `.github/workflows/ci.yml` - push/PR to main で frontend は tsc + vitest + vite build、backend は typecheck
 - **Pre-commit**: Husky + lint-staged at repo root（prettier for frontend）
 
 ## ローカル起動
