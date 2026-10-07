@@ -635,7 +635,7 @@ async function checkHeadingFit(chromium, port) {
             .display,
         }
       })
-      if (emergency.text !== '緊急です。来てください') {
+      if (emergency.text !== '緊急です。来てください。') {
         failures.push(`[heading-fit ${name} emergency] 専用緊急状態に主文がない(${emergency.text})`)
       }
       if (emergency.scrollWidth > emergency.clientWidth) {
@@ -1347,6 +1347,108 @@ async function checkIssue37SmallViewport(chromium, port) {
   return failures
 }
 
+// Issue #46/#57: モールス凡例(.morse-legend)が固定パネル(.morse-panel, overflow:hidden)の中に
+// 収まり、文字が切れないことを実描画で確認する。本人はスクロールできないため全項目が見える必要がある。
+// 句点・符号の注記で行が増えても、高コントラスト+緊急中+押下時間の下限あり(凡例が最も多い)でも
+// 下端に余白(3px以上)が残り、パネルがはみ出し(scrollHeight>clientHeight)ていないことを測る。
+async function checkMorseLegendFit(chromium, port) {
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+  const viewports = [
+    [568, 320],
+    [844, 390],
+    [667, 375],
+    [320, 568],
+    [390, 844],
+  ]
+  try {
+    for (const [width, height] of viewports) {
+      for (const highContrast of [false, true]) {
+        for (const emergency of [false, true]) {
+          const name = `${width}x${height} ${highContrast ? 'HC' : 'normal'} ${emergency ? 'emergency' : 'calm'}`
+          const context = await browser.newContext({ viewport: { width, height } })
+          const page = await context.newPage()
+          await page.addInitScript(
+            (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
+            {
+              intervalMs: 60000,
+              debounceMs: 0,
+              minHoldMs: 500,
+              morseEnabled: true,
+              voiceMode: 'off',
+              fontSize: 'xlarge',
+              highContrast,
+            },
+          )
+          await page.goto(`http://localhost:${port}/`)
+          await page.waitForTimeout(300)
+          // 押下時間の下限があるので、タップも下限以上押し続ける
+          const hold = async (label) => {
+            const tile = page
+              .locator('.grid-board .tile', {
+                has: page.locator('.tile-label', { hasText: new RegExp(`^${label}$`) }),
+              })
+              .first()
+            const box = await tile.boundingBox()
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+            await page.mouse.down()
+            await page.waitForTimeout(650)
+            await page.mouse.up()
+            await page.waitForTimeout(150)
+          }
+          try {
+            if (emergency) {
+              await hold('緊急')
+              await hold('苦しい')
+            }
+            await hold('モールス')
+            await page.waitForSelector('.morse-legend', { timeout: 3000 })
+            const m = await page.evaluate(() => {
+              const panel = document.querySelector('.morse-panel')
+              const legend = document.querySelector('.morse-legend')
+              const items = [...legend.querySelectorAll('li')]
+              return {
+                panelBottom: panel.getBoundingClientRect().bottom,
+                legendBottom: Math.max(...items.map((li) => li.getBoundingClientRect().bottom)),
+                slack: panel.scrollHeight - panel.clientHeight,
+                clippedItems: items.filter((li) => li.scrollHeight > li.clientHeight + 1).length,
+                viewportHeight: window.innerHeight,
+                items: items.length,
+              }
+            })
+            if (m.items < 9) failures.push(`[morse-legend ${name}] 凡例が${m.items}行しかない`)
+            if (m.slack > 0) {
+              failures.push(
+                `[morse-legend ${name}] 固定パネルがはみ出している(scrollHeight-clientHeight=${m.slack}px)`,
+              )
+            }
+            if (m.legendBottom > m.panelBottom - 3) {
+              failures.push(
+                `[morse-legend ${name}] 凡例の下端(${m.legendBottom.toFixed(1)}px)がパネル下端(${m.panelBottom.toFixed(1)}px)に余白なく接している`,
+              )
+            }
+            if (m.panelBottom > m.viewportHeight + 1) {
+              failures.push(`[morse-legend ${name}] パネルが画面外へはみ出している`)
+            }
+            if (m.clippedItems > 0) {
+              failures.push(`[morse-legend ${name}] 文字が切れている行が${m.clippedItems}行ある`)
+            }
+          } catch (error) {
+            failures.push(`[morse-legend ${name}] ${error.message.split('\n')[0]}`)
+          }
+          await context.close()
+        }
+      }
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 // Issue #36/#33: スキャン枠は黄色一本(box-shadow・::before なし)で、スキャン中のタイルの面が
 // 緊急入口・通常タイルの面と異なり、赤いタイルが無いことを実描画(computed style)で確認する。
 // 4テーマ(明/夜 × 高コントラスト) × 4サイズ × 6状態 × 全タイルを順にスキャン状態にして測る。
@@ -1669,6 +1771,16 @@ async function main() {
   allFailures.push(...tightFailures)
   port += 1
 
+  console.log(`--- checking: morse-legend-fit (port ${port}) ---`)
+  const morseLegendFailures = await checkMorseLegendFit(chromium, port)
+  if (morseLegendFailures.length === 0) {
+    console.log('[morse-legend-fit] OK')
+  } else {
+    morseLegendFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...morseLegendFailures)
+  port += 1
+
   console.log(`--- checking: scan-ring-surface (port ${port}) ---`)
   const scanRingFailures = await checkScanRingSurface(chromium, port)
   if (scanRingFailures.length === 0) {
@@ -1703,6 +1815,15 @@ if (process.env.SCAN_RING_ONLY === '1') {
     process.exitCode = 1
   } else {
     console.log('[issue37-small-viewport] OK')
+  }
+} else if (process.env.MORSE_LEGEND_ONLY === '1') {
+  const { chromium } = await import('playwright')
+  const failures = await checkMorseLegendFit(chromium, 4730)
+  if (failures.length > 0) {
+    failures.forEach((failure) => console.error(failure))
+    process.exitCode = 1
+  } else {
+    console.log('[morse-legend-fit] OK')
   }
 } else {
   main()

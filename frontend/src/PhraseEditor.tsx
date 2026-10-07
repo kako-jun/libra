@@ -92,7 +92,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
       <Show when={group() === 'painLocation'}>
         <p class="phrase-note">
           痛い場所を選ぶと、続けて強さ（場所だけ / 少し / かなり / とても）を選びます。伝える文に
-          「痛いです」を含めると「胸がとても痛いです」のように強さが入ります（含まない文は末尾に（とても）が付きます）。
+          「痛いです」を含めると「胸がとても痛いです。」のように強さが入ります（含まない文は、句点で終わるなら句点の前に「…変です（とても）。」のように、句点がなければ末尾に（とても）が付きます）。
         </p>
       </Show>
 
@@ -139,7 +139,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
                 }
               >
                 <p class="phrase-note" role="note">
-                  この文には「痛いです」が無いので、強さは末尾に（とても）の形で付きます。
+                  この文には「痛いです」が無いので、強さは（とても）の形で付きます（句点で終わる文は句点の前、句点がない文は末尾）。
                 </p>
               </Show>
               <Show when={phraseProblem(phrase())}>
@@ -216,14 +216,14 @@ export function SettingsBackup(props: SettingsBackupProps) {
     const json = exportSettingsJson(props.settings)
     setBackupText(json)
     // 端末によってはクリップボードが使えない。使えなければ下の欄から手でコピーしてもらう
-    const fallback = () => setBackupStatus('書き出しました（下の欄からコピーしてください）')
+    const fallback = () => setBackupStatus('書き出しました（下の欄からコピーしてください）。')
     if (!navigator.clipboard) {
       fallback()
       return
     }
     navigator.clipboard
       .writeText(json)
-      .then(() => setBackupStatus('書き出してコピーしました'))
+      .then(() => setBackupStatus('書き出してコピーしました。'))
       .catch(fallback)
   }
 
@@ -233,19 +233,19 @@ export function SettingsBackup(props: SettingsBackupProps) {
     const next = parseSettingsJson(backupText(), props.settings)
     if (!next) {
       setImportArmed(false)
-      setBackupStatus('取り込めません: このアプリで書き出した設定を貼り付けてください')
+      setBackupStatus('取り込めません: このアプリで書き出した設定を貼り付けてください。')
       return
     }
     if (!importArmed()) {
       setImportArmed(true)
       setBackupStatus(
-        '取り込むと今の設定が書き換わります。よければもう一度「取り込み」を押してください',
+        '取り込むと今の設定が書き換わります。よければもう一度「取り込み」を押してください。',
       )
       return
     }
     setImportArmed(false)
     props.replaceSettings(next)
-    setBackupStatus('取り込みました')
+    setBackupStatus('取り込みました。')
   }
 
   const doReset = () => {
@@ -253,13 +253,13 @@ export function SettingsBackup(props: SettingsBackupProps) {
     if (!resetArmed()) {
       setResetArmed(true)
       setBackupStatus(
-        '全設定とフレーズが既定に戻ります（元に戻せません）。よければもう一度押してください',
+        '全設定とフレーズが既定に戻ります（元に戻せません）。よければもう一度押してください。',
       )
       return
     }
     setResetArmed(false)
     props.replaceSettings({ ...DEFAULT_SETTINGS })
-    setBackupStatus('設定を既定に戻しました')
+    setBackupStatus('設定を既定に戻しました。')
   }
 
   return (
@@ -275,7 +275,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
             setImportArmed(false)
             setResetArmed(false)
           }}
-          placeholder="書き出した設定の JSON をここに貼り付けて取り込みます"
+          placeholder="書き出した設定の JSON をここに貼り付けて取り込みます。"
         />
         <div class="phrase-actions">
           <button type="button" class="caregiver-action" onClick={doExport}>

@@ -74,7 +74,13 @@ const RESERVED_LABELS = ['戻る', 'はい', 'いいえ', '取り消し']
 
 /** 緊急と取り違えさせない。ラベルにこれらを含む項目は作れない */
 const EMERGENCY_WORDS = ['緊急', 'きんきゅう', 'キンキュウ']
-const EMERGENCY_MESSAGE = '緊急です。来てください'
+/** 緊急の主文(上部の緊急表示・読み上げ・緊急と同じ文の拒否判定の正本)。本文なので句点を付ける(requirements.md §4.1.3) */
+export const EMERGENCY_MESSAGE = '緊急です。来てください。'
+
+/** 句読点・「…」「・」の有無や違いで同一判定を回避されないよう、比較用にこれらと空白を除く */
+function stripPunctuation(value: string): string {
+  return compact(value).replace(/[。、．，.,！!？?…・]/g, '')
+}
 
 /** 全角/半角・空白の違いで予約語を回避されないよう揃える */
 function compact(value: string): string {
@@ -83,38 +89,38 @@ function compact(value: string): string {
 
 export const DEFAULT_PHRASES: Record<PhraseGroup, Phrase[]> = {
   discomfort: [
-    { id: 'suffering', label: '苦しい', text: '苦しいです', tone: 'urgent' },
-    { id: 'phlegm', label: '痰を取ってほしい', text: '痰を取ってほしいです' },
-    { id: 'reposition', label: '体の向きを変えたい', text: '体の向きを変えたいです' },
-    { id: 'toilet', label: 'トイレ', text: 'トイレに行きたいです' },
+    { id: 'suffering', label: '苦しい', text: '苦しいです。', tone: 'urgent' },
+    { id: 'phlegm', label: '痰を取ってほしい', text: '痰を取ってほしいです。' },
+    { id: 'reposition', label: '体の向きを変えたい', text: '体の向きを変えたいです。' },
+    { id: 'toilet', label: 'トイレ', text: 'トイレに行きたいです。' },
   ],
   discomfortOther: [
-    { id: 'hot', label: '暑い', text: '暑いです' },
-    { id: 'cold', label: '寒い', text: '寒いです' },
-    { id: 'thirsty', label: '喉が渇いた', text: '喉が渇きました' },
-    { id: 'itchy', label: 'かゆい', text: 'かゆいです' },
-    { id: 'cant-sleep', label: '眠れない', text: '眠れません' },
+    { id: 'hot', label: '暑い', text: '暑いです。' },
+    { id: 'cold', label: '寒い', text: '寒いです。' },
+    { id: 'thirsty', label: '喉が渇いた', text: '喉が渇きました。' },
+    { id: 'itchy', label: 'かゆい', text: 'かゆいです。' },
+    { id: 'cant-sleep', label: '眠れない', text: '眠れません。' },
   ],
   painLocation: [
-    { id: 'head', label: '頭', text: '頭が痛いです' },
-    { id: 'chest', label: '胸', text: '胸が痛いです', tone: 'urgent' },
-    { id: 'stomach', label: 'おなか', text: 'おなかが痛いです' },
-    { id: 'back', label: '背中腰', text: '背中・腰が痛いです' },
-    { id: 'limbs', label: '手足', text: '手足が痛いです' },
-    { id: 'other', label: 'その他', text: 'その他の場所が痛いです' },
+    { id: 'head', label: '頭', text: '頭が痛いです。' },
+    { id: 'chest', label: '胸', text: '胸が痛いです。', tone: 'urgent' },
+    { id: 'stomach', label: 'おなか', text: 'おなかが痛いです。' },
+    { id: 'back', label: '背中腰', text: '背中・腰が痛いです。' },
+    { id: 'limbs', label: '手足', text: '手足が痛いです。' },
+    { id: 'other', label: 'その他', text: 'その他の場所が痛いです。' },
   ],
   moodRequest: [
-    { id: 'fine', label: '大丈夫', text: '大丈夫です', tone: 'positive' },
-    { id: 'thanks', label: 'ありがとう', text: 'ありがとう', tone: 'positive' },
-    { id: 'sleep', label: '眠りたい', text: '眠りたいです' },
-    { id: 'quiet', label: '静かにしてほしい', text: '静かにしてほしいです' },
-    { id: 'family', label: '家族に会いたい', text: '家族に会いたいです' },
-    { id: 'talk', label: '話したい', text: '話したいです' },
+    { id: 'fine', label: '大丈夫', text: '大丈夫です。', tone: 'positive' },
+    { id: 'thanks', label: 'ありがとう', text: 'ありがとう。', tone: 'positive' },
+    { id: 'sleep', label: '眠りたい', text: '眠りたいです。' },
+    { id: 'quiet', label: '静かにしてほしい', text: '静かにしてほしいです。' },
+    { id: 'family', label: '家族に会いたい', text: '家族に会いたいです。' },
+    { id: 'talk', label: '話したい', text: '話したいです。' },
   ],
   feelings: [
-    { id: 'anxious', label: '不安', text: '不安です' },
-    { id: 'lonely', label: 'さみしい', text: 'さみしいです' },
-    { id: 'restless', label: '落ち着かない', text: '落ち着かないです' },
+    { id: 'anxious', label: '不安', text: '不安です。' },
+    { id: 'lonely', label: 'さみしい', text: 'さみしいです。' },
+    { id: 'restless', label: '落ち着かない', text: '落ち着かないです。' },
   ],
 }
 
@@ -124,13 +130,15 @@ const TONES: Tone[] = ['neutral', 'urgent', 'calm', 'positive']
 export function phraseProblem(phrase: Phrase): string | null {
   const label = compact(phrase.label)
   const text = compact(phrase.text)
-  if (label === '') return '表示ラベルが空です'
-  if (text === '') return '伝える文が空です'
-  if (RESERVED_LABELS.includes(label)) return `「${label}」は予約された名前です`
+  if (label === '') return '表示ラベルが空です。'
+  if (text === '') return '伝える文が空です。'
+  if (RESERVED_LABELS.includes(stripPunctuation(label))) return `「${label}」は予約された名前です。`
   if (EMERGENCY_WORDS.some((word) => label.includes(word))) {
-    return '緊急と取り違えるため「緊急」を含むラベルは使えません'
+    return '緊急と取り違えるため「緊急」を含むラベルは使えません。'
   }
-  if (text === compact(EMERGENCY_MESSAGE)) return '緊急の表示と同じ文は使えません'
+  if (stripPunctuation(text) === stripPunctuation(EMERGENCY_MESSAGE)) {
+    return '緊急の表示と同じ文は使えません。'
+  }
   return null
 }
 
@@ -175,8 +183,32 @@ function normalizePhrase(input: unknown): Phrase | null {
   return phrase
 }
 
+/**
+ * フレーズ保存値の世代。設定(settings.ts の phrasesVersion)に印として保存・書き出しする。
+ * 1 = 句点導入(Issue #46)後。印が無い・1 未満の保存値と取り込みJSONだけを一度だけ昇格し、
+ * 昇格後は印を付けて以降の読み込みでは昇格しない(介助者が句点を意図的に消した文を戻さない)。
+ */
+export const PHRASES_VERSION = 1
+
+/**
+ * 句点導入(Issue #46)前に保存された「既定そのままの文」を、新しい既定(句点つき)へ揃える。
+ * 同じグループ・同じ id の既定と、句点を除いて完全一致するときだけ。介助者が書き換えた文は触らない。
+ * 呼び出すのは印(phrasesVersion)が古い保存値だけ。
+ */
+function upgradeLegacyDefaultText(group: PhraseGroup, phrase: Phrase): Phrase {
+  const base = DEFAULT_PHRASES[group].find((p) => p.id === phrase.id)
+  if (base && base.text.endsWith('。') && phrase.text === base.text.slice(0, -1)) {
+    return { ...phrase, text: base.text }
+  }
+  return phrase
+}
+
 /** 未知の値を安全な PhraseSets へ丸める。壊れた項目は捨て、id の重複は後ろを捨てる。 */
-export function normalizePhraseSets(input: unknown): PhraseSets {
+export function normalizePhraseSets(
+  input: unknown,
+  /** 旧既定(句点なし)を新既定へ昇格するか。既定は false。settings.ts が印の古い保存値・取り込みにだけ true を渡す */
+  upgradeLegacy = false,
+): PhraseSets {
   if (typeof input !== 'object' || input === null) return {}
   const raw = input as Record<string, unknown>
   const result: PhraseSets = {}
@@ -186,10 +218,10 @@ export function normalizePhraseSets(input: unknown): PhraseSets {
     const seen = new Set<string>()
     const phrases: Phrase[] = []
     for (const item of list) {
-      const phrase = normalizePhrase(item)
-      if (!phrase || seen.has(phrase.id)) continue
-      seen.add(phrase.id)
-      phrases.push(phrase)
+      const parsed = normalizePhrase(item)
+      if (!parsed || seen.has(parsed.id)) continue
+      seen.add(parsed.id)
+      phrases.push(upgradeLegacy ? upgradeLegacyDefaultText(group, parsed) : parsed)
       if (phrases.length >= MAX_PHRASES_PER_GROUP) break
     }
     result[group] = phrases
@@ -216,10 +248,13 @@ export const PAIN_INTENSITY_WORDS: Record<PainIntensity, string> = {
 
 /**
  * 痛い場所の全文に強さを入れる。「胸が痛いです」→「胸がとても痛いです」。
- * 全文に「痛いです」が無い(介助者が自由に編集した)ときは、末尾に（とても）を足す。
+ * 全文に「痛いです」が無い(介助者が自由に編集した)ときは、強さを（とても）の形で足す。
+ * 句点で終わる文は句点の前に入れ(「…変です（とても）。」)、句点がない文は末尾に足す。
  */
 export function composePainText(text: string, intensity: PainIntensity): string {
   const word = PAIN_INTENSITY_WORDS[intensity]
   if (text.includes('痛いです')) return text.replace('痛いです', `${word}痛いです`)
+  // 句点で終わる文は、強さを句点の前に入れる(「…。（とても）」にしない)
+  if (text.endsWith('。')) return `${text.slice(0, -1)}（${word}）。`
   return `${text}（${word}）`
 }

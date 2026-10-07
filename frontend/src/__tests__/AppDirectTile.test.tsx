@@ -46,7 +46,7 @@ class MockAudioContext {
   }
 }
 
-const EMERGENCY = '緊急です。来てください'
+const EMERGENCY = '緊急です。来てください。'
 
 function scanningLabel(container: HTMLElement): string | null {
   return container.querySelector('.tile.scanning .tile-label')?.textContent ?? null
@@ -109,14 +109,14 @@ describe('Issue #38: タイル直接選択', () => {
       vi.advanceTimersByTime(HEAD_HOLD_MS)
       expect(scanningLabel(container)).toBe('はい')
       fireEvent.pointerDown(tile(container, 'いいえ'), { pointerId: 1 })
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('スキャン位置が先頭(緊急)でも、別タイルを押せば緊急は実行されない', () => {
       const { container } = render(() => <App />)
       expect(scanningLabel(container)).toBe('緊急')
       fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1 })
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
       expect(container.querySelector('.emergency-status-message')).toBeNull()
     })
 
@@ -148,7 +148,7 @@ describe('Issue #38: タイル直接選択', () => {
       const { container } = render(() => <App />)
       expect(scanningLabel(container)).toBe('緊急')
       fireEvent.click(tile(container, 'いいえ'))
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('click 単独の実行は、直前の pointerdown+click の捨て分を持ち越さない', () => {
@@ -157,7 +157,7 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.click(tile(container, 'はい')) // 捨てられる
       vi.advanceTimersByTime(1000)
       fireEvent.click(tile(container, 'いいえ')) // 単独の click は実行される
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('pointercancel で押下状態が残らない(離して決定でも決定されず、その後の click は単独扱い)', () => {
@@ -167,10 +167,10 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerDown(yes, { pointerId: 1 })
       fireEvent.pointerCancel(window, { pointerId: 1 })
       fireEvent.pointerUp(window, { pointerId: 1 })
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
       // 取り消し後は pending が残らず、続く click は支援技術の合成として実行される
       fireEvent.click(yes)
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
     })
 
     it('下限付き: pointerdown 後に pointercancel すると下限に達しても決定されない', () => {
@@ -180,7 +180,7 @@ describe('Issue #38: タイル直接選択', () => {
       vi.advanceTimersByTime(200)
       fireEvent.pointerCancel(window, { pointerId: 1 })
       vi.advanceTimersByTime(2000)
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
     })
 
     it('連打: 連打無視区間内の2回目の押下は無視される', () => {
@@ -197,9 +197,9 @@ describe('Issue #38: タイル直接選択', () => {
       const { container } = render(() => <App />)
       fireEvent.pointerDown(tile(container, 'いいえ'), { pointerId: 1 })
       vi.advanceTimersByTime(1499)
-      expect(h1Text(container)).not.toBe('いいえ')
+      expect(h1Text(container)).not.toBe('いいえ。')
       vi.advanceTimersByTime(1) // この間にカーソルは「はい」へ進んでいる
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('離して決定: 押下中は実行されず、スキャンが進んだ後に離しても押し始めのタイルが実行される', () => {
@@ -207,10 +207,10 @@ describe('Issue #38: タイル直接選択', () => {
       const { container } = render(() => <App />)
       const no = tile(container, 'いいえ')
       fireEvent.pointerDown(no, { pointerId: 1 })
-      expect(h1Text(container)).not.toBe('いいえ')
+      expect(h1Text(container)).not.toBe('いいえ。')
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 3) // カーソルは別項目
       fireEvent.pointerUp(window, { pointerId: 1 })
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('押下時間の下限未満のタップは何も実行しない', () => {
@@ -220,7 +220,7 @@ describe('Issue #38: タイル直接選択', () => {
       vi.advanceTimersByTime(300)
       fireEvent.pointerUp(window, { pointerId: 1 })
       vi.advanceTimersByTime(2000)
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
     })
 
     it('押している間に画面が変わったら、押し始めのタイルは実行されず無視される', () => {
@@ -233,7 +233,7 @@ describe('Issue #38: タイル直接選択', () => {
       expect(screenLabel(container)).toContain('不快')
       vi.advanceTimersByTime(200) // 「はい」の決定時刻だが画面が違うので無視
       expect(screenLabel(container)).toContain('不快')
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
     })
   })
 
@@ -289,10 +289,10 @@ describe('Issue #38: タイル直接選択', () => {
       })
       fireEvent.pointerUp(container.querySelector('.grid-board') as HTMLElement, { pointerId: 1 })
       fireEvent.click(tile(container, 'はい'))
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
       // 消費済みなので、次の pointerdown なしの click は合成として実行される
       fireEvent.click(tile(container, 'いいえ'))
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('マルチタッチ: 1と2を押し、2を離して id2 の click を消費しても、id1 の記録は残る', () => {
@@ -302,13 +302,13 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerDown(board, { pointerId: 2 })
       fireEvent.pointerUp(board, { pointerId: 2 })
       pointerClick(tile(container, 'はい'), 2)
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
       // id1 はまだ押下中(記録が残っている)。その click は消費される
       pointerClick(tile(container, 'いいえ'), 1)
-      expect(h1Text(container)).not.toBe('いいえ')
+      expect(h1Text(container)).not.toBe('いいえ。')
       // 記録は尽きた。次の click は合成として実行される
       pointerClick(tile(container, 'いいえ'), 1)
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('マルチタッチ: id2 を cancel しても、id1 の click は消費される(id2 の記録だけが消える)', () => {
@@ -318,11 +318,11 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerDown(board, { pointerId: 2 })
       fireEvent.pointerCancel(window, { pointerId: 2 })
       pointerClick(tile(container, 'はい'), 2) // id2 の記録は無い → 合成として実行される
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
       vi.advanceTimersByTime(1000)
       fireEvent.pointerUp(board, { pointerId: 1 })
       pointerClick(tile(container, 'いいえ'), 1) // id1 の記録は残っている → 消費
-      expect(h1Text(container)).not.toBe('いいえ')
+      expect(h1Text(container)).not.toBe('いいえ。')
     })
 
     it('記録されていない pointerId(-1)の click は合成として実行される', () => {
@@ -330,7 +330,7 @@ describe('Issue #38: タイル直接選択', () => {
       const board = container.querySelector('.grid-board') as HTMLElement
       fireEvent.pointerDown(board, { pointerId: 1 }) // 別ポインターの記録があっても消費しない
       pointerClick(tile(container, 'はい'), -1)
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
     })
 
     it('pointerup 後に1秒以上経っても、同じ pointerId の click は消費される(合成扱いで二重実行しない)', () => {
@@ -340,7 +340,7 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerUp(board, { pointerId: 1 })
       vi.advanceTimersByTime(2500) // メインスレッドが止まった想定
       pointerClick(tile(container, 'はい'), 1)
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
     })
 
     it('pointerup が届かなかった記録も、10秒を超えれば次の合成 click を捨てない', () => {
@@ -349,7 +349,7 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerDown(board, { pointerId: 1 })
       vi.advanceTimersByTime(11000)
       fireEvent.click(tile(container, 'はい')) // pointerId なし → 期限切れ破棄後に合成として実行
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
     })
 
     it('右/中クリック・ペンのバレルボタンの pointerdown ではタイルを実行しない', () => {
@@ -358,9 +358,9 @@ describe('Issue #38: タイル直接選択', () => {
         fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1, button })
         fireEvent.pointerUp(window, { pointerId: 1, button })
       }
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
       fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1, button: 0 })
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
     })
 
     it('pointercancel した押下の記録は残らず、次の合成 click は捨てられない', () => {
@@ -369,7 +369,7 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerDown(board, { pointerId: 1 })
       fireEvent.pointerCancel(window, { pointerId: 1 })
       fireEvent.click(tile(container, 'はい'))
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
     })
 
     it('click が届かなかった押下の記録は、時間が経てば次の合成 click を捨てない', () => {
@@ -379,7 +379,7 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerUp(board, { pointerId: 1 }) // click は祖先にも来ず消費されなかった
       vi.advanceTimersByTime(2000)
       fireEvent.click(tile(container, 'はい'))
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
     })
   })
 
@@ -400,7 +400,7 @@ describe('Issue #38: タイル直接選択', () => {
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS)
       expect(scanningLabel(container)).toBe('いいえ')
       fireEvent.keyDown(window, { key: 'Enter', code: 'Enter' })
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('離して決定のキーも押し始めのスキャン対象を実行する', () => {
@@ -410,7 +410,7 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.keyDown(window, { key: ' ', code: 'Space' })
       vi.advanceTimersByTime(INTERVAL_MS * 2)
       fireEvent.keyUp(window, { key: ' ', code: 'Space' })
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
     })
   })
 
@@ -426,10 +426,10 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerUp(overlay, { pointerId: 1 })
       expect(container.querySelector('.caregiver-overlay')).toBeNull()
       fireEvent.click(tile(container, 'はい')) // 指を離した位置の下のタイルへ届く click
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
       expect(scanningLabel(container)).toBe('緊急') // ホーム先頭から再開
       fireEvent.click(tile(container, 'いいえ')) // 次の合成 click は実行される
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('オーバーレイの pointerdown でメニューが閉じ、続く pointerId 付きタイル click は実行されない', () => {
@@ -440,17 +440,17 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerUp(overlay, { pointerId: 1 })
       expect(container.querySelector('.caregiver-overlay')).toBeNull()
       pointerClick(tile(container, 'はい'), 1)
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
       expect(scanningLabel(container)).toBe('緊急')
       pointerClick(tile(container, 'いいえ'), 1) // 記録は消費済み。次の pointerdown なし click は合成として実行
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
     })
 
     it('表示中のタイル click 単独も何も実行しない', () => {
       const { container } = render(() => <App />)
       open(container)
       fireEvent.click(tile(container, 'はい'))
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
       expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
     })
 
@@ -460,7 +460,7 @@ describe('Issue #38: タイル直接選択', () => {
       fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1 })
       fireEvent.click(tile(container, 'はい'))
       expect(container.querySelector('.caregiver-overlay')).toBeNull()
-      expect(h1Text(container)).not.toBe('はい')
+      expect(h1Text(container)).not.toBe('はい。')
     })
 
     it('介助者ボタン上の Enter / Space は本人入力にならず、タイル実行も起こさない(#30/#31)', () => {
@@ -534,7 +534,7 @@ describe('Issue #38: タイル直接選択', () => {
       vi.advanceTimersByTime(1000)
       fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 3 })
       expect(h1Text(container)).toBe(EMERGENCY)
-      expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい')
+      expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
     })
 
     it('緊急状態は再マウント(リロード)後もホーム起動で上部表示が保持される(#39/#41)', () => {

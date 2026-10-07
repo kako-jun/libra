@@ -1,7 +1,7 @@
 // 介助者設定の localStorage 読み書き・検証。
 // 正本: docs/requirements.md §3.3, §6
 
-import { normalizePhraseSets, type PhraseSets } from './phrases'
+import { PHRASES_VERSION, normalizePhraseSets, type PhraseSets } from './phrases'
 import type { ActivateOn } from './switchInput'
 import { HAPTIC_STRENGTHS, type HapticStrength } from './feedback'
 
@@ -52,6 +52,11 @@ export interface Settings {
   theme: Theme
   /** Issue #8: 介助者が編集した定型フレーズ。キーが無いグループは既定のプリセット */
   phrases: PhraseSets
+  /**
+   * フレーズ保存値の世代の印(Issue #46)。印が古い・無い保存値と取り込みJSONだけを一度だけ昇格し、
+   * 昇格後は PHRASES_VERSION を保存・書き出しして、以降は昇格しない
+   */
+  phrasesVersion: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -74,6 +79,7 @@ export const DEFAULT_SETTINGS: Settings = {
   highContrast: false,
   theme: 'auto',
   phrases: {},
+  phrasesVersion: PHRASES_VERSION,
 }
 
 const STORAGE_KEY = 'libra'
@@ -104,6 +110,15 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   if (value < min || value > max) return fallback
   return value
+}
+
+/** 保存値・取り込みJSONのフレーズが、昇格済み(印が現行以上)か */
+function currentPhrasesMark(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function hasCurrentPhrasesMark(value: unknown): boolean {
+  return currentPhrasesMark(value) >= PHRASES_VERSION
 }
 
 /** 未知の値を安全な Settings へ丸める。壊れた値・範囲外は base(既定では既定値)にする。 */
@@ -162,7 +177,15 @@ export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTI
     highContrast: typeof raw.highContrast === 'boolean' ? raw.highContrast : base.highContrast,
     theme: THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : base.theme,
     // 項目が無い取り込みでは、今のフレーズを消さずに残す
-    phrases: raw.phrases === undefined ? base.phrases : normalizePhraseSets(raw.phrases),
+    phrases:
+      raw.phrases === undefined
+        ? base.phrases
+        : normalizePhraseSets(raw.phrases, !hasCurrentPhrasesMark(raw.phrasesVersion)),
+    // フレーズを受け取ったら昇格済みの印を付ける(将来の版の印は書き戻さず保つ)。受け取らないときは今の印のまま
+    phrasesVersion:
+      raw.phrases === undefined
+        ? base.phrasesVersion
+        : Math.max(currentPhrasesMark(raw.phrasesVersion), PHRASES_VERSION),
   }
   // 語の区切りは文字の確定より常に長くする(画面の表示と実際の動作をずらさないため、保存値で保証する)
   result.morseWordGapMs = Math.max(

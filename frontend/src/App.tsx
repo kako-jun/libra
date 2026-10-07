@@ -23,6 +23,7 @@ import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
 import { createSwitchInput } from './lib/switchInput'
+import { EMERGENCY_MESSAGE } from './lib/phrases'
 import {
   EMERGENCY_REPEAT_MS,
   HAPTIC_STRENGTHS,
@@ -44,8 +45,7 @@ import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './l
 
 /** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
 const COMPACT_NOTES_QUERY = '(max-height: 500px), (max-width: 480px)'
-const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます'
-const EMERGENCY_MESSAGE = '緊急です。来てください'
+const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます。'
 /** 介助者メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
 const CAREGIVER_TABS = [
   { id: 'status', label: '状態' },
@@ -78,16 +78,16 @@ const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
 
 // Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者メニューに表示する文言。
 // 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
-const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
+export const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
   active: '画面スリープ防止: 有効',
-  unsupported: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
-  error: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
-  released: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください',
+  unsupported: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください。',
+  error: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください。',
+  released: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください。',
 }
 
 // PR #11 レビュー対応(should-1): オフラインで動く準備(Service Worker がこのページを
 // 制御しているか)を Wake Lock と同じ扱いで介助者メニューに表示する。
-const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
+export const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
   ready: 'オフライン準備: 完了',
   'not-ready': 'オフライン準備: 未完了',
 }
@@ -656,7 +656,7 @@ export default function App() {
           details.includes(action.label) ? details : [...details, action.label],
         )
         feedback('urgentMessage')
-        announce(`緊急です。来てください。${action.label}`, action.label)
+        announce(`${EMERGENCY_MESSAGE}${action.label}`, action.label)
         setShowUndo(false)
         goTo('home')
         return
@@ -1227,7 +1227,7 @@ export default function App() {
 
       <Show when={LETTER_SCREENS.includes(screen())}>
         <section class="letter-strip">
-          <output ref={letterOutputEl}>{letterText() || '文字を選んでください'}</output>
+          <output ref={letterOutputEl}>{letterText() || '文字を選んでください。'}</output>
         </section>
       </Show>
 
@@ -1243,39 +1243,40 @@ export default function App() {
           </p>
           <ul class="morse-legend" aria-label="モールスの操作と自動で起きること">
             <li>
-              <b>短く押す</b>＝・　<b>{(morseConfig().dashMs / 1000).toFixed(1)}秒以上押す</b>＝－
+              <b>短く押す</b>＝短点（・）、
+              <b>{(morseConfig().dashMs / 1000).toFixed(1)}秒以上押す</b>＝長点（－）。
             </li>
             <Show when={settings().minHoldMs > 0}>
               <li>
-                <b>{(settings().minHoldMs / 1000).toFixed(1)}秒未満</b>の押下は数えない
+                <b>{(settings().minHoldMs / 1000).toFixed(1)}秒未満</b>の押下は数えない。
               </li>
             </Show>
             <li>
               <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・（<b>休まず続けて</b>
               {'打つと、待たずにすぐ。'}
               <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>
-              {'休むと数え直し）'}
+              {'休むと数え直し）。'}
             </li>
             <li>
-              <b>・・・・・</b>（・を5つ）→ <b>待つと</b>スキャンへ戻る
+              <b>・・・・・</b>（・を5つ）→ <b>待つと</b>スキャンへ戻る。
             </li>
             <li>
-              <b>・・・・・・</b>（・を6つ）→ <b>待つと</b>1字消す
+              <b>・・・・・・</b>（・を6つ）→ <b>待つと</b>1字消す。
             </li>
             <li>
-              <b>・－・－・－</b> → <b>待つと</b>確定して伝える
+              <b>・－・－・－</b> → <b>待つと</b>確定して伝える。
             </li>
             <li>
-              <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>押さないと、1文字が決まる
+              <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>押さないと、1文字が決まる。
             </li>
             <li>
-              <b>{(settings().morseWordGapMs / 1000).toFixed(1)}秒</b>押さないと、語の区切りが入る
+              <b>{(settings().morseWordGapMs / 1000).toFixed(1)}秒</b>押さないと、語の区切りが入る。
             </li>
             <li>
-              <b>{MORSE_IDLE_EXIT_MS / 1000}秒</b>何も押さないと、スキャンへ戻る
+              <b>{MORSE_IDLE_EXIT_MS / 1000}秒</b>何も押さないと、スキャンへ戻る。
             </li>
             <li>
-              <b>{MORSE_MAX_HOLD_MS / 1000}秒を超えて</b>押しっぱなしの入力は、無効になる
+              <b>{MORSE_MAX_HOLD_MS / 1000}秒を超えて</b>押しっぱなしの入力は、無効になる。
             </li>
           </ul>
         </section>

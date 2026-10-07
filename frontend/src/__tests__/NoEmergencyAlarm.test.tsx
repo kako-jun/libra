@@ -22,7 +22,7 @@ import {
 
 const HEAD_HOLD_MS = 3000
 const INTERVAL_MS = 1500
-const EMERGENCY_TEXT = '緊急です。来てください'
+const EMERGENCY_TEXT = '緊急です。来てください。'
 const EMERGENCY_KEY = 'libra:emergency'
 
 let oscillatorCount = 0
