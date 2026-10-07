@@ -92,7 +92,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
       <Show when={group() === 'painLocation'}>
         <p class="phrase-note">
           痛い場所を選ぶと、続けて強さ（場所だけ / 少し / かなり / とても）を選びます。伝える文に
-          「痛いです」を含めると「胸がとても痛いです。」のように強さが入ります（含まない文は末尾に（とても）が付きます）。
+          「痛いです」を含めると「胸がとても痛いです。」のように強さが入ります（含まない文は、句点で終わるなら句点の前に「…変です（とても）。」のように、句点がなければ末尾に（とても）が付きます）。
         </p>
       </Show>
 
@@ -139,7 +139,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
                 }
               >
                 <p class="phrase-note" role="note">
-                  この文には「痛いです」が無いので、強さは末尾に（とても）の形で付きます。
+                  この文には「痛いです」が無いので、強さは（とても）の形で付きます（句点で終わる文は句点の前、句点がない文は末尾）。
                 </p>
               </Show>
               <Show when={phraseProblem(phrase())}>
