@@ -1611,13 +1611,46 @@ h1[data-fit='single'] {
   }
 
   .emergency-status-message {
+    flex: none;
     font-size: clamp(1.1rem, 3.6vh, 1.6rem);
+  }
+
+  /* 選んだ緊急詳細が増えても帯を確実に1行に保つ(2行に戻るとセルが低くなり、2行ラベルが
+     枠の帯に入る)。長いときは「…」で省略する。詳細の全文は緊急詳細の画面で確認できる。 */
+  .emergency-status {
+    flex-wrap: nowrap;
+  }
+
+  .emergency-status .emergency-detail-status {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .emergency-status .emergency-detail-label {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .emergency-status .emergency-details {
+    display: block;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .emergency-status .emergency-details li {
+    display: inline;
   }
 }
 
-/* 高コントラストの枠は、短い画面と狭い画面(スマホ縦 320x568 の緊急+伝達でもセルの高さが約65px)で
+/* 高コントラストの枠は、短い画面と、狭くて低めの画面(スマホ縦 320x568 の緊急+伝達でもセルの高さが約65px。
+   390x844 など高さに余裕のある縦向きスマホは 9px のまま)で
    7px にする(--ring-extra を 1px に抑え、補正した下限が content 高さを超えないようにする) */
-@media (max-height: 500px), (max-width: 480px) {
+@media (max-height: 500px), (max-width: 480px) and (max-height: 700px) {
   :root[data-high-contrast='true'] {
     --scan-ring-width: 7px;
   }
