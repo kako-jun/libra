@@ -8,7 +8,7 @@ Bedside communication UI. The upper area separates the unresolved emergency stat
 
 The design should feel related to Esuna: simple, direct, high-contrast, and built around large touch targets. It is not bound to Esuna's fixed 9-grid operation model. Libra may use more or fewer tiles depending on the task.
 
-Theme: green-based, calm, medical-adjacent, and readable. Urgent actions may use red.
+Theme: green-based, calm, medical-adjacent, and readable. Red is reserved for the top message area only (Issue #36); no tile is red.
 
 ## 2. Color Palette & Roles (Issue #3)
 
@@ -18,47 +18,49 @@ Two themes — 明るい (light, daytime ward) and 夜間 (dark, night ward) —
 
 ### Light theme — 明るい (bright, calm; daytime ward)
 
-| Token                        | Value     | Usage                                                                                           |
-| ---------------------------- | --------- | ----------------------------------------------------------------------------------------------- |
-| `--bg`                       | `#eafaf1` | App background                                                                                  |
-| `--surface`                  | `#ffffff` | Neutral tile                                                                                    |
-| `--surface-calm`             | `#dcf5e6` | Slow / non-urgent actions                                                                       |
-| `--surface-positive`         | `#c9f0d9` | Yes / okay / thanks                                                                             |
-| `--surface-scanning`         | `#fde68a` | Non-urgent tile currently under the scan cursor                                                 |
-| `--text`                     | `#0f241d` | Body text on light surfaces                                                                     |
-| `--text-muted`               | `#4b6358` | Tile detail text                                                                                |
-| `--message-bg`               | `#0f5132` | Message panel (neutral tone)                                                                    |
-| `--message-text`             | `#f3fbf7` | Message panel text                                                                              |
-| `--urgent-bg`                | `#b3261e` | Emergency tile / message panel (solid fill)                                                     |
-| `--urgent-text`              | `#ffffff` | Text on urgent fill                                                                             |
-| `--scan-ring`                | `#facc15` | Scan-cursor ring (same value in both themes)                                                    |
-| `--scan-ring-width`          | `6px`     | Ring thickness (`9px` under high contrast; `7px` on short or narrow-and-low viewports, see §11) |
-| `--scan-ring-outline`        | `#0f241d` | Dark outline pairing the ring on non-urgent tiles (§2 "Scan cursor emphasis" below)             |
-| `--scan-ring-outline-urgent` | `#ffffff` | Light outline pairing the ring on the emergency tile                                            |
-| `--grid-line`                | `#cde3d4` | Cell divider line (pale green-gray)                                                             |
-| `--grid-line-width`          | `1px`     | Divider line thickness (`3px` under high contrast)                                              |
+| Token                               | Value                 | Usage                                                                                           |
+| ----------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------- |
+| `--bg`                              | `#eafaf1`             | App background                                                                                  |
+| `--surface`                         | `#ffffff`             | Neutral tile                                                                                    |
+| `--surface-calm`                    | `#dcf5e6`             | Slow / non-urgent actions                                                                       |
+| `--surface-positive`                | `#c9f0d9`             | Yes / okay / thanks                                                                             |
+| `--surface-scanning`                | `#0f241d`             | Tile under the scan cursor (inverted to a dark fill so the single yellow ring clears 3:1)       |
+| `--text`                            | `#0f241d`             | Body text on light surfaces                                                                     |
+| `--text-muted`                      | `#4b6358`             | Tile detail text                                                                                |
+| `--message-bg`                      | `#0f5132`             | Message panel (neutral tone)                                                                    |
+| `--message-text`                    | `#f3fbf7`             | Message panel text                                                                              |
+| `--urgent-bg`                       | `#b3261e`             | Red. Message panel in urgent tone and the emergency-status band ONLY; never a tile              |
+| `--urgent-text`                     | `#ffffff`             | Text on the red message panel / band                                                            |
+| `--scan-ring`                       | `#facc15`             | Scan-cursor ring (same value in both themes)                                                    |
+| `--scan-ring-width`                 | `6px`                 | Ring thickness (`9px` under high contrast; `7px` on short or narrow-and-low viewports, see §11) |
+| `--emergency-tile-bg`               | `#0f241d`             | Home / sub-screen Emergency tile (inverted dark fill, not red)                                  |
+| `--emergency-tile-text`             | `#ffffff`             | Text on the Emergency tile                                                                      |
+| `--scan-text` / `--scan-text-muted` | `#f3fbf7` / `#c9ecd9` | Label / detail+preview text on the scanning (dark) fill                                         |
+| `--grid-line`                       | `#cde3d4`             | Cell divider line (pale green-gray)                                                             |
+| `--grid-line-width`                 | `1px`                 | Divider line thickness (`3px` under high contrast)                                              |
 
 ### Dark theme — 夜間 (dark, night ward)
 
-| Token                        | Value     | Usage                                                                                                |
-| ---------------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
-| `--bg`                       | `#07140f` | App background (near-black green)                                                                    |
-| `--surface`                  | `#17362a` | Neutral tile                                                                                         |
-| `--surface-calm`             | `#123a29` | Slow / non-urgent actions                                                                            |
-| `--surface-positive`         | `#1a4a32` | Yes / okay / thanks                                                                                  |
-| `--surface-scanning`         | `#6b5510` | Non-urgent tile currently under the scan cursor                                                      |
-| `--text`                     | `#eafaf1` | Body text on dark surfaces                                                                           |
-| `--text-muted`               | `#9fc4b0` | Tile detail text                                                                                     |
-| `--message-bg`               | `#0a2318` | Message panel (neutral tone)                                                                         |
-| `--message-text`             | `#eafaf1` | Message panel text                                                                                   |
-| `--urgent-bg`                | `#d7263d` | Emergency tile / message panel (solid fill)                                                          |
-| `--urgent-text`              | `#ffffff` | Text on urgent fill                                                                                  |
-| `--scan-ring-width`          | `6px`     | Ring thickness (`9px` under high contrast)                                                           |
-| `--scan-ring-outline`        | `#eafaf1` | Light outline pairing the ring (clears 3:1 against both this theme's fills, so urgent reuses it too) |
-| `--scan-ring-outline-urgent` | `#eafaf1` | Same as `--scan-ring-outline` above                                                                  |
-| `--grid-line`                | `#2d5a41` | Cell divider line (lighter green than the dark bg/tile fill, so it stays visible on both)            |
+| Token                               | Value                 | Usage                                                                                     |
+| ----------------------------------- | --------------------- | ----------------------------------------------------------------------------------------- |
+| `--bg`                              | `#07140f`             | App background (near-black green)                                                         |
+| `--surface`                         | `#17362a`             | Neutral tile                                                                              |
+| `--surface-calm`                    | `#123a29`             | Slow / non-urgent actions                                                                 |
+| `--surface-positive`                | `#1a4a32`             | Yes / okay / thanks                                                                       |
+| `--surface-scanning`                | `#6b5510`             | Tile under the scan cursor (dark amber fill)                                              |
+| `--text`                            | `#eafaf1`             | Body text on dark surfaces                                                                |
+| `--text-muted`                      | `#9fc4b0`             | Tile detail text                                                                          |
+| `--message-bg`                      | `#0a2318`             | Message panel (neutral tone)                                                              |
+| `--message-text`                    | `#eafaf1`             | Message panel text                                                                        |
+| `--urgent-bg`                       | `#d7263d`             | Red. Message panel in urgent tone and the emergency-status band ONLY; never a tile        |
+| `--urgent-text`                     | `#ffffff`             | Text on the red message panel / band                                                      |
+| `--scan-ring-width`                 | `6px`                 | Ring thickness (`9px` under high contrast)                                                |
+| `--emergency-tile-bg`               | `#eafaf1`             | Emergency tile (inverted light fill on the dark theme, not red)                           |
+| `--emergency-tile-text`             | `#07140f`             | Text on the Emergency tile                                                                |
+| `--scan-text` / `--scan-text-muted` | `#eafaf1` / `#eafaf1` | Text on the scanning fill                                                                 |
+| `--grid-line`                       | `#2d5a41`             | Cell divider line (lighter green than the dark bg/tile fill, so it stays visible on both) |
 
-The emergency tile and the dedicated emergency-status area use a solid deep-red fill (`--urgent-bg`) with white text in both themes. The ordinary message panel uses its own transmission tone and never doubles as the unresolved emergency-state display.
+**Red role (Issue #36, kako-jun: "red only for the title bar; do not redden frames")**: `--urgent-bg` is used only by the top message area: the `.emergency-status` band while an emergency is latched, and `.message-panel` when a message with the urgent tone is shown (e.g. pain "とても"). No tile (not the Emergency entry tile, not urgent-detail items, not "とても") is filled or framed red, so ordinary choices are never swamped in red. Urgency is never carried by color alone: the band reads "緊急です。来てください" in text; the Emergency tile is labelled "緊急", bold, always first (home) / second (sub-screens), and is distinguished by an inverted fill (dark on the light themes, light on the dark theme). The ordinary message panel uses its own transmission tone and never doubles as the unresolved emergency-state display.
 
 ### High contrast (caregiver setting, layers on top of either theme)
 
@@ -100,13 +102,21 @@ The `1.05rem` floor is never multiplied. (Issue #34 exception: when a cell's con
 
 ### Scan cursor emphasis
 
-The current scan target gets a surface-color shift (`--surface-scanning`) on non-urgent tiles, plus a ring drawn with an absolutely-positioned `::after` inset a few pixels from the cell's own edges — so it stays fully inside that cell and never overlaps the seamless-grid divider line or the neighboring cell. Scale-up is intentionally not used here (Issue #3 再レビュー): in a gap-less grid, enlarging the scanning cell would overlap its neighbors. The emergency tile keeps its solid red fill even while scanning — only the ring is added on top.
+The current scan target inverts to a dark fill (`--surface-scanning`, with `--scan-text*` for its text) plus one yellow ring (`--scan-ring`) drawn with an absolutely-positioned `::after` inset a few pixels from the cell's own edges — so it stays fully inside that cell and never overlaps the seamless-grid divider line or the neighboring cell. Scale-up is intentionally not used here (Issue #3 再レビュー): in a gap-less grid, enlarging the scanning cell would overlap its neighbors. The Emergency tile is treated the same way while scanning (the ring identifies the cursor; its resting inverted fill identifies the tile).
 
-**Issue #34 (ring never hides text)**: the ring occupies a band of `--scan-ring-inset` (`4px` offset + `--scan-ring-width` + `2px` inner outline = `12px`; `15px` under high contrast, `13px` for the 7px ring on short viewports) along the cell's edges. Tile padding, the chevron (`right`) and the content preview (`left/right/bottom`) all use that same token, so the label, preview and chevron sit inside the band whether or not the tile is scanning — the ring appearing never covers text and nothing moves or resizes when the cursor arrives (the ring is absolutely positioned and takes no layout space). Previously the padding was 18/12/12px (or 8/6/5px on short viewports) and the preview sat 6px from the bottom, i.e. inside the ring.
+**Issue #34 (ring never hides text)**: the ring occupies a band of `--scan-ring-inset` (`4px` offset + `--scan-ring-width` + `2px` inner margin = `12px`; `15px` under high contrast, `13px` for the 7px ring on short viewports) along the cell's edges. Tile padding, the chevron (`right`) and the content preview (`left/right/bottom`) all use that same token, so the label, preview and chevron sit inside the band whether or not the tile is scanning — the ring appearing never covers text and nothing moves or resizes when the cursor arrives (the ring is absolutely positioned and takes no layout space). Previously the padding was 18/12/12px (or 8/6/5px on short viewports) and the preview sat 6px from the bottom, i.e. inside the ring.
 
-**PR#16 Opus レビュー must-2**: a plain yellow ring (`--scan-ring`) alone only reaches `1.53:1` against a white tile, well under WCAG's `3:1` non-text contrast floor. The ring is now a double outline: the yellow `border` (`--scan-ring-width`, `6px`/`9px` under high contrast, `7px` on short or narrow-and-low viewports) plus a `box-shadow` line on both its outer and inner edge, in `--scan-ring-outline`. That outline color is theme-dependent because a single fixed color can't clear 3:1 against every fill the ring can sit on: light theme's non-urgent fill (`--surface-scanning: #fde68a`) needs a _dark_ outline (`#0f241d`, `13.07:1`), but light theme's urgent fill (`--urgent-bg: #b3261e`) needs a _light_ one instead (`--scan-ring-outline-urgent: #ffffff`, `6.54:1` — the dark outline only reaches `2.49:1` there). Dark theme's own fills are both already dark, so one light outline (`#eafaf1`) clears 3:1 against both (`9.90:1` non-urgent, `4.59:1` urgent) and `--scan-ring-outline-urgent` just reuses it.
+**Issue #33 (one yellow ring, no white edge)**: earlier versions wrapped the ring in `box-shadow` outlines on both edges (`--scan-ring-outline`, white on dark/urgent fills) and drew an extra 1px `::before` frame inside the red Emergency tile, which read as a white edge and a double frame. Both are gone: `.tile.scanning::after` is now only the yellow border, and `.tile-urgent::before` no longer exists. Yellow alone is 1.53:1 against white, so instead of outlining it the scanning tile inverts to a dark fill, against which the ring clears 3:1 by a wide margin. The ring band (`--scan-ring-inset`) keeps its width, so text placement (#34) is unchanged.
 
-The emergency tile also gets a permanent (not just while scanning) `2px` inset `::before` outline in `--urgent-text` (white), so it's distinguishable by shape, not only by its red fill (kako-jun's colorblind-accessibility answer during the PR#16 review). **PR#16 再レビュー nit**: at `85%` opacity and `2px` it was hard to tell apart from the scanning ring's own white outline component when the emergency tile happened to be the one currently scanning; it's now `1px` at `50%` opacity — thin/faint enough to read as a permanent "this is the emergency tile" cue without competing with the scan ring's stronger emphasis.
+Measured contrast (real Chromium 1243, 4 themes x 4 viewports x home / discomfort / pain / emergency-active; every tile forced to the scanning state in turn; 352 tile measurements; no `box-shadow` on the ring and no `::before` content on any tile):
+
+| Theme                             | Ring vs own fill                 | Label vs scanning fill | Emergency tile (resting) vs adjacent tile fills                   |
+| --------------------------------- | -------------------------------- | ---------------------- | ----------------------------------------------------------------- |
+| Light (and light + high contrast) | 10.63:1 (`#facc15` on `#0f241d`) | 15.46:1                | 13.14 to 16.27:1 (`#0f241d` vs `#c9f0d9` / `#dcf5e6` / `#ffffff`) |
+| Dark                              | 4.68:1 (on `#6b5510`)            | 6.63:1                 | 9.40 to 12.17:1 (`#eafaf1` vs the dark fills)                     |
+| Dark + high contrast              | 4.68:1                           | 6.63:1                 | 19.44:1 (vs black fills)                                          |
+
+The scanning fill vs a neighbouring ordinary tile is 13 to 16:1 on light, but only 1.84:1 (2.93:1 vs black) on dark, where the ring (4.68:1 on its own fill, about 6.6:1 vs the `#17362a` neighbours) carries the cursor. The scanning fill of the light theme equals the resting Emergency tile fill by design (the ring is the cursor cue there).
 
 ### Cell divider lines
 
@@ -167,7 +177,7 @@ Source of truth: `docs/requirements.md`.
 
 - Keep tiles large and readable.
 - Prefer green variants for normal actions.
-- Use red only for urgent actions.
+- Use red only for the top message area (urgent state / urgent message). Never fill or frame a tile red; mark the Emergency tile by its inverted fill, bold label and fixed position.
 - Keep current message visible at all times.
 - Preserve Esuna-like directness without copying its 9-grid rule.
 
