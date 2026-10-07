@@ -392,7 +392,7 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     expect(items.find((i) => i.label === '胸')?.action).toEqual({
       type: 'painLocation',
       label: '胸',
-      text: '胸が痛いです',
+      text: '胸が痛いです。',
       tone: 'urgent',
     })
   })
@@ -484,10 +484,10 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     expect(items.slice(2, 6).map((i) => i.label)).toEqual(['続けて', 'やめて', 'もっと', '変えて'])
     const texts = items.slice(2, 6).map((i) => (i.action.type === 'message' ? i.action.text : null))
     expect(texts).toEqual([
-      '続けてください',
-      'やめてください',
-      'もっとお願いします',
-      '変えてください',
+      '続けてください。',
+      'やめてください。',
+      'もっとお願いします。',
+      '変えてください。',
     ])
   })
 

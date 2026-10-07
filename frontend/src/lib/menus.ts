@@ -232,8 +232,8 @@ export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
   const showUndo = options.showUndo && !options.emergencyActive
   return homeScreen([
     ...(showUndo ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem] : []),
-    message('yes', 'はい', 'はい', 'positive'),
-    message('no', 'いいえ', 'いいえ'),
+    message('yes', 'はい', 'はい。', 'positive'),
+    message('no', 'いいえ', 'いいえ。'),
     navigate('discomfort-nav', '不快', 'discomfort', options.phrases),
     navigate('mood-nav', '快・要望', 'moodRequest', options.phrases),
     navigate('letters-nav', '文字盤', 'letters'),
@@ -319,10 +319,10 @@ export function buildPainIntensityMenu(pain?: PainChoice): MenuItem[] {
  */
 export function buildMoodRequestMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen([
-    message('continue', '続けて', '続けてください', 'positive'),
-    message('stop', 'やめて', 'やめてください'),
-    message('more', 'もっと', 'もっとお願いします', 'positive'),
-    message('change', '変えて', '変えてください'),
+    message('continue', '続けて', '続けてください。', 'positive'),
+    message('stop', 'やめて', 'やめてください。'),
+    message('more', 'もっと', 'もっとお願いします。', 'positive'),
+    message('change', '変えて', '変えてください。'),
     navigate('requests-nav', '要望', 'requests', phrases),
     navigate('feelings-nav', '気分', 'feelings', phrases),
   ])
@@ -381,7 +381,10 @@ export function buildLettersRowMenu(row = 0): MenuItem[] {
 
 /** 入力途中の文字列への先読み(「○○？」)に即答する。戻ると入力途中の文字列は保持される */
 export function buildLettersYesNoMenu(): MenuItem[] {
-  return subScreen([message('yes', 'はい', 'はい', 'positive'), message('no', 'いいえ', 'いいえ')])
+  return subScreen([
+    message('yes', 'はい', 'はい。', 'positive'),
+    message('no', 'いいえ', 'いいえ。'),
+  ])
 }
 
 /** モールス入力画面。符号の入力に使うので項目は選ばない。戻る・緊急だけを構造として持つ */

@@ -635,7 +635,7 @@ async function checkHeadingFit(chromium, port) {
             .display,
         }
       })
-      if (emergency.text !== '緊急です。来てください') {
+      if (emergency.text !== '緊急です。来てください。') {
         failures.push(`[heading-fit ${name} emergency] 専用緊急状態に主文がない(${emergency.text})`)
       }
       if (emergency.scrollWidth > emergency.clientWidth) {

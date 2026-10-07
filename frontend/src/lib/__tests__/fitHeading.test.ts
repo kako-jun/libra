@@ -166,7 +166,7 @@ describe('measureTextWidthPerPx / applyHeadingFit (canvas をスタブ)', () => 
     }) as never)
     h1 = document.createElement('h1')
     Object.defineProperty(h1, 'clientWidth', { get: () => clientWidth })
-    h1.textContent = '選んだ内容がここに大きく出ます'
+    h1.textContent = '選んだ内容がここに大きく出ます。'
     document.body.appendChild(h1)
   })
   afterEach(() => {

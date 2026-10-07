@@ -105,7 +105,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     vi.advanceTimersByTime(HEAD_HOLD_MS) // カーソルは「はい」
     fireEvent.keyDown(window, { key: ' ' })
-    expect(h1Text(container)).toBe('はい')
+    expect(h1Text(container)).toBe('はい。')
   })
 
   it('タイルの直接クリック（pointerdown）はスキャン位置でなく押したタイルを実行する', () => {
@@ -113,8 +113,8 @@ describe('App', () => {
     vi.advanceTimersByTime(HEAD_HOLD_MS) // カーソルは「はい」
     const tiles = container.querySelectorAll('.grid-board .tile')
     fireEvent.pointerDown(tiles[2]) // 「いいえ」ではなく別のタイル
-    expect(h1Text(container)).not.toBe('はい')
-    expect(h1Text(container)).not.toBe('選んだ内容がここに大きく出ます')
+    expect(h1Text(container)).not.toBe('はい。')
+    expect(h1Text(container)).not.toBe('選んだ内容がここに大きく出ます。')
   })
 
   it('画面背景（タイル以外）のタップは何も実行しない', () => {
@@ -123,14 +123,14 @@ describe('App', () => {
     const board = container.querySelector('.grid-board') as HTMLElement
     fireEvent.pointerDown(board)
     fireEvent.pointerDown(document.body)
-    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
   })
 
   it('event.repeat の keydown は無視される', () => {
     const { container } = render(() => <App />)
     vi.advanceTimersByTime(HEAD_HOLD_MS) // カーソルは「はい」
     fireEvent.keyDown(window, { key: ' ', repeat: true })
-    expect(h1Text(container)).not.toBe('はい')
+    expect(h1Text(container)).not.toBe('はい。')
     expect(scanningLabel(container)).toBe('はい')
   })
 
@@ -147,10 +147,10 @@ describe('App', () => {
     vi.advanceTimersByTime(INTERVAL_MS) // index2(あ行)
     fireEvent.keyDown(window, { key: ' ' }) // 1回目: あ行へ(文字段階)
     fireEvent.keyDown(window, { key: ' ' }) // 2回目: 連打無視区間内なので無視されるはず
-    expect(h1Text(container)).not.toBe('緊急です。来てください') // 文字段階も戻る→緊急の順。先頭の戻るでは緊急を実行しない
+    expect(h1Text(container)).not.toBe('緊急です。来てください。') // 文字段階も戻る→緊急の順。先頭の戻るでは緊急を実行しない
     expect(scanningLabel(container)).toBe('戻る') // 文字段階の先頭
     const output = container.querySelector('.letter-strip output')
-    expect(output?.textContent).toBe('文字を選んでください')
+    expect(output?.textContent).toBe('文字を選んでください。')
   })
 
   // 文字盤(#4): Space キー1種だけで「めかね」を入力・確定できる
@@ -193,7 +193,7 @@ describe('App', () => {
 
     selectByScan(container, 'はい・いいえ')
     selectByScan(container, 'はい')
-    expect(h1Text(container)).toBe('はい')
+    expect(h1Text(container)).toBe('はい。')
     selectByScan(container, '文字盤')
     expect(container.querySelector('.letter-strip output')?.textContent).toBe('あ')
   })
@@ -207,14 +207,14 @@ describe('App', () => {
     vi.advanceTimersByTime(HEAD_HOLD_MS)
     expect(scanningLabel(container)).toBe('緊急')
     fireEvent.keyDown(window, { key: ' ' })
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
     expect(scanningLabel(container)).toBe('戻る')
   })
 
   it('緊急選択で確認なしに即「緊急です。来てください」を表示し緊急詳細画面へ遷移する', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // index0=緊急
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
     expect(container.querySelector('.grid-board')?.getAttribute('aria-label')).toContain('緊急')
   })
 
@@ -225,9 +225,9 @@ describe('App', () => {
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
     expect(scanningLabel(container)).toBe('はい')
     fireEvent.keyDown(window, { key: ' ' }) // はい を選択
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
     expect(container.querySelector('.message-panel-label')?.textContent).toBe('直前に伝えたこと')
-    expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい')
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
     expect(container.querySelector('.emergency-sub')).toBeNull()
   })
 
@@ -241,7 +241,7 @@ describe('App', () => {
     const screenGuide = container.querySelector('.screen-guide') as HTMLElement
     const messagePanel = container.querySelector('.message-panel') as HTMLElement
 
-    expect(emergencyStatus.textContent).toContain('緊急です。来てください')
+    expect(emergencyStatus.textContent).toContain('緊急です。来てください。')
     expect(emergencyStatus.textContent).toContain('伝えた状態:')
     expect(emergencyStatus.textContent).toContain('苦しい')
     expect(emergencyStatus.textContent).not.toContain('はい')
@@ -249,13 +249,13 @@ describe('App', () => {
 
     expect(screenGuide.querySelector('.screen-breadcrumb')?.textContent).toBe('ホーム')
     expect(screenGuide.querySelector('h2')?.textContent).toBe('伝えたいことを選んでください。')
-    expect(screenGuide.textContent).not.toContain('緊急です。来てください')
+    expect(screenGuide.textContent).not.toContain('緊急です。来てください。')
     expect(screenGuide.textContent).not.toContain('苦しい')
     expect(screenGuide.textContent).not.toContain('はい')
 
     expect(messagePanel.getAttribute('aria-label')).toBe('直前に伝えたこと')
-    expect(messagePanel.querySelector('h1')?.textContent).toBe('はい')
-    expect(messagePanel.textContent).not.toContain('緊急です。来てください')
+    expect(messagePanel.querySelector('h1')?.textContent).toBe('はい。')
+    expect(messagePanel.textContent).not.toContain('緊急です。来てください。')
     expect(messagePanel.textContent).not.toContain('苦しい')
     expect(messagePanel.textContent).not.toContain('伝えたいことを選んでください。')
 
@@ -265,11 +265,11 @@ describe('App', () => {
 
     expect(container.querySelector('.emergency-status')?.textContent).toBe(emergencyBefore)
     expect(container.querySelector('.screen-guide h2')?.textContent).toBe(guidanceBefore)
-    expect(container.querySelector('.message-panel h1')?.textContent).toBe('いいえ')
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('いいえ。')
     expect(JSON.parse(window.localStorage.getItem('libra:emergency') as string)).toEqual({
       active: true,
       details: ['苦しい'],
-      sub: 'いいえ',
+      sub: 'いいえ。',
     })
   })
 
@@ -278,7 +278,7 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
 
     expect(container.querySelector('.emergency-status-message')?.textContent).toBe(
-      '緊急です。来てください',
+      '緊急です。来てください。',
     )
     expect(container.querySelector('.screen-guide h2')?.textContent).toBe(
       '緊急です。いま伝えたい状態を選んでください。',
@@ -335,7 +335,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, 'はい')
     expect(container.querySelector('.selection-confirmation')).toBeNull()
-    expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい')
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
 
     selectByLabel(container, '緊急')
     selectByLabel(container, '苦しい')
@@ -405,7 +405,7 @@ describe('App', () => {
     expect(container.querySelector('.message-panel h1')?.textContent).toBe('あ')
     selectByLabel(container, 'はい')
     expect(confirmation()).toBeNull() // ordinary message
-    expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい')
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
     selectByLabel(container, '取り消し')
     expect(confirmation()).toBeNull() // undo
     expect(container.querySelector('.message-panel h1')?.textContent).toBe('あ')
@@ -413,7 +413,7 @@ describe('App', () => {
     selectByLabel(container, '緊急') // emergency
     expect(confirmation()).toBeNull()
     expect(container.querySelector('.emergency-status')?.textContent).toContain(
-      '緊急です。来てください',
+      '緊急です。来てください。',
     )
     selectByLabel(container, '苦しい') // emergency detail
     expect(confirmation()).toBeNull()
@@ -494,7 +494,7 @@ describe('App', () => {
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button, { pointerId: 1, pointerType: 'mouse' })
     expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     expect(scanningLabel(container)).toBe('緊急')
   })
 
@@ -535,7 +535,7 @@ describe('App', () => {
       button.focus()
 
       fireEvent.keyDown(button, { key })
-      expect(h1Text(container)).not.toBe('緊急です。来てください')
+      expect(h1Text(container)).not.toBe('緊急です。来てください。')
       fireEvent.click(button) // ブラウザが Enter / Space の既定動作として発火する click
 
       expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
@@ -551,7 +551,7 @@ describe('App', () => {
 
       fireEvent.keyDown(button, { key })
 
-      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(h1Text(container)).toBe('緊急です。来てください。')
       expect(container.querySelector('.caregiver-overlay')).toBeNull()
     },
   )
@@ -580,7 +580,7 @@ describe('App', () => {
 
     expect(container.querySelector('.caregiver-overlay')).toBeNull()
     // その keydown 自体では項目(緊急)は実行されない
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     // ホーム先頭から再開している(先頭待機中なのでまだ緊急のまま)
     expect(scanningLabel(container)).toBe('緊急')
   })
@@ -594,7 +594,7 @@ describe('App', () => {
     fireEvent.pointerDown(overlay)
 
     expect(container.querySelector('.caregiver-overlay')).toBeNull()
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     expect(scanningLabel(container)).toBe('緊急')
   })
 
@@ -637,7 +637,7 @@ describe('App', () => {
   it('介助者メニューの緊急解除ボタンで緊急表示が消える', () => {
     const { container, getByText } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急選択
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
 
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.click(button)
@@ -646,7 +646,7 @@ describe('App', () => {
     fireEvent.click(clearButton)
 
     expect(container.querySelector('.emergency-sub')).toBeNull()
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
   })
 
   // Issue #8: スキャンで目的の項目まで進めて選ぶ(連打無視を過ぎてから押す)
@@ -830,14 +830,14 @@ describe('App', () => {
     vi.advanceTimersByTime(200)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(1000)
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
 
     // カーソルはまだ先頭(緊急)。押し始めの項目が下限に達した時点(keyUp より前)で決定される
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(499)
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     vi.advanceTimersByTime(1)
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
   })
 
   it('Issue #6: タップ(pointerdown/pointerup)にも同じ下限が効く', () => {
@@ -848,12 +848,12 @@ describe('App', () => {
     vi.advanceTimersByTime(200)
     fireEvent.pointerUp(document.body, { pointerId: 1 })
     vi.advanceTimersByTime(1000)
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
 
     fireEvent.pointerDown(emergencyTile, { pointerId: 1 })
     vi.advanceTimersByTime(600)
     fireEvent.pointerUp(document.body, { pointerId: 1 })
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
   })
 
   it('Issue #6: 離して決定モードで blur すると、離しても決定しない', () => {
@@ -862,7 +862,7 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     fireEvent.blur(window)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
   })
 
   it('Issue #6: 押している間に項目の並びが変わったら、別の項目(緊急など)を実行せず無視する', () => {
@@ -873,7 +873,7 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(1500)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' }) // はい → home(取り消しが1周だけ出る)
-    expect(h1Text(container)).toBe('はい')
+    expect(h1Text(container)).toBe('はい。')
 
     // 取り消しを含む7項目の末尾(文字盤)で押し始める。押している間に1周して取り消しが消える
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5 + 500)
@@ -881,7 +881,7 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(1500)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
-    expect(h1Text(container)).toBe('はい')
+    expect(h1Text(container)).toBe('はい。')
     expect(container.querySelector('.letter-strip')).toBeNull()
   })
 
@@ -889,10 +889,10 @@ describe('App', () => {
     window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ', code: 'Space' }) // index0=緊急
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     vi.advanceTimersByTime(100)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
   })
 
   // Issue #12: 痛みの強さ・快/要望・気分
@@ -902,9 +902,9 @@ describe('App', () => {
     selectByLabel(container, '痛い')
     selectByLabel(container, '胸')
     expect(tileLabels(container)).toEqual(['戻る', '緊急', '場所だけ', '少し', 'かなり', 'とても'])
-    expect(h1Text(container)).not.toBe('胸がとても痛いです') // まだ伝達していない
+    expect(h1Text(container)).not.toBe('胸がとても痛いです。') // まだ伝達していない
     selectByLabel(container, 'とても')
-    expect(h1Text(container)).toBe('胸がとても痛いです')
+    expect(h1Text(container)).toBe('胸がとても痛いです。')
     expect(document.documentElement.dataset.messageTone).toBe('urgent')
     expect(scanningLabel(container)).toBe('緊急') // ホーム先頭に戻る
   })
@@ -915,7 +915,7 @@ describe('App', () => {
     selectByLabel(container, '痛い')
     selectByLabel(container, '頭')
     selectByLabel(container, '場所だけ')
-    expect(h1Text(container)).toBe('頭が痛いです')
+    expect(h1Text(container)).toBe('頭が痛いです。')
   })
 
   it('Issue #12: 痛みを伝えた直後は「取り消し」で戻せる', () => {
@@ -924,9 +924,9 @@ describe('App', () => {
     selectByLabel(container, '痛い')
     selectByLabel(container, '頭')
     selectByLabel(container, '少し')
-    expect(h1Text(container)).toBe('頭が少し痛いです')
+    expect(h1Text(container)).toBe('頭が少し痛いです。')
     selectByLabel(container, '取り消し')
-    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
   })
 
   it('Issue #12/#44: 緊急中の痛みは緊急状態を保ち、独立した直前の伝達に出る', () => {
@@ -937,8 +937,8 @@ describe('App', () => {
     selectByLabel(container, '痛い')
     selectByLabel(container, '胸')
     selectByLabel(container, 'とても')
-    expect(h1Text(container)).toBe('緊急です。来てください')
-    expect(container.querySelector('.message-panel h1')?.textContent).toBe('胸がとても痛いです')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('胸がとても痛いです。')
   })
 
   it('Issue #12/#40: 強さの画面は戻るが先頭で、痛い場所へ戻れる', () => {
@@ -955,7 +955,7 @@ describe('App', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, '快・要望')
     selectByLabel(container, '続けて')
-    expect(h1Text(container)).toBe('続けてください')
+    expect(h1Text(container)).toBe('続けてください。')
   })
 
   it('Issue #12: 快・要望 → 要望 → 大丈夫、快・要望 → 気分 → 不安 の2段階で伝わる', () => {
@@ -963,7 +963,7 @@ describe('App', () => {
     selectByLabel(first.container, '快・要望')
     selectByLabel(first.container, '要望')
     selectByLabel(first.container, '大丈夫')
-    expect(h1Text(first.container)).toBe('大丈夫です')
+    expect(h1Text(first.container)).toBe('大丈夫です。')
     first.unmount()
     cleanup()
 
@@ -971,7 +971,7 @@ describe('App', () => {
     selectByLabel(second.container, '快・要望')
     selectByLabel(second.container, '気分')
     selectByLabel(second.container, '不安')
-    expect(h1Text(second.container)).toBe('不安です')
+    expect(h1Text(second.container)).toBe('不安です。')
   })
 
   // Issue #13: 本人への触覚フィードバック(はい/いいえ・緊急・解除が区別できる)
@@ -1100,7 +1100,7 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe(before) // カーソルは動かない
     expect(container.querySelector('.grid-board.is-hidden')).not.toBeNull()
     sendCode('.-')
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
@@ -1108,9 +1108,9 @@ describe('App', () => {
     const { container } = enterMorse()
     oscillatorStartCount = 0
     sendCode('...---..')
-    expect(h1Text(container)).not.toBe('緊急です。来てください') // 8つではまだ
+    expect(h1Text(container)).not.toBe('緊急です。来てください。') // 8つではまだ
     sendCode('.')
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
     expect(oscillatorStartCount).toBe(0)
     expect(container.querySelector('.morse-panel')).toBeNull() // スキャンの緊急詳細へ
     expect(scanningLabel(container)).toBe('戻る')
@@ -1124,7 +1124,7 @@ describe('App', () => {
       fireEvent.keyUp(window, { key: ' ', code: 'Space' })
       vi.advanceTimersByTime(700)
     }
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
   })
 
   it('Issue #14: 介助者メニューを開いている間は、裏で語の区切りが入ったり自動復帰したりしない', () => {
@@ -1143,14 +1143,14 @@ describe('App', () => {
     sendCode('-.')
     vi.advanceTimersByTime(1600) // 誤符号を確定(文字の切れ目)
     sendCode('...---...')
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
   })
 
   it('Issue #57: 前の符号から休まず続けた「誤符号+SOS」でも、緊急になる(確定を待たなくてよい)', () => {
     const { container } = enterMorse()
     sendCode('-.')
     sendCode('...---...')
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
   })
 
   it('Issue #57: 「かぜ」(か・せ・゛)を打っても、符号の連結が SOS を含むだけでは緊急にならない', () => {
@@ -1160,7 +1160,7 @@ describe('App', () => {
       vi.advanceTimersByTime(1600)
     }
     expect(morseTextOf(container).trim()).toBe('かぜ')
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
   })
 
   it('Issue #57: 文字ごとに休んで(確定して)打った SOS(ら・れ・ら)は数えず、緊急にならない', () => {
@@ -1169,7 +1169,7 @@ describe('App', () => {
       sendCode(code)
       vi.advanceTimersByTime(1600)
     }
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     expect(morseTextOf(container).replace('　', '')).toBe('られら')
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
@@ -1180,7 +1180,7 @@ describe('App', () => {
     vi.advanceTimersByTime(1600)
     expect(morseTextOf(container).trim()).toBe('い')
     sendCode('...---...')
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
     selectByLabel(container, '戻る')
     selectByLabel(container, 'モールス')
     expect(morseTextOf(container).trim()).toBe('い')
@@ -1349,7 +1349,7 @@ describe('App', () => {
     vi.advanceTimersByTime(1250) // sendCode 末尾の 150ms と合わせて 1.4 秒
     expect(morseTextOf(container).trim()).toBe('')
     sendCode('---...')
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
   })
 
   it('Issue #57: 文字の確定時間(1.5秒)を超えて休むと数え直しになり、続きだけでは緊急にならない', () => {
@@ -1358,7 +1358,7 @@ describe('App', () => {
     vi.advanceTimersByTime(1600)
     expect(morseTextOf(container)).toBe('ら')
     sendCode('---...')
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
@@ -1366,7 +1366,7 @@ describe('App', () => {
     const { container } = enterMorse()
     sendCode('-----')
     vi.advanceTimersByTime(1600)
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
@@ -1378,7 +1378,7 @@ describe('App', () => {
     vi.advanceTimersByTime(1600)
     expect(morseTextOf(container).trim()).toBe('')
     sendCode('---...')
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
     expect(container.querySelector('.morse-panel')).not.toBeNull()
   })
 
@@ -1395,19 +1395,19 @@ describe('App', () => {
     // カーソルは index0(緊急)。"3"キーは index2(いいえ)への直接ジャンプではなく
     // カーソル位置(緊急)を実行するはず
     fireEvent.keyDown(window, { key: '3' })
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
   })
 
   it('M1: 押下→画面遷移→連打無視区間内の2回目は遷移先の先頭を誤って実行しない', () => {
     const { container } = render(() => <App />)
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
     fireEvent.keyDown(window, { key: ' ' }) // はい選択 → home先頭(緊急)へ遷移
-    expect(h1Text(container)).toBe('はい')
+    expect(h1Text(container)).toBe('はい。')
 
     vi.advanceTimersByTime(100) // debounceMs(500)未満
     fireEvent.keyDown(window, { key: ' ' }) // 連打: 遷移先の先頭(緊急)を誤って実行してはいけない
-    expect(h1Text(container)).toBe('はい')
-    expect(h1Text(container)).not.toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('はい。')
+    expect(h1Text(container)).not.toBe('緊急です。来てください。')
   })
 
   it('S4/#40: 聴覚スキャンON時、画面遷移直後に先頭項目(通常は戻る)を読む', () => {
@@ -1498,7 +1498,7 @@ describe('App', () => {
 
     // announce('はい') が cancel してから speak し、goTo直後の先頭読み上げ(緊急)は
     // それを打ち切らずに(cancel を挟まず)後ろに積まれる
-    const yesIndex = calls.indexOf('speak:はい')
+    const yesIndex = calls.indexOf('speak:はい。')
     expect(yesIndex).toBeGreaterThanOrEqual(0)
     expect(calls[yesIndex + 1]).toBe('speak:緊急')
 
@@ -1571,7 +1571,7 @@ describe('App', () => {
     const calls = captureSpeechCalls()
     fireEvent.keyDown(window, { key: ' ' }) // はい選択(emergencyActive分岐のannounce) → home先頭(緊急)へ
 
-    const yesIndex = calls.indexOf('speak:はい')
+    const yesIndex = calls.indexOf('speak:はい。')
     expect(yesIndex).toBeGreaterThanOrEqual(0)
     expect(calls[yesIndex + 1]).toBe('speak:緊急')
   })
@@ -1590,7 +1590,7 @@ describe('App', () => {
     // 緊急を再選択しても詳細は消えない(home index0はまだ先頭待機中)
     vi.advanceTimersByTime(600) // 連打無視(500ms)を超えて次の押下を有効にする
     fireEvent.keyDown(window, { key: ' ' })
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
     expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
 
     // 別の詳細(痛い)を追加すると積み上がる
@@ -1610,7 +1610,7 @@ describe('App', () => {
 
     vi.advanceTimersByTime(600) // 連打無視を超えて次の押下を有効にする(先頭待機中なのでindex0のまま)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急を選択
-    expect(h1Text(container)).toBe('緊急です。来てください')
+    expect(h1Text(container)).toBe('緊急です。来てください。')
 
     const button = container.querySelector('.caregiver-button') as HTMLElement
     fireEvent.pointerDown(button)
@@ -1664,7 +1664,7 @@ describe('App', () => {
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
     expect(scanningLabel(container)).toBe('取り消し')
     fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 「はい」に戻る
-    expect(h1Text(container)).toBe('はい')
+    expect(h1Text(container)).toBe('はい。')
     expect(document.documentElement.dataset.messageTone).toBe('positive')
   })
 
@@ -1694,7 +1694,7 @@ describe('App', () => {
     vi.advanceTimersByTime(2000)
 
     const status = container.querySelector('.caregiver-status') as HTMLElement
-    expect(status.textContent).toBe('画面スリープ防止: 無効 — 端末の自動ロックを切ってください')
+    expect(status.textContent).toBe('画面スリープ防止: 無効 — 端末の自動ロックを切ってください。')
     expect(status.classList.contains('warn')).toBe(true)
   })
 
@@ -1873,7 +1873,7 @@ describe('App', () => {
       const { container } = render(() => <App />)
       expect(window.localStorage.getItem(KEY)).toBeNull()
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
-      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(h1Text(container)).toBe('緊急です。来てください。')
       expect(stored()).toEqual({ active: true, details: [], sub: null })
     })
 
@@ -1884,7 +1884,7 @@ describe('App', () => {
       fireEvent.keyDown(window, { key: ' ' }) // 苦しい → home
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい → 副表示
-      expect(stored()).toEqual({ active: true, details: ['苦しい'], sub: 'はい' })
+      expect(stored()).toEqual({ active: true, details: ['苦しい'], sub: 'はい。' })
       first.unmount()
       cleanup()
       // 復元で urgent が立つことを確認するため、前回の値を消しておく
@@ -1900,13 +1900,13 @@ describe('App', () => {
       }
 
       const second = render(() => <App />)
-      expect(h1Text(second.container)).toBe('緊急です。来てください')
+      expect(h1Text(second.container)).toBe('緊急です。来てください。')
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
       expect(second.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
       expect(second.container.querySelector('.message-panel-label')?.textContent).toBe(
         '直前に伝えたこと',
       )
-      expect(second.container.querySelector('.message-panel h1')?.textContent).toBe('はい')
+      expect(second.container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
       expect(oscillatorStartCount).toBe(0)
       expect(vibrate).not.toHaveBeenCalled() // 復元の直後に、緊急発生時の振動は出さない
       vi.advanceTimersByTime(3000)
@@ -1923,15 +1923,15 @@ describe('App', () => {
     it('解除→伝達→取り消しでも、緊急でないのに赤い緊急文言は戻らない', () => {
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
-      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(h1Text(container)).toBe('緊急です。来てください。')
       clearEmergencyViaMenu(container)
       closeCaregiverMenu(container)
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
       fireEvent.keyDown(window, { key: ' ' }) // 取り消し
-      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
     })
 
@@ -1939,15 +1939,15 @@ describe('App', () => {
       const { container } = render(() => <App />)
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい (A)
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
       clearEmergencyViaMenu(container) // 緊急なしの解除ボタン(disabled で何も起きない)
       closeCaregiverMenu(container)
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // 緊急→取り消し→はい→いいえ
       fireEvent.keyDown(window, { key: ' ' }) // いいえ (B)
-      expect(h1Text(container)).toBe('いいえ')
+      expect(h1Text(container)).toBe('いいえ。')
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
       fireEvent.keyDown(window, { key: ' ' }) // 取り消し
-      expect(h1Text(container)).toBe('はい')
+      expect(h1Text(container)).toBe('はい。')
     })
 
     it('介助者メニューの緊急解除で保存が消え、再マウントで通常起動・警告音なし', () => {
@@ -1961,7 +1961,7 @@ describe('App', () => {
 
       oscillatorStartCount = 0
       const second = render(() => <App />)
-      expect(h1Text(second.container)).toBe('選んだ内容がここに大きく出ます')
+      expect(h1Text(second.container)).toBe('選んだ内容がここに大きく出ます。')
       expect(second.container.querySelector('.emergency-details')).toBeNull()
       vi.advanceTimersByTime(10000)
       expect(oscillatorStartCount).toBe(0)
@@ -1970,7 +1970,7 @@ describe('App', () => {
     it('壊れた保存値では通常起動する(例外で落ちない)', () => {
       window.localStorage.setItem(KEY, '{broken')
       const { container } = render(() => <App />)
-      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
       expect(oscillatorStartCount).toBe(0)
     })
 
@@ -2346,7 +2346,7 @@ describe('App', () => {
         const { container, tab } = openAndFocus('状態')
         fireEvent.keyDown(tab, { key })
         expect(menuOpen(container)).toBe(false)
-        expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます')
+        expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
       },
     )
 
@@ -2385,7 +2385,7 @@ describe('App', () => {
     it('メニューが閉じているときの ArrowRight はタブ状態に影響せず従来どおりスイッチ入力になる', () => {
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: 'ArrowRight' })
-      expect(h1Text(container)).toBe('緊急です。来てください') // Space と同じく先頭項目を選ぶスイッチ扱い
+      expect(h1Text(container)).toBe('緊急です。来てください。') // Space と同じく先頭項目を選ぶスイッチ扱い
       openCaregiverMenu(container)
       expect(selectedLabel(container)).toBe('状態')
     })
@@ -2478,13 +2478,13 @@ describe('App', () => {
     it('データタブでも「緊急解除」で緊急が解除され「閉じる」でメニューが閉じる', () => {
       const { container } = render(() => <App />)
       activateEmergency()
-      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(h1Text(container)).toBe('緊急です。来てください。')
       expect(container.querySelector('.emergency-status')).not.toBeNull()
       openCaregiverMenu(container)
       selectCaregiverTab(container, 'データ')
       fireEvent.click(buttonByText(container, '緊急解除'))
       expect(container.querySelector('.emergency-status')).toBeNull()
-      expect(h1Text(container)).not.toBe('緊急です。来てください')
+      expect(h1Text(container)).not.toBe('緊急です。来てください。')
       fireEvent.click(buttonByText(container, '閉じる'))
       expect(menuOpen(container)).toBe(false)
     })
@@ -2802,14 +2802,14 @@ describe('App', () => {
       window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 3000 }))
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
-      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(h1Text(container)).toBe('緊急です。来てください。')
       openCaregiverMenu(container)
       selectCaregiverTab(container, 'データ')
       const backup = container.querySelector('.settings-backup') as HTMLElement
       clickButton(backup, RESET)
       clickButton(backup, ARMED)
       expect(saved().intervalMs).toBe(1500)
-      expect(h1Text(container)).toBe('緊急です。来てください')
+      expect(h1Text(container)).toBe('緊急です。来てください。')
       expect(JSON.parse(window.localStorage.getItem('libra:emergency') ?? 'null')).toEqual({
         active: true,
         details: [],

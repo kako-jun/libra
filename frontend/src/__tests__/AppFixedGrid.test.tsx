@@ -221,7 +221,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         // 伝達メッセージ表示中(「いいえ」を選ぶとメッセージ欄が出る。取り消しで7項目)
         const msg = render(() => <App />)
         press(msg.container, 'いいえ')
-        expect(msg.container.querySelector('h1')?.textContent).toBe('いいえ')
+        expect(msg.container.querySelector('h1')?.textContent).toBe('いいえ。')
         expect(gridOf(msg.container)).toEqual(grid)
         msg.unmount()
 
@@ -493,7 +493,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         setViewport(w, h)
         const { container, unmount } = render(() => <App />)
         press(container, 'いいえ')
-        expect(container.querySelector('h1')?.textContent).toBe('いいえ')
+        expect(container.querySelector('h1')?.textContent).toBe('いいえ。')
         unmount()
       }
     })
