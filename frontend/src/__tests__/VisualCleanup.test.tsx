@@ -6,15 +6,14 @@
 //
 // デシジョンテーブル(テーマ × 高コントラスト × 画面 × タイル種 → 背景トークン / 枠 / 文字色)
 //   テーマ   | HC | 画面                 | タイル種                  | 背景トークン            | 枠(通常時) | 文字色
-//   明るい   | -  | ホーム               | 緊急入口(.tile-emergency) | --emergency-tile-bg(濃色) | なし   | --emergency-tile-text
-//   明るい   | -  | ホーム               | 通常/はい(positive)       | --surface/--surface-positive | なし | --text
-//   明るい   | -  | 不快/痛み/緊急詳細   | tone:'urgent'(苦しい等)   | 通常面(赤でない)         | なし   | --text
-//   明るい   | -  | 緊急中の各画面       | tone:'urgent' / 通常      | 通常面(赤タイルなし)     | なし   | --text
-//   明るい   | -  | 全画面               | スキャン中                | --surface-scanning(濃色) | 黄 ::after 1本 | --scan-text(-muted)
-//   夜間     | -  | ホーム               | 緊急入口                  | --emergency-tile-bg(明色) | なし  | --emergency-tile-text
-//   夜間     | -  | 全画面               | スキャン中                | --surface-scanning(暗琥珀) | 黄 1本 | --scan-text(-muted)
+//   明/夜    | -  | ホーム               | 緊急入口(.tile-emergency) | 通常面(--surface 系)     | なし   | --text
+//   明/夜    | -  | 不快/痛み/緊急詳細   | tone:'urgent'(苦しい等)   | 通常面(赤でない)         | なし   | --text
+//   明/夜    | -  | 緊急中の各画面       | tone:'urgent' / 通常      | 通常面(赤タイルなし)     | なし   | --text
+//   明/夜    | -  | 全画面               | スキャン中(緊急入口含む)  | --surface-scanning       | 黄 ::after 1本 | --scan-text(-muted)
 //   明/夜    | 有 | 全画面               | スキャン中                | 同上(HC は枠だけ 9px に太る) | 黄 1本 | 同上
 //   全て     | 全 | 上部メッセージ欄     | urgent 色調/緊急状態帯    | --urgent-bg(赤はここだけ) | -   | --urgent-text
+// 緊急入口は色・面で区別しない(ラベル「緊急」・固定位置・上部の緊急状態帯の文言で示す)。スキャン中の面と
+// 通常面が必ず異なることを下の静的検査で縛る(実描画の確認は e2e/scan-ring-surface.e2e.mjs)。
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
@@ -169,8 +168,6 @@ describe('Issue #33/#36: 4テーマのトークン定義とコントラスト', 
     '--scan-ring-width',
     '--scan-text',
     '--scan-text-muted',
-    '--emergency-tile-bg',
-    '--emergency-tile-text',
     '--urgent-bg',
     '--urgent-text',
   ]
@@ -198,22 +195,20 @@ describe('Issue #33/#36: 4テーマのトークン定義とコントラスト', 
       }
     })
 
-    it(`${name}: 緊急入口の文字が面に対し 4.5:1 以上、かつ通常面と明暗が反転している`, () => {
-      const bg = effective(theme, hc, '--emergency-tile-bg') as string
-      const fg = effective(theme, hc, '--emergency-tile-text') as string
-      expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5)
-      const surface = effective(theme, hc, '--surface') as string
-      // 通常面との差が明確(面の反転で識別する。色相に頼らない)
-      expect(contrast(bg, surface), `${bg} vs surface ${surface}`).toBeGreaterThanOrEqual(3)
+    it(`${name}: スキャン中の面は通常タイル面(--surface/-calm/-positive)のどれとも同色でなく、明確に異なる`, () => {
+      const scan = effective(theme, hc, '--surface-scanning') as string
+      for (const s of ['--surface', '--surface-calm', '--surface-positive']) {
+        const face = effective(theme, hc, s) as string
+        expect(scan.toLowerCase(), `${name} ${s}`).not.toBe(face.toLowerCase())
+        expect(
+          contrast(scan, face),
+          `${name} scanning ${scan} vs ${s} ${face}`,
+        ).toBeGreaterThanOrEqual(1.3)
+      }
     })
 
-    it(`${name}: 緊急入口の面・スキャン面・文字色トークンは赤でない`, () => {
-      for (const t of [
-        '--emergency-tile-bg',
-        '--emergency-tile-text',
-        '--surface-scanning',
-        '--scan-text',
-      ]) {
+    it(`${name}: スキャン面・文字色トークンは赤でない`, () => {
+      for (const t of ['--surface-scanning', '--scan-text', '--scan-text-muted']) {
         expect(isRed(effective(theme, hc, t) as string), `${name} ${t}`).toBe(false)
       }
     })
@@ -263,14 +258,15 @@ describe('Issue #36: 赤(--urgent-bg)の使用箇所は上部メッセージ欄�
     expect(stripComments(css)).not.toMatch(/\.tile-urgent/)
   })
 
-  it('緊急入口 .tile-emergency は --emergency-tile-bg/-text を使い、--urgent-* を使わない', () => {
+  it('緊急入口 .tile-emergency は面・文字色を持たず(通常面のまま)、スキャン面を上書きできる詳細度の取り違えも無い', () => {
     const body = blocksOf('.tile-emergency')
-    expect(body).toMatch(/background:\s*var\(--emergency-tile-bg\)/)
-    expect(body).toMatch(/color:\s*var\(--emergency-tile-text\)/)
-    expect(body).not.toMatch(/--urgent/)
-    // 面の反転だけでなく太字(全タイルのラベルが 900。緊急入口だけ細くなることはない)
-    expect(blocksOf('.tile-label')).toMatch(/font-weight:\s*(800|900)/)
-    expect(body).not.toMatch(/font-weight:\s*(100|200|300|400|500|normal)/)
+    expect(body).not.toMatch(/background|color:|--urgent|--emergency-tile/)
+    expect(stripComments(css)).not.toMatch(/--emergency-tile/)
+    // .tile.scanning(詳細度 0,2,0)が tone クラス(0,1,0)の面より常に勝つ。tone クラス側に !important が無い
+    expect(stripComments(css)).not.toMatch(
+      /\.tile-(?:calm|positive|neutral|emergency)\s*\{[^}]*!important/,
+    )
+    expect(blocksOf('.tile.scanning')).toMatch(/background:\s*var\(--surface-scanning\)/)
   })
 
   it('赤い値(#b3261e / #d7263d)を使う宣言は --urgent-bg の定義だけ', () => {
@@ -317,15 +313,18 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     vi.advanceTimersByTime(700) // 連打無視を過ぎてから押す
     fireEvent.pointerDown(t as HTMLElement, { pointerId: 1 })
   }
-  /** 現在の画面の「赤タイル」(CSS で赤になりうる唯一の経路 = .tile-urgent クラス)は CSS 側に無いので、
-      DOM では tone:'urgent' のタイルが緊急入口と取り違えられない・赤用の別クラスを持たないことを見る */
+  /** 現在の画面の各タイルについて、そのタイルが持つ全クラス(tile-urgent 等)を選択子に含む CSS ルールが
+      赤(--urgent-* / 赤の色値)を参照していないことを、CSS 静的に検査する(jsdom は計算後スタイルを持たないため) */
   const expectNoRedTiles = (c: HTMLElement) => {
+    const rules = Array.from(stripComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g))
     for (const t of tiles(c)) {
       for (const cls of Array.from(t.classList)) {
-        // CSS にルールが存在するクラスだけが見た目に効く。tile-urgent のルールは無い(静的検査で保証)
-        if (cls === 'tile-urgent') {
-          expect(labelOf(t)).not.toBe('')
-          expect(stripComments(css)).not.toContain(`.${cls}`)
+        for (const [, sel, body] of rules) {
+          if (new RegExp(`\\.${escapeRe(cls)}(?![\\w-])`).test(sel)) {
+            expect(body, `.${cls} ルール「${sel.trim()}」(${labelOf(t)})`).not.toMatch(
+              /--urgent|#b3261e|#d7263d/i,
+            )
+          }
         }
       }
       expect(t.getAttribute('style') ?? '', labelOf(t)).not.toMatch(
@@ -401,7 +400,7 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     expect(container.querySelector('.emergency-status')?.closest('.tile')).toBeNull()
   })
 
-  it('緊急中にホームへ戻ってもホームのタイルは赤くならず、緊急入口は反転面のまま先頭', () => {
+  it('緊急中にホームへ戻ってもホームのタイルは赤くならず、緊急入口は通常面のまま先頭', () => {
     const { container } = render(() => <App />)
     press(container, '緊急')
     press(container, '戻る')
@@ -427,7 +426,7 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     }
   })
 
-  it('メニュー定義: tone:urgent のタイルは(画面ごと)ラベルを持ち、緊急入口(action:emergency)だけが反転面の対象', () => {
+  it('メニュー定義: tone:urgent のタイルは(画面ごと)ラベルを持ち、緊急入口(action:emergency)だけが .tile-emergency の対象', () => {
     const screens: ScreenId[] = [
       'home',
       'urgentDetail',
@@ -476,6 +475,6 @@ describe('回帰: #33/#36 の変更が既存の静的な約束を壊していな
 
   it('空きセル(.tile-empty)は面を持たない(スキャン面・緊急面トークンを使わない)', () => {
     const empty = blocksOf('.tile-empty')
-    expect(empty).not.toMatch(/--surface-scanning|--emergency-tile|--urgent/)
+    expect(empty).not.toMatch(/--surface-scanning|--urgent/)
   })
 })

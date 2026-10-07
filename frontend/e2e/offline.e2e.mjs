@@ -22,6 +22,9 @@
 // - letters-scroll: 横向き小画面(844x390/667x375/320x568)で文字盤のスキャン対象が下段に
 //   来ても、document自体はスクロールせず(window.scrollY===0)、メッセージパネル(h1)と
 //   スキャン対象タイルの両方がビューポート内にあることを確認する
+// - scan-ring-surface: スキャン枠が黄色一本(box-shadow・::before なし)で、スキャン中の面が緊急入口・通常タイルと
+//   異なり赤タイルが無いことを、4テーマ × 4サイズ × 6状態 × 全タイルで実描画から確認する(#36/#33)。
+//   SCAN_RING_ONLY=1 でこの検査だけ、SCAN_RING_REPORT_DIR で画像と測定値を保存する
 // - no-overlap: 狭い横向き/縦向き/タブレット幅で、案内領域・「介助者用」ボタンがホーム/文字盤のタイルと重ならないことを確認する
 
 import http from 'node:http'
@@ -1344,6 +1347,202 @@ async function checkIssue37SmallViewport(chromium, port) {
   return failures
 }
 
+// Issue #36/#33: スキャン枠は黄色一本(box-shadow・::before なし)で、スキャン中のタイルの面が
+// 緊急入口・通常タイルの面と異なり、赤いタイルが無いことを実描画(computed style)で確認する。
+// 4テーマ(明/夜 × 高コントラスト) × 4サイズ × 6状態 × 全タイルを順にスキャン状態にして測る。
+// SCAN_RING_REPORT_DIR を指定すると、スクリーンショットと測定値(rows.json)をそこへ保存する。
+async function checkScanRingSurface(chromium, port) {
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+  const reportDir = process.env.SCAN_RING_REPORT_DIR
+  if (reportDir) fs.mkdirSync(path.join(reportDir, 'shots'), { recursive: true })
+  const rows = []
+  const lum = (c) => {
+    const [r, g, b] = c.map((v) => {
+      v /= 255
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const ratio = (a, b) => {
+    const x = lum(a)
+    const y = lum(b)
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+  }
+  const parse = (s) =>
+    s
+      .match(/[\d.]+/g)
+      .slice(0, 3)
+      .map(Number)
+  const same = (a, b) => parse(a).every((v, i) => v === parse(b)[i])
+  try {
+    for (const [theme, hc] of [
+      ['light', false],
+      ['dark', false],
+      ['light', true],
+      ['dark', true],
+    ]) {
+      for (const [w, h] of [
+        [390, 844],
+        [568, 320],
+        [844, 390],
+        [320, 568],
+      ]) {
+        const tag = `${theme}${hc ? '-hc' : ''}_${w}x${h}`
+        const fresh = async (emergency) => {
+          const context = await browser.newContext({ viewport: { width: w, height: h } })
+          const page = await context.newPage()
+          await page.addInitScript(
+            ([t, c, em]) => {
+              localStorage.setItem(
+                'libra',
+                JSON.stringify({ intervalMs: 600000, theme: t, highContrast: c }),
+              )
+              if (em) {
+                localStorage.setItem(
+                  'libra:emergency',
+                  JSON.stringify({ active: true, details: ['苦しい'], sub: null }),
+                )
+              } else localStorage.removeItem('libra:emergency')
+            },
+            [theme, hc, emergency],
+          )
+          await page.goto(`http://localhost:${port}/`)
+          await page.waitForTimeout(400)
+          const applied = await page.evaluate(() => ({
+            t: document.documentElement.dataset.theme,
+            hc: document.documentElement.dataset.highContrast,
+          }))
+          if (applied.t !== theme || applied.hc !== String(hc)) {
+            failures.push(`[scan-ring] ${tag} 設定が反映されていない ${JSON.stringify(applied)}`)
+          }
+          return { context, page }
+        }
+        const click = async (page, label) => {
+          await page
+            .locator('.grid-board .tile')
+            .filter({ has: page.getByText(label, { exact: true }) })
+            .first()
+            .click()
+          await page.waitForTimeout(1000) // 遷移直後の連打無視を過ぎる
+        }
+        const measure = async (page, name) => {
+          if (reportDir)
+            await page.screenshot({ path: path.join(reportDir, 'shots', `${tag}_${name}.png`) })
+          const n = await page.locator('.grid-board .tile:not(.tile-empty)').count()
+          for (let i = 0; i < n; i++) {
+            const r = await page.evaluate((i) => {
+              document
+                .querySelectorAll('.tile.scanning')
+                .forEach((e) => e.classList.remove('scanning'))
+              const tiles = [...document.querySelectorAll('.grid-board .tile:not(.tile-empty)')]
+              const t = tiles[i]
+              t.classList.add('scanning')
+              const cs = getComputedStyle(t)
+              const af = getComputedStyle(t, '::after')
+              const bf = getComputedStyle(t, '::before')
+              const bg = (e) => getComputedStyle(e).backgroundColor
+              const lab = t.querySelector('.tile-label')
+              const det = t.querySelector('.tile-detail, .tile-preview')
+              return {
+                emergencyTile: t.classList.contains('tile-emergency'),
+                fill: cs.backgroundColor,
+                ring: af.borderTopColor,
+                shadow: af.boxShadow,
+                before: bf.content,
+                label: lab ? getComputedStyle(lab).color : null,
+                detail: det ? getComputedStyle(det).color : null,
+                others: tiles
+                  .filter((x) => x !== t)
+                  .map((x) => ({ bg: bg(x), em: x.classList.contains('tile-emergency') })),
+              }
+            }, i)
+            const where = `[scan-ring] ${tag} ${name}#${i}`
+            if (r.shadow !== 'none') failures.push(`${where} ::after に box-shadow ${r.shadow}`)
+            if (r.before !== 'none' && r.before !== 'normal')
+              failures.push(`${where} ::before がある ${r.before}`)
+            const ringFill = ratio(parse(r.ring), parse(r.fill))
+            if (ringFill < 3) failures.push(`${where} 黄枠と面が 3:1 未満 (${ringFill.toFixed(2)})`)
+            const text = r.label ? ratio(parse(r.label), parse(r.fill)) : 99
+            const detail = r.detail ? ratio(parse(r.detail), parse(r.fill)) : 99
+            if (text < 4.5 || detail < 4.5)
+              failures.push(
+                `${where} 文字が 4.5:1 未満 (${text.toFixed(2)} / ${detail.toFixed(2)})`,
+              )
+            if (r.detail && r.label && same(r.detail, r.label))
+              failures.push(`${where} 予告とラベルの文字色が同じ`)
+            // スキャン面は他のどのタイル(緊急入口を含む)の面とも同色にならない
+            for (const o of r.others) {
+              if (same(o.bg, r.fill))
+                failures.push(
+                  `${where} スキャン面が他タイル(${o.em ? '緊急入口' : '通常'})と同色 ${r.fill}`,
+                )
+              const c = parse(o.bg)
+              if (c[0] > 150 && c[1] < 80 && c[2] < 80) failures.push(`${where} 赤いタイル ${o.bg}`)
+            }
+            const ordinary = r.others
+              .filter((o) => !o.em)
+              .map((o) => ratio(parse(r.fill), parse(o.bg)))
+            rows.push({
+              tag,
+              screen: name,
+              i,
+              emergencyTile: r.emergencyTile,
+              ringFill,
+              text,
+              detail,
+              fillVsOrdinaryMin: ordinary.length ? Math.min(...ordinary) : null,
+            })
+            if (reportDir && (i === 0 || r.emergencyTile)) {
+              await page.screenshot({
+                path: path.join(reportDir, 'shots', `${tag}_${name}_scan${i}.png`),
+              })
+            }
+          }
+          await page.evaluate(() =>
+            document
+              .querySelectorAll('.tile.scanning')
+              .forEach((e) => e.classList.remove('scanning')),
+          )
+        }
+        {
+          const { context, page } = await fresh(false)
+          await measure(page, 'home')
+          await click(page, '不快')
+          await measure(page, 'discomfort')
+          await click(page, '痛い')
+          await measure(page, 'pain')
+          await click(page, '頭')
+          await measure(page, 'pain-intensity')
+          await context.close()
+        }
+        {
+          const { context, page } = await fresh(true)
+          if (!(await page.locator('.emergency-status').count()))
+            failures.push(`[scan-ring] ${tag} 緊急状態が復元されていない`)
+          await measure(page, 'emergency-home')
+          await context.close()
+        }
+        {
+          const { context, page } = await fresh(false)
+          await click(page, '緊急')
+          if (!(await page.locator('.emergency-status').count()))
+            failures.push(`[scan-ring] ${tag} 緊急詳細へ入れていない`)
+          await measure(page, 'emergency-detail')
+          await context.close()
+        }
+      }
+    }
+  } finally {
+    await browser.close()
+    server.close()
+  }
+  if (reportDir) fs.writeFileSync(path.join(reportDir, 'rows.json'), JSON.stringify(rows))
+  return failures
+}
+
 async function main() {
   if (!fs.existsSync(DIST_DIR)) {
     console.error(`dist/ が無い。先に \`npm run build\` を実行すること: ${DIST_DIR}`)
@@ -1454,6 +1653,16 @@ async function main() {
     tightFailures.forEach((f) => console.error(f))
   }
   allFailures.push(...tightFailures)
+  port += 1
+
+  console.log(`--- checking: scan-ring-surface (port ${port}) ---`)
+  const scanRingFailures = await checkScanRingSurface(chromium, port)
+  if (scanRingFailures.length === 0) {
+    console.log('[scan-ring-surface] OK')
+  } else {
+    scanRingFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...scanRingFailures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)
@@ -1463,7 +1672,16 @@ async function main() {
   }
 }
 
-if (process.env.ISSUE37_ONLY === '1') {
+if (process.env.SCAN_RING_ONLY === '1') {
+  const { chromium } = await import('playwright')
+  const failures = await checkScanRingSurface(chromium, 4720)
+  if (failures.length > 0) {
+    failures.forEach((failure) => console.error(failure))
+    process.exitCode = 1
+  } else {
+    console.log('[scan-ring-surface] OK')
+  }
+} else if (process.env.ISSUE37_ONLY === '1') {
   const { chromium } = await import('playwright')
   const failures = await checkIssue37SmallViewport(chromium, 4710)
   if (failures.length > 0) {
