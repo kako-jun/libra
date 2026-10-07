@@ -77,9 +77,9 @@ const EMERGENCY_WORDS = ['緊急', 'きんきゅう', 'キンキュウ']
 /** 緊急の主文(上部の緊急表示・読み上げ・緊急と同じ文の拒否判定の正本)。本文なので句点を付ける(requirements.md §4.1.3) */
 export const EMERGENCY_MESSAGE = '緊急です。来てください。'
 
-/** 句読点の有無・違いで同一判定を回避されないよう、比較用に句読点と空白を除く */
+/** 句読点・「…」「・」の有無や違いで同一判定を回避されないよう、比較用にこれらと空白を除く */
 function stripPunctuation(value: string): string {
-  return compact(value).replace(/[。、．，.,！!？?]/g, '')
+  return compact(value).replace(/[。、．，.,！!？?…・]/g, '')
 }
 
 /** 全角/半角・空白の違いで予約語を回避されないよう揃える */
@@ -132,7 +132,7 @@ export function phraseProblem(phrase: Phrase): string | null {
   const text = compact(phrase.text)
   if (label === '') return '表示ラベルが空です。'
   if (text === '') return '伝える文が空です。'
-  if (RESERVED_LABELS.includes(label)) return `「${label}」は予約された名前です。`
+  if (RESERVED_LABELS.includes(stripPunctuation(label))) return `「${label}」は予約された名前です。`
   if (EMERGENCY_WORDS.some((word) => label.includes(word))) {
     return '緊急と取り違えるため「緊急」を含むラベルは使えません。'
   }
@@ -184,8 +184,16 @@ function normalizePhrase(input: unknown): Phrase | null {
 }
 
 /**
+ * フレーズ保存値の世代。設定(settings.ts の phrasesVersion)に印として保存・書き出しする。
+ * 1 = 句点導入(Issue #46)後。印が無い・1 未満の保存値と取り込みJSONだけを一度だけ昇格し、
+ * 昇格後は印を付けて以降の読み込みでは昇格しない(介助者が句点を意図的に消した文を戻さない)。
+ */
+export const PHRASES_VERSION = 1
+
+/**
  * 句点導入(Issue #46)前に保存された「既定そのままの文」を、新しい既定(句点つき)へ揃える。
  * 同じグループ・同じ id の既定と、句点を除いて完全一致するときだけ。介助者が書き換えた文は触らない。
+ * 呼び出すのは印(phrasesVersion)が古い保存値だけ。
  */
 function upgradeLegacyDefaultText(group: PhraseGroup, phrase: Phrase): Phrase {
   const base = DEFAULT_PHRASES[group].find((p) => p.id === phrase.id)
@@ -196,7 +204,11 @@ function upgradeLegacyDefaultText(group: PhraseGroup, phrase: Phrase): Phrase {
 }
 
 /** 未知の値を安全な PhraseSets へ丸める。壊れた項目は捨て、id の重複は後ろを捨てる。 */
-export function normalizePhraseSets(input: unknown): PhraseSets {
+export function normalizePhraseSets(
+  input: unknown,
+  /** 旧既定(句点なし)を新既定へ昇格するか。settings.ts は印が古いときだけ true にする */
+  upgradeLegacy = true,
+): PhraseSets {
   if (typeof input !== 'object' || input === null) return {}
   const raw = input as Record<string, unknown>
   const result: PhraseSets = {}
@@ -209,7 +221,7 @@ export function normalizePhraseSets(input: unknown): PhraseSets {
       const parsed = normalizePhrase(item)
       if (!parsed || seen.has(parsed.id)) continue
       seen.add(parsed.id)
-      phrases.push(upgradeLegacyDefaultText(group, parsed))
+      phrases.push(upgradeLegacy ? upgradeLegacyDefaultText(group, parsed) : parsed)
       if (phrases.length >= MAX_PHRASES_PER_GROUP) break
     }
     result[group] = phrases

@@ -22,6 +22,7 @@ describe('normalizeSettings', () => {
       highContrast: true,
       theme: 'dark',
       phrases: {},
+      phrasesVersion: 1,
       hapticsEnabled: false,
       hapticsStrength: 'strong',
       hapticSoundWhenVoiceOff: true,
