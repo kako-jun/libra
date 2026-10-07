@@ -78,7 +78,7 @@ const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
 
 // Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者メニューに表示する文言。
 // 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
-const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
+export const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
   active: '画面スリープ防止: 有効',
   unsupported: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください。',
   error: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください。',
@@ -87,7 +87,7 @@ const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
 
 // PR #11 レビュー対応(should-1): オフラインで動く準備(Service Worker がこのページを
 // 制御しているか)を Wake Lock と同じ扱いで介助者メニューに表示する。
-const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
+export const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
   ready: 'オフライン準備: 完了',
   'not-ready': 'オフライン準備: 未完了',
 }
@@ -1243,7 +1243,8 @@ export default function App() {
           </p>
           <ul class="morse-legend" aria-label="モールスの操作と自動で起きること">
             <li>
-              <b>短く押す</b>＝・　<b>{(morseConfig().dashMs / 1000).toFixed(1)}秒以上押す</b>＝－。
+              <b>短く押す</b>＝短点（・）、
+              <b>{(morseConfig().dashMs / 1000).toFixed(1)}秒以上押す</b>＝長点（－）。
             </li>
             <Show when={settings().minHoldMs > 0}>
               <li>

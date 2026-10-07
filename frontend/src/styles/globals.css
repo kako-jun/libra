@@ -1249,6 +1249,8 @@ h1[data-fit='single'] {
 
   .morse-legend {
     line-height: 1.2;
+    /* 行間の余白は0(Issue #46: 句点・符号の注記で行が増えても、高コントラスト+緊急中でも下端に余白を残す) */
+    gap: 0 12px;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
     font-size: clamp(0.75rem, 4vh, 1rem);
   }

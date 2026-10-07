@@ -211,7 +211,7 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('戻る')
   })
 
-  it('緊急選択で確認なしに即「緊急です。来てください」を表示し緊急詳細画面へ遷移する', () => {
+  it('緊急選択で確認なしに即「緊急です。来てください。」を表示し緊急詳細画面へ遷移する', () => {
     const { container } = render(() => <App />)
     fireEvent.keyDown(window, { key: ' ' }) // index0=緊急
     expect(h1Text(container)).toBe('緊急です。来てください。')
@@ -1256,8 +1256,8 @@ describe('App', () => {
     const { container } = enterMorse()
     const text = legendOf(container)
     for (const phrase of [
-      '短く押す＝・',
-      '0.5秒以上押す＝－',
+      '短く押す＝短点（・）',
+      '0.5秒以上押す＝長点（－）',
       '緊急＝SOS ・・・ －－－ ・・・（休まず続けて打つと、待たずにすぐ。1.5秒休むと数え直し）',
       '・・・・・（・を5つ）→ 待つとスキャンへ戻る',
       '・・・・・・（・を6つ）→ 待つと1字消す',
@@ -1296,7 +1296,7 @@ describe('App', () => {
       morseWordGapMs: 6000,
     })
     const text = legendOf(container)
-    expect(text).toContain('0.8秒以上押す＝－')
+    expect(text).toContain('0.8秒以上押す＝長点（－）')
     expect(text).toContain('2.5秒押さないと、1文字が決まる')
     expect(text).toContain('2.5秒休むと数え直し') // SOS の数え直しも文字の確定時間に追従
     expect(text).toContain('6.0秒押さないと、語の区切りが入る')
@@ -1318,7 +1318,7 @@ describe('App', () => {
     vi.advanceTimersByTime(100)
     expect(container.querySelector('.morse-panel')).not.toBeNull()
     // 実効の境目 = 1000 + 100ms
-    expect(legendOf(container)).toContain('1.1秒以上押す＝－')
+    expect(legendOf(container)).toContain('1.1秒以上押す＝長点（－）')
   })
 
   it('Issue #57: 押下時間の下限(#6)があるときだけ「◯秒未満の押下は数えない」が出て、設定に追従する', () => {
