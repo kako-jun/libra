@@ -13,7 +13,7 @@
 - **フロントエンド**: Vite + SolidJS + TypeScript（`frontend/`）
 - **バックエンド**: Hono on Cloudflare Workers（`backend/`）
 - **デプロイ**: フロントエンド → CF Pages（push to main = auto deploy）、バックエンド → `wrangler deploy`
-- **CI**: `.github/workflows/ci.yml` - push/PR to main で tsc + vite build
+- **CI**: `.github/workflows/ci.yml` - push/PR to main で frontend は tsc + vitest + vite build、backend は typecheck
 - **Pre-commit**: Husky + lint-staged at repo root（prettier for frontend）
 
 ## ローカル起動
@@ -37,10 +37,11 @@ Esuna のように押しやすい格子状UIにする。ただし Libra は 9 �
 
 - 本人の入力は2経路だけ（キー・Bluetooth シャッター＝現在のスキャン対象を実行 / タイルの直接タップ＝押したタイルを実行）。画面の背景へのタップは何も実行しない
 - 自動スキャンは起動時から常時動作
-- 介助者操作はメッセージ欄右上の「介助者用」ボタンの通常のクリック・タップ
+- **案内は常に画面に出す・暗黙の操作を作らない**。自動で起きること（取り消しが1周で消える・緊急中の振動・連打無視・先頭待機・介助者メニューの60秒自動閉じ等）は固定領域（本人画面の下端／介助者メニュー上部）に常時出し、隠す操作は設けない。緊急には確認を挟まない
+- 介助者操作は画面上部の案内欄（現在地・画面の案内）の右上にある「介助者用」ボタンの通常のクリック・タップ
 - 介助者が横にいる前提の大きな表示
 
-色は Esuna の青系ではなく、緑系統を基本にする。
+色は Esuna の青系ではなく、緑系統を基本にする。赤は画面上部のメッセージ領域（緊急状態帯・緊急色調のメッセージ）だけに使い、タイルは赤くしない。スキャン枠は黄色一本（白縁・二重枠なし）。
 
 ## 禁止事項
 

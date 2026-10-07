@@ -725,7 +725,7 @@ h1[data-fit='single'] {
    介助者 UI — 目立たないが介助者には分かる見た目。
    =================================================================== */
 .caregiver-button {
-  /* kako-jun 追加指示: 画面隅への固定配置(position:fixed)をやめ、メッセージ欄右上の
+  /* kako-jun 追加指示: 画面隅への固定配置(position:fixed)をやめ、案内欄右上の
      .message-panel-controls 内に通常のレイアウトとして置く。
      PR#16 should-1: 色をハードコード(rgb(0 0 0 / 22%))せず、メッセージ欄の色調
      (通常/肯定/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text、

@@ -12,7 +12,7 @@ Libra はブラウザで動く Web アプリとして設計する。
 
 - タッチ
 - キーボード
-- Space / Enter 相当の外部ボタン
+- 任意のキー（Space / Enter / 音量キー等）として届く外部ボタン
 - Bluetooth シャッターボタン
 
 ## PWA

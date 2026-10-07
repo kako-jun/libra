@@ -17,11 +17,12 @@ libra/
 
 ## Frontend
 
-現時点のプロトタイプは `frontend/src/App.tsx` に画面状態を集約している。
+画面状態は `frontend/src/App.tsx` に集約し、画面ごとの項目は `frontend/src/lib/menus.ts` のビルダーが組み立てる。
 
-- 画面: home / urgent / slow / pain / discomfort / mood / letters / voice / settings
-- 状態: message / voiceMode / scanEnabled / scanIndex / letterText / history
-- 入力: タイルの直接タップ、数字キー、矢印キー、Space、Enter、Escape
+- 画面: 本人画面の全 `ScreenId`（home / urgentDetail / discomfort / discomfortOther / painLocation / painIntensity / moodRequest / requests / feelings / letters / lettersRow / lettersYesNo / morse）。親子関係・戻り先の正本は `requirements.md` §4.1.1 と `menus.ts` の `PARENT_SCREEN`。介助者メニューは本人画面の階層に含めない
+- 状態: 画面・メッセージ履歴・緊急状態（`libra:emergency`）・スキャン位置・文字盤の入力中文字列・介助者設定（`libra`）
+- 入力: キー（任意のキー・Bluetooth シャッター）と、タイルの直接タップ/クリック。背景のタップは何も実行しない。数字キー（1-9）は URL に `?dev` を付けたときだけ有効な開発補助
+- 主な `lib/`: `scan.ts`（自動スキャン・先頭待機・連打無視）/ `switchInput.ts`（押下時間の下限・離して決定）/ `morse.ts`・`morseInput.ts`（モールス）/ `feedback.ts`・`tone.ts`（振動・効果音）/ `guidance.ts`（常時案内の文言）/ `gridLayout.ts`（固定格子）/ `phrases.ts`・`settings.ts`（フレーズ・設定）/ `emergencyState.ts`・`wakeLock.ts`・`offlineReady.ts`・`fitHeading.ts`
 - 音声: Web Speech API
 - レイアウト: `.app-shell` は `height: 100dvh`（非対応環境は `100vh`）で固定し、`overflow: hidden` を実際に効かせる。垂直方向の溢れは `.grid-board`（`overflow-y: auto`）だけが引き受け、document 自体はスクロールしない。スキャン対象が変わるたびに `scrollIntoView({block:'nearest'})` で追従させる
 
@@ -45,7 +46,7 @@ Hono on Cloudflare Workers。現時点では薄い API に留める。
 - 同一オリジンの GET は stale-while-revalidate（キャッシュがあれば即返し、裏でネットワークから更新）。ナビゲーション（リロード・URL直入力等）は、precache キャッシュに `/` があれば 3 秒タイムアウト付き network-first（失敗・非 2xx 時はキャッシュ済みの `/` へフォールバック）。キャッシュに `/` が無い場合（初回アクセス等）は諦めてエラーを返すのではなく、タイムアウト無しでネットワークの応答を待ち続ける（非 ok 応答であってもそのまま返す）
 - `/api/` 配下は SW で握らず常にネットワークのみ（将来バックエンド通信を追加した場合の指針）
 - ページ側（`frontend/src/lib/offlineReady.ts`）が「オフライン準備ができているか」を確認する際は、SW に `postMessage({type:'GET_CACHE_NAME'})` で問い合わせて現在の `CACHE_NAME` を教えてもらい、そのキャッシュに `/` と実際に参照中の JS/CSS が揃っているかで判定する（キャッシュ名のプレフィックス一致等の推測はしない。一時名 `-installing` と取り違える恐れがあるため）。未完了のあいだは、既存の `registration` が無ければ `navigator.serviceWorker.register()` を呼び直し(初回 install 失敗時は registration 自体が残らないため)、あれば `registration.update()` を呼ぶ。再試行の間隔は5分から始まり失敗するたびに倍にして60分で打ち止め、成功したら5分にリセットする(指数バックオフ)。`navigator.onLine===false` のあいだは試みない
-- `frontend/e2e/offline.e2e.mjs` が、素の静的配信・Cloudflare Pages 相当（`/index.html` 308 リダイレクト）・ドットファイル 404 環境の3パターンでオフライン起動（reload・ディープリンク直接アクセス）を Playwright で検証する。加えて、install 時の 5xx で旧 SW が生き残ること（新旧 CACHE_NAME が衝突する場合を含む）、横向き小画面でのレイアウト崩れが無いこと、固定配置の介助者ボタン等がタイル領域と重ならないことも検証する
+- `frontend/e2e/offline.e2e.mjs` が、素の静的配信・Cloudflare Pages 相当（`/index.html` 308 リダイレクト）・ドットファイル 404 環境の3パターンでオフライン起動（reload・ディープリンク直接アクセス）を Playwright で検証する。加えて、install 時の 5xx で旧 SW が生き残ること（新旧 CACHE_NAME が衝突する場合を含む）、横向き小画面でのレイアウト崩れが無いこと、案内領域・「介助者用」ボタンがタイルと重ならないことも検証する
 
 ## Storage
 

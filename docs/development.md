@@ -33,7 +33,7 @@ npm run dev
 
 ## CI
 
-`.github/workflows/ci.yml` で frontend/backend の型チェックと frontend build を実行する。
+`.github/workflows/ci.yml` で frontend は型チェック（`tsc --noEmit`）・単体テスト（`npm test`）・build、backend は型チェックを実行する。e2e（`npm run e2e`）は CI に含まれない。
 
 ## オフライン動作の e2e 検証
 
