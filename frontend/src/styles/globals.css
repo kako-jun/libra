@@ -25,6 +25,12 @@
   --urgent-text-muted: #ffd9d6;
   --scan-ring: #facc15;
   --scan-ring-width: 6px;
+  /* Issue #34: スキャン枠(.tile.scanning::after)がセルの縁から占める厚み
+     = 外側のずれ(inset 4px) + 黄色リングの太さ + 内側アウトライン(2px)。
+     タイルの文字・予告・山形アイコンは、スキャン中でなくてもこの内側に置き、
+     枠が来ても隠さず、選択で位置・大きさが変わらないようにする。
+     高コントラストでリングが太くなる(9px)と自動で追従する */
+  --scan-ring-inset: calc(4px + var(--scan-ring-width) + 2px);
   /* 通常セル(surface-scanning)向けの濃色アウトライン。urgentセル(赤地)では
      コントラストが足りない(2.5:1程度)ため、urgent用に別トークンを持つ */
   --scan-ring-outline: #0f241d;
@@ -56,10 +62,8 @@
      CSS変数にしてある) */
   --label-ratio: 0.85;
   /* PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数を CSS 変数にする。
-     App.tsx が getComputedStyle(gridBoardEl) でこの実効値を読み、
-     computeGridLayout の labelWidthFactor/labelHeightFactor(0〜1の比率、
-     この値を100で割ったもの)にそのまま渡す。JS側にハードコードしないことで、
-     ブレークポイントごとに違う値(下の @media 参照)と常に一致させる */
+     ブレークポイントごとに違う値(下の @media 参照)をここ1か所で持つ
+     (Issue #47 で固定格子にしたため、JS側(gridLayout.ts)はもうこの値を読まない) */
   --label-cqi: 15;
   --label-cqb: 20;
   /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る */
@@ -453,9 +457,10 @@ h1[data-fit='single'] {
   touch-action: none;
 }
 
-/* Issue #3 再レビュー: 項目数が少ない画面(目安8項目以内)では、孤立タイル・下部の
-   空白を出さないよう App.tsx(computeGridLayout)が算出した列数(--cols)・行数(--rows)で
-   grid 領域全体を等分してタイルで埋める。auto-fit/minmax によるスクロールは使わない。 */
+/* Issue #47: 通常画面(目安8項目以内)は、画面の向きだけで決まる固定格子(App.tsx の
+   computeGridLayout: 縦長 2列×4行 / 横長 4列×2行)で領域全体を等分する。項目数が少なくても
+   タイルは引き延ばさず、余りは .tile-empty(非操作の空きセル)になる。
+   auto-fit/minmax によるスクロールは使わない。 */
 .grid-board.grid-fill {
   grid-template-columns: repeat(var(--cols, 1), 1fr);
   grid-template-rows: repeat(var(--rows, 1), 1fr);
@@ -466,6 +471,15 @@ h1[data-fit='single'] {
 .grid-board.grid-fill .tile {
   min-height: 0;
   height: 100%;
+}
+
+/* Issue #47: 空きセル。タイルではない(スキャン・クリック・読み上げの対象外)ので、面の色も
+   区切り線も持たず、盤の背景がそのまま見える「何もない」セルにする。 */
+.tile-empty {
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  pointer-events: none;
 }
 
 /* Issue #40: スクロールモード(9項目以上、現状は文字盤の行段階のみ)では
@@ -526,12 +540,29 @@ h1[data-fit='single'] {
      係数だけ揃えたことで、狭い画面の実際の頭打ち値が下がった)。
      係数を --label-cqi/--label-cqb という CSS 変数に戻し、ブレークポイントごとに
      元の値(基本15/20、720px以下20/22、480px以下22/24、下の @media 参照)に
-     戻す。JS側(gridLayout.ts)にハードコードしていた頃の食い違いを繰り返さない
-     よう、今度は App.tsx がこの実効値を getComputedStyle で読んで
-     computeGridLayout に渡す(ハードコードされた定数を持たない) */
+     戻す(係数はこの CSS だけが持つ。Issue #47 で JS 側は読まなくなった)。
+     Issue #47/#34 追加(高コントラストの補正): タイルの padding をスキャン枠の帯
+     (--scan-ring-inset)にしたため、帯が太い(15px)高コントラストでは cqi/cqb の基準になる
+     content-box が標準(12px)より縮み、ラベルまで小さくなっていた(弱視向けの設定で
+     文字が小さくなるのは逆効果)。基準を標準の帯(12px)相当に戻すため、上限側の項に
+     --ring-extra(帯の標準との差。標準では 0)の分を足す。
+     Issue #34 追加(2行ラベルを帯に入れない。ただし縮めすぎない): 下限 1.05rem は、セルの高さが
+     低い(content 高さに2行が入らない)と2行ラベルが枠の帯に食い込む。content 高さに2行
+     (.tile-label の line-height 1.08〜1.15 → 約2.3em 必要)が入らないときだけ、下限を
+     content 高さ/2.4 まで下げる。ただし 13px を下回らせない(弱視向けの設定ほど小さくなる
+     のは逆効果。足りない高さは、短い画面で帯・余白を詰めてセル側に確保する。下の
+     @media (max-height: 500px) 参照)。この項にも --ring-extra を足し、高コントラストの
+     太い帯でも標準と同じ下限にそろえる(高コントラストのほうが標準より小さくならない) */
+  --ring-extra: calc(var(--scan-ring-inset) - 12px);
   --tile-label-font: clamp(
-    1.05rem,
-    calc(var(--label-ratio) * min(calc(var(--label-cqi) * 1cqi), calc(var(--label-cqb) * 1cqb))),
+    min(1.05rem, max(13px, calc((100cqb + 2 * var(--ring-extra)) / 2.4))),
+    calc(
+      var(--label-ratio) *
+        min(
+          calc(var(--label-cqi) * 1cqi + var(--label-cqi) * 0.02 * var(--ring-extra)),
+          calc(var(--label-cqb) * 1cqb + var(--label-cqb) * 0.02 * var(--ring-extra))
+        )
+    ),
     min(calc(var(--font-scale) * 4.8vh), 3.4rem)
   );
   container-type: size;
@@ -540,7 +571,7 @@ h1[data-fit='single'] {
   place-items: center;
   min-width: 0;
   min-height: 126px;
-  padding: 18px 12px 12px;
+  padding: var(--scan-ring-inset);
   color: var(--text);
   background: var(--surface);
   /* Issue #3 再々レビュー: 枠線ではなく、右+下だけの細い区切り線(box-shadow inset)で
@@ -698,7 +729,7 @@ h1[data-fit='single'] {
 .tile-chevron {
   position: absolute;
   top: 50%;
-  right: 6px;
+  right: var(--scan-ring-inset);
   width: clamp(14px, 9cqi, 28px);
   height: auto;
   color: currentColor;
@@ -708,9 +739,9 @@ h1[data-fit='single'] {
 
 .tile-preview {
   position: absolute;
-  right: 8px;
-  bottom: 6px;
-  left: 8px;
+  right: var(--scan-ring-inset);
+  bottom: var(--scan-ring-inset);
+  left: var(--scan-ring-inset);
   overflow: hidden;
   color: var(--text-muted);
   /* kako-jun 追加指示: ラベルの45〜55%程度(ここでは50%)、最小でも0.85rem相当にする。
@@ -943,6 +974,7 @@ h1[data-fit='single'] {
   background: var(--caregiver-close-bg);
 }
 
+/* 縦横の境界は gridLayout.ts と同じ(高さ >= 幅 が縦長。正方形は縦長) */
 @media (orientation: portrait) {
   .message-panel {
     min-height: 148px;
@@ -952,8 +984,7 @@ h1[data-fit='single'] {
 @media (max-width: 720px) {
   /* PR#16 5巡目 must-G(4巡目 should-a を巻き戻す): --label-cqi/--label-cqb を
      このブレークポイント向けの値に上書きする。:root で定義することで、
-     .tile の子孫だけでなく App.tsx が getComputedStyle(gridBoardEl) で読む先
-     (gridBoardElはこれらの祖先)にも同じ実効値が伝わる */
+     .tile の子孫を含め、どこから参照しても同じ実効値になる */
   :root {
     --label-cqi: 20;
     --label-cqb: 22;
@@ -972,7 +1003,6 @@ h1[data-fit='single'] {
 
   .tile {
     min-height: 112px;
-    padding: 18px 8px 10px;
   }
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
@@ -1017,7 +1047,6 @@ h1[data-fit='single'] {
 
   .tile {
     min-height: 84px;
-    padding: 14px 6px 8px;
   }
 }
 
@@ -1179,7 +1208,7 @@ h1[data-fit='single'] {
 /* Issue #57: モールス画面は案内を常に全項目見せる(本人はスイッチのみ・touch-action:none で
    スクロールできない)。案内の上に積まれる枠(画面名・直前の選択・直前に伝えたこと)を詰め、
    狭い/低い画面(390x844・568x320・844x390・320x568)でも全項目が画面内に収まるようにする。
-   スクロールで逃がさず、全項目が収まること自体を保証する(DESIGN.md §9 の実測表)。 */
+   スクロールで逃がさず、全項目が収まること自体を保証する(DESIGN.md §10 の実測表)。 */
 .app-shell.is-morse .selection-confirmation,
 .app-shell.is-morse .message-panel,
 .app-shell.is-morse .screen-breadcrumb {
@@ -1557,14 +1586,72 @@ h1[data-fit='single'] {
   }
 }
 
-/* 低い横向き画面(例 568x320)の4列×2行ではセルの高さが53〜59pxになり、2行に折り返すラベル
-   (「痰を取ってほしい」など)が下端に接した。タイルの上下余白と行間を詰めて余白を確保する */
+/* 低い横向き画面(例 568x320)の4列×2行ではセルの高さが低くなり、2行に折り返すラベル
+   (「痰を取ってほしい」など)が下端に接した。行間を詰めて余白を確保する
+   (タイルの余白は Issue #34 でスキャン枠の厚み --scan-ring-inset に統一したため、ここでは詰めない) */
 @media (max-height: 500px) {
-  .tile {
-    padding: 8px 6px 5px;
-  }
-
   .tile-label {
     line-height: 1.08;
+  }
+}
+
+/* Issue #34 (短い画面で、2行ラベルを 13px 以上で枠の帯に入れないためのセル高さの確保)。
+   568x320 の緊急+伝達メッセージ+案内帯最大(8項目)では、格子の1行が約49pxしか取れず、
+   帯に入らない2行ラベルが 13px を割っていた。ラベルは縮めず、次の2つでセル側を確保する。
+   (1) 緊急の帯を1行にする(「緊急です。来てください」と「伝えた状態: …」を横に並べる)。
+   (2) 高コントラストの枠(9px)を、短い・狭い画面だけ 7px にする(帯 15px → 13px。標準の 6px よりは
+       太く、黄色+二重アウトラインの対比は変わらない。下の別の @media 参照)。 */
+@media (max-height: 500px) {
+  .emergency-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.8em;
+    row-gap: 0;
+  }
+
+  .emergency-status-message {
+    flex: none;
+    font-size: clamp(1.1rem, 3.6vh, 1.6rem);
+  }
+
+  /* 選んだ緊急詳細が増えても帯を確実に1行に保つ(2行に戻るとセルが低くなり、2行ラベルが
+     枠の帯に入る)。長いときは「…」で省略する。詳細の全文は緊急詳細の画面で確認できる。 */
+  .emergency-status {
+    flex-wrap: nowrap;
+  }
+
+  .emergency-status .emergency-detail-status {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .emergency-status .emergency-detail-label {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .emergency-status .emergency-details {
+    display: block;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .emergency-status .emergency-details li {
+    display: inline;
+  }
+}
+
+/* 高コントラストの枠は、短い画面と、狭くて低めの画面(スマホ縦 320x568 の緊急+伝達でもセルの高さが約65px。
+   390x844 など高さに余裕のある縦向きスマホは 9px のまま)で
+   7px にする(--ring-extra を 1px に抑え、補正した下限が content 高さを超えないようにする) */
+@media (max-height: 500px), (max-width: 480px) and (max-height: 700px) {
+  :root[data-high-contrast='true'] {
+    --scan-ring-width: 7px;
   }
 }

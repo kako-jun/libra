@@ -372,26 +372,23 @@ export default function App() {
     }),
   )
 
-  // Issue #3 再レビュー: grid-board 自身の実測サイズ(縦横比)から列数を決める。
-  // ResizeObserver で追従するので、回転・キャレギバー設定変更後の再計算も自動で効く。
-  // PR#16 再レビュー must-A/B: 最小セル寸法は文字サイズに関係なく既定(160x84)のまま
-  // 固定する。「収まらない」問題は最小セル寸法をここで引き上げてスクロールへ逃がすのでは
-  // なく、CSS側で文字をセルに合わせて縮める(--tile-label-font の min())ことで解決する。
-  // これにより8項目以下の画面は常に全面充填(fill)され、スクロールに落ちない。
+  // Issue #47: 通常画面の格子はビューポートの縦横だけで決まる固定格子(gridLayout.ts)。
+  // grid-board 自身の実測サイズは、画面外へのスクロール追従(scrollIntoView)の再実行契機にだけ使う。
   let gridBoardEl: HTMLElement | undefined
   const [gridSize, setGridSize] = createSignal({ width: 0, height: 0 })
-  // PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数(globals.css 側で
-  // ブレークポイントごとに違う値、--label-cqi/--label-cqb)をここにハードコード
-  // せず、実際に描画されている grid-board から getComputedStyle で読み取って
-  // computeGridLayout に渡す。CSS側の値を変えてもJS側の定数を追従して直す
-  // 必要が無くなる(4巡目でCSS側だけ揃えて起きた食い違いの再発防止)
-  const [labelFactors, setLabelFactors] = createSignal({ width: 0.15, height: 0.2 })
+  const readViewport = () =>
+    typeof window === 'undefined'
+      ? { width: 0, height: 0 }
+      : { width: window.innerWidth, height: window.innerHeight }
+  const [viewportSize, setViewportSize] = createSignal(readViewport())
   const gridLayout = createMemo(() =>
-    computeGridLayout(currentMenu().length, gridSize().width, gridSize().height, {
-      labelWidthFactor: labelFactors().width,
-      labelHeightFactor: labelFactors().height,
-    }),
+    computeGridLayout(currentMenu().length, viewportSize().width, viewportSize().height),
   )
+  // 固定格子の空きセル数(項目数が格子より少ないぶん。非操作のセルとして描く)
+  const emptyCellCount = createMemo(() => {
+    const layout = gridLayout()
+    return layout.fill ? Math.max(0, layout.cols * layout.rows - currentMenu().length) : 0
+  })
 
   // 入力途中の文字列は折り返して大きく出し、長くなっても直近の入力(末尾)が見えるようにする
   let letterOutputEl: HTMLOutputElement | undefined
@@ -836,18 +833,13 @@ export default function App() {
     }
   })
 
-  // Issue #3 再レビュー: grid-board の実測サイズを追従し、列数計算(computeGridLayout)へ渡す
+  // grid-board の実測サイズとビューポートの縦横を追従する(回転・キーボード開閉・
+  // 介助者設定変更後の再計算も自動で効く)
   onMount(() => {
+    const onResize = () => setViewportSize(readViewport())
+    window.addEventListener('resize', onResize)
+    onCleanup(() => window.removeEventListener('resize', onResize))
     if (!gridBoardEl || typeof ResizeObserver === 'undefined') return
-    const readLabelFactors = () => {
-      if (!gridBoardEl || typeof getComputedStyle === 'undefined') return
-      const style = getComputedStyle(gridBoardEl)
-      const cqi = Number.parseFloat(style.getPropertyValue('--label-cqi'))
-      const cqb = Number.parseFloat(style.getPropertyValue('--label-cqb'))
-      if (Number.isFinite(cqi) && Number.isFinite(cqb)) {
-        setLabelFactors({ width: cqi / 100, height: cqb / 100 })
-      }
-    }
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
       if (!entry) return
@@ -855,12 +847,9 @@ export default function App() {
       const width = box ? box.inlineSize : entry.contentRect.width
       const height = box ? box.blockSize : entry.contentRect.height
       setGridSize({ width, height })
-      // ブレークポイント(画面幅)が変わるのも実質「サイズが変わる」ときなので、
-      // resize のたびに --label-cqi/--label-cqb の実効値も読み直す
-      readLabelFactors()
+      setViewportSize(readViewport())
     })
     observer.observe(gridBoardEl)
-    readLabelFactors()
     onCleanup(() => observer.disconnect())
   })
 
@@ -1317,13 +1306,6 @@ export default function App() {
                 'tile-nav': item.action.type === 'navigate',
                 'tile-emergency': item.action.type === 'emergency',
               }}
-              style={
-                gridLayout().fill &&
-                index() === currentMenu().length - 1 &&
-                gridLayout().lastSpan > 1
-                  ? { 'grid-column': `span ${gridLayout().lastSpan}` }
-                  : undefined
-              }
               role="button"
               aria-label={item.label}
               onPointerDown={(event) => onTilePointerDown(event, index())}
@@ -1353,6 +1335,10 @@ export default function App() {
               </Show>
             </div>
           )}
+        </For>
+        {/* Issue #47: 固定格子の余りは非操作の空きセル。スキャン・クリック・読み上げの対象外 */}
+        <For each={Array.from({ length: emptyCellCount() })}>
+          {() => <div class="tile-empty" aria-hidden="true" />}
         </For>
       </section>
 

@@ -654,7 +654,7 @@ async function checkHeadingFit(chromium, port) {
 /**
  * PR#16 Opus レビュー must-3: 文字サイズ「特大」× 390x844 × 不快画面(8項目)で、
  * タイルのラベルがタイル自身の矩形からはみ出さない(隣セルへ食い込まない)ことを確認する。
- * gridLayout への最小セル寸法連動・container-type:size + cqb clamp・overflow:hiddenの
+ * 固定格子(gridLayout.ts)・container-type:size + cqb clamp・overflow:hiddenの
  * 3段構えの対策がすべて外れた場合にここで検知する。
  */
 async function checkLabelsFitAtXlarge(chromium, port) {
@@ -737,6 +737,172 @@ async function checkLabelsFitAtXlarge(chromium, port) {
     await new Promise((resolve) => server.close(resolve))
   }
 
+  return failures
+}
+
+/**
+ * Issue #34: ラベルは縮めず(下限 13px)、2行ラベルも枠の帯(--scan-ring-inset)へ食い込ませない。
+ * ① 568x320・高コントラスト+案内帯最大(最小押下0.5秒/聴覚スキャン/音声full/離して決定)・
+ *    緊急+伝達メッセージ表示中の8項目画面(不快): 文字が枠の帯に入らない、ラベル最小px >= 13
+ * ② 390x844 home: 高コントラストのON/OFFでラベルpxが等しい(高コントラストで標準より小さくならない)
+ * 設定が実際に効いている(data-high-contrast 等)ことも検査し、効いていない測定を通さない。
+ */
+async function checkTightScreenLabelsAndRing(chromium, port) {
+  const base = `http://localhost:${port}/`
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+  const MIN_LABEL_PX = 13
+  const maxNotes = {
+    minHoldMs: 500,
+    auditoryScan: true,
+    voiceMode: 'full',
+    activateOn: 'release',
+  }
+
+  const open = async (viewport, settings) => {
+    const context = await browser.newContext({ viewport })
+    const page = await context.newPage()
+    await page.addInitScript(
+      (value) => {
+        window.localStorage.removeItem('libra:emergency')
+        window.localStorage.setItem('libra', JSON.stringify(value))
+      },
+      { intervalMs: 5000, morseEnabled: true, ...settings },
+    )
+    await page.goto(base)
+    await page.waitForTimeout(300)
+    const applied = await page.evaluate(() => ({
+      highContrast: document.documentElement.dataset.highContrast,
+      fontSize: document.documentElement.dataset.fontSize,
+    }))
+    if (
+      applied.highContrast !== String(settings.highContrast ?? false) ||
+      applied.fontSize !== (settings.fontSize ?? 'standard')
+    ) {
+      failures.push(`[tight] 設定が反映されていない ${JSON.stringify(applied)}`)
+    }
+    return { context, page }
+  }
+  // 離して決定 + 最小押下時間のため、長めに押して離す
+  const hold = async (page, label) => {
+    const tile = page
+      .locator('.grid-board .tile')
+      .filter({ has: page.getByText(label, { exact: true }) })
+      .first()
+    const box = await tile.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.waitForTimeout(700)
+    await page.mouse.up()
+    await page.waitForTimeout(900)
+  }
+  const labelMinPx = (page) =>
+    page.evaluate(() =>
+      Math.min(
+        ...[...document.querySelectorAll('.grid-board .tile .tile-label')].map((el) =>
+          Number.parseFloat(getComputedStyle(el).fontSize),
+        ),
+      ),
+    )
+
+  try {
+    // ①(緊急詳細を1つだけ選んだ場合と、5件すべて選んだ場合。後者は緊急帯の詳細が最も長い)
+    const emergencyPaths = [
+      ['緊急', '苦しい', '不快', '痰を取ってほしい', '不快'],
+      [
+        ...['苦しい', '痛い', '息ができない', '吐きそう', '胸が痛い'].flatMap((d) => ['緊急', d]),
+        '不快',
+        '痰を取ってほしい',
+        '不快',
+      ],
+    ]
+    for (const path of emergencyPaths) {
+      const { context, page } = await open(
+        { width: 568, height: 320 },
+        { fontSize: 'standard', highContrast: true, ...maxNotes },
+      )
+      for (const label of path) await hold(page, label)
+      const result = await page.evaluate(() => {
+        const ringW = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--scan-ring-width'),
+        )
+        const inset = 4 + ringW + 2
+        let worst = 0
+        const tiles = [...document.querySelectorAll('.grid-board .tile')]
+        for (const tile of tiles) {
+          const tr = tile.getBoundingClientRect()
+          for (const sel of ['.tile-label', '.tile-detail', '.tile-preview', '.tile-chevron']) {
+            const el = tile.querySelector(sel)
+            if (!el) continue
+            const range = document.createRange()
+            range.selectNodeContents(el)
+            const r =
+              sel === '.tile-chevron' ? el.getBoundingClientRect() : range.getBoundingClientRect()
+            const left = sel === '.tile-preview' ? el.getBoundingClientRect().left : r.left
+            const right = sel === '.tile-preview' ? el.getBoundingClientRect().right : r.right
+            worst = Math.max(
+              worst,
+              tr.left + inset - left,
+              right - (tr.right - inset),
+              tr.top + inset - r.top,
+              r.bottom - (tr.bottom - inset),
+            )
+          }
+        }
+        return {
+          count: tiles.length,
+          worst,
+          emergency: !!document.querySelector('.emergency-status'),
+          emergencyHeight:
+            document.querySelector('.emergency-status')?.getBoundingClientRect().height ?? 0,
+          sizes: new Set(tiles.map((t) => `${t.offsetWidth}x${t.offsetHeight}`)).size,
+        }
+      })
+      const px = await labelMinPx(page)
+      if (result.count !== 8 || !result.emergency) {
+        failures.push(
+          `[tight 568x320] 想定の状態(緊急+8項目)に到達していない(緊急帯 ${result.emergencyHeight}px) ${JSON.stringify(result)}`,
+        )
+      }
+      if (result.sizes !== 1) failures.push(`[tight 568x320] 全タイルが同サイズでない`)
+      // 短い画面の緊急帯は、詳細が長くても1行に保つ(2行に戻るとセルが低くなる)
+      if (result.emergencyHeight > 40) {
+        failures.push(
+          `[tight 568x320] 緊急帯が1行でない(高さ ${result.emergencyHeight.toFixed(1)}px)`,
+        )
+      }
+      if (result.worst > 0.5) {
+        failures.push(`[tight 568x320] 文字が枠の帯へ ${result.worst.toFixed(1)}px 食い込んでいる`)
+      }
+      if (px < MIN_LABEL_PX) {
+        failures.push(`[tight 568x320] ラベル最小 ${px.toFixed(2)}px(下限 ${MIN_LABEL_PX}px 未満)`)
+      }
+      await context.close()
+    }
+    // ②(390x844 は枠9px・幅で頭打ち、768x1024 は枠9px・高さで頭打ち。補正が無いと 0.8〜1.2px 以上小さくなる。
+    // 高コントラストは区切り線が太くセルが約1px低くなるため、許容は 0.5px)
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 768, height: 1024 },
+    ]) {
+      const sizes = {}
+      for (const highContrast of [false, true]) {
+        const { context, page } = await open(viewport, { fontSize: 'standard', highContrast })
+        sizes[highContrast] = await labelMinPx(page)
+        await context.close()
+      }
+      if (sizes[true] < sizes[false] - 0.5) {
+        failures.push(
+          `[tight ${viewport.width}x${viewport.height} home] 高コントラストで標準より小さい(標準 ${sizes[false].toFixed(2)}px / 高コントラスト ${sizes[true].toFixed(2)}px)`,
+        )
+      }
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
   return failures
 }
 
@@ -1026,10 +1192,15 @@ async function checkFontSizeMonotonicity(chromium, port) {
     // 具体的な下限値で確認する。実測値(このコミット時点)を基準に、4巡目で発生した
     // 22〜28%縮小(390x844で22.0px等)へ戻ったら検知できるよう、実測よりわずかに
     // 低い値を下限にする(rendering jitter の許容と、回帰検知の両立)
+    // この表は標準コントラストだけの下限。高コントラストの同等性(標準と同じ大きさ)と、
+    // 短い画面の下限(13px)・枠の帯への食い込み0は、別の checkTightScreenLabelsAndRing
+    // で検査する(高コントラストの別下限は設けない。標準と等しいことを直接比較する)。
     const standardLabelMinimums = [
-      // 実測23.33px(4巡目の回帰値は22.0px)
-      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 23 },
-      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['4'], minPx: 23 },
+      // 実測21.80px。Issue #47 で縦長が 2列×4行の固定格子になり(従来は項目数に応じて3行)、
+      // Issue #34 でスキャン枠の厚みぶん余白を取るためセルが低くなった結果。
+      // 4巡目の回帰値(22.0px)より下だが、固定格子の仕様上の値なので新しい実測を基準にする
+      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 21 },
+      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['4'], minPx: 21 },
       // 実測41.17px
       { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
       // 実測28.79px
@@ -1273,6 +1444,16 @@ async function main() {
     issue37Failures.forEach((f) => console.error(f))
   }
   allFailures.push(...issue37Failures)
+  port += 1
+
+  console.log(`--- checking: tight-labels-and-ring (port ${port}) ---`)
+  const tightFailures = await checkTightScreenLabelsAndRing(chromium, port)
+  if (tightFailures.length === 0) {
+    console.log('[tight-labels-and-ring] OK')
+  } else {
+    tightFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...tightFailures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)
