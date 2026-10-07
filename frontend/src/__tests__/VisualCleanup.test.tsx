@@ -13,7 +13,7 @@
 //   明/夜    | 有 | 全画面               | スキャン中                | 同上(HC は枠だけ 9px に太る) | 黄 1本 | 同上
 //   全て     | 全 | 上部メッセージ欄     | urgent 色調/緊急状態帯    | --urgent-bg(赤はここだけ) | -   | --urgent-text
 // 緊急入口は色・面で区別しない(ラベル「緊急」・固定位置・上部の緊急状態帯の文言で示す)。スキャン中の面と
-// 通常面が必ず異なることを下の静的検査で縛る(実描画の確認は e2e/scan-ring-surface.e2e.mjs)。
+// 通常面が必ず異なることを下の静的検査で縛る(実描画の確認は e2e/offline.e2e.mjs の checkScanRingSurface)。
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'

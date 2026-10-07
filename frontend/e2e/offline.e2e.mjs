@@ -1479,6 +1479,20 @@ async function checkScanRingSurface(chromium, port) {
                 failures.push(
                   `${where} スキャン面が他タイル(${o.em ? '緊急入口' : '通常'})と同色 ${r.fill}`,
                 )
+              // 静的テスト(VisualCleanup.test.tsx)の下限 1.3 と揃える
+              const faceRatio = ratio(parse(r.fill), parse(o.bg))
+              if (faceRatio < 1.3)
+                failures.push(
+                  `${where} スキャン面と他タイル面が 1.3:1 未満 (${faceRatio.toFixed(2)})`,
+                )
+              // 夜間は黄枠が隣接タイルに対しても 3:1 以上(明るいテーマの白面とは 1.53:1 のため対象外)
+              if (theme === 'dark') {
+                const ringNb = ratio(parse(r.ring), parse(o.bg))
+                if (ringNb < 3)
+                  failures.push(
+                    `${where} 夜間の黄枠と隣接タイル面が 3:1 未満 (${ringNb.toFixed(2)})`,
+                  )
+              }
               const c = parse(o.bg)
               if (c[0] > 150 && c[1] < 80 && c[2] < 80) failures.push(`${where} 赤いタイル ${o.bg}`)
             }
