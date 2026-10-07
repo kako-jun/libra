@@ -15,7 +15,7 @@
   --surface-positive: #c9f0d9;
   /* PR#16 Opus レビュー must-2: 黄枠単体(vs白 1.53)ではWCAG非テキスト3:1を満たさないため、
      二重枠(濃色アウトライン+黄)にする。面の色自体も少し濃くする */
-  --surface-scanning: #fde68a;
+  --surface-scanning: #0f241d;
   --text: #0f241d;
   --text-muted: #4b6358;
   --message-bg: #0f5132;
@@ -26,15 +26,19 @@
   --scan-ring: #facc15;
   --scan-ring-width: 6px;
   /* Issue #34: スキャン枠(.tile.scanning::after)がセルの縁から占める厚み
-     = 外側のずれ(inset 4px) + 黄色リングの太さ + 内側アウトライン(2px)。
+     = 外側のずれ(inset 4px) + 黄色リングの太さ + 内側の余白(2px)。
      タイルの文字・予告・山形アイコンは、スキャン中でなくてもこの内側に置き、
      枠が来ても隠さず、選択で位置・大きさが変わらないようにする。
      高コントラストでリングが太くなる(9px)と自動で追従する */
   --scan-ring-inset: calc(4px + var(--scan-ring-width) + 2px);
-  /* 通常セル(surface-scanning)向けの濃色アウトライン。urgentセル(赤地)では
-     コントラストが足りない(2.5:1程度)ため、urgent用に別トークンを持つ */
-  --scan-ring-outline: #0f241d;
-  --scan-ring-outline-urgent: #ffffff;
+  /* Issue #33: 黄色一本の枠を隣接色に対し3:1以上で見せるため、スキャン中のタイルは
+     暗い面に反転する(白縁・二重枠は持たない)。文字色もここで反転する。
+     Issue #36: 赤は上部メッセージ欄だけ。緊急タイルは赤でなく面の反転(濃色)と
+     太字で区別する */
+  --emergency-tile-bg: #0f241d;
+  --emergency-tile-text: #ffffff;
+  --scan-text: #f3fbf7;
+  --scan-text-muted: #c9ecd9;
   --caregiver-panel-bg: #ffffff;
   --caregiver-status-ok-bg: #ecfdf5;
   --caregiver-status-ok-border: #86efac;
@@ -86,10 +90,11 @@
   --urgent-text-muted: #ffd9d6;
   --scan-ring: #facc15;
   --scan-ring-width: 6px;
-  /* 暗いテーマは自身の面(surface-scanning/urgent-bg)がどちらも暗いため、
-     明るいアウトラインひとつで両方に3:1以上を満たせる */
-  --scan-ring-outline: #eafaf1;
-  --scan-ring-outline-urgent: #eafaf1;
+  /* 夜間は通常面が暗いので、緊急タイルは明るい面への反転で区別する(赤は使わない) */
+  --emergency-tile-bg: #eafaf1;
+  --emergency-tile-text: #07140f;
+  --scan-text: #eafaf1;
+  --scan-text-muted: #eafaf1;
   --caregiver-panel-bg: #14261f;
   --caregiver-status-ok-bg: #123a29;
   --caregiver-status-ok-border: #4ade80;
@@ -592,10 +597,13 @@ h1[data-fit='single'] {
   user-select: none;
 }
 
-.tile-urgent {
-  color: var(--urgent-text);
-  background: var(--urgent-bg);
-  font-weight: 900;
+/* Issue #36: 赤は上部メッセージ欄(.message-panel の urgent 色調と .emergency-status)だけ。
+   タイルは赤くしない(tone: 'urgent' のタイルも通常面)。緊急入口タイルだけは
+   面の反転(明るいテーマは濃色、夜間は明色)で、色に頼らず区別する。文字「緊急」・
+   太字・先頭/2番目の固定位置も手がかり */
+.tile-emergency {
+  color: var(--emergency-tile-text);
+  background: var(--emergency-tile-bg);
 }
 
 .tile-calm {
@@ -606,39 +614,21 @@ h1[data-fit='single'] {
   background: var(--surface-positive);
 }
 
-/* kako-jun 回答(question): 緊急タイルは色以外でも区別できるよう、両テーマとも
-   内側に白系の輪郭を付ける(色覚特性への配慮)。::before を使い、スキャン中の
-   ::after(黄色リング)と重ならず共存する */
-/* PR#16 再レビュー nit-d: スキャン中にこのタイル自身が対象になると、スキャンリング
-   (.tile.scanning::after)側の白系アウトラインと重なって区別しにくくなっていた。
-   常設の輪郭を細く・より透明にして、スキャンリングの太い白枠とは明確に見分けられる
-   ようにする(常設=補助的な色覚配慮、スキャン中=最優先の強調、という役割の違いが
-   見た目にも出るようにする) */
-.tile-urgent::before {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border: 1px solid var(--urgent-text);
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-/* Issue #3 再々レビュー: スキャン対象は遠目でも一目で分かる強調にする。
+/* Issue #3/#33: スキャン対象は遠目でも一目で分かる強調にする。
    隙間なしの格子では拡大(scale)すると隣のセルと重なるため使わない。
-   代わりに、そのセルだけ面の色を変え、セル内側に収まる(inset、隣セルへはみ出さない)
-   太い黄色枠を ::after で重ねる。緊急タイルは常に濃い赤のベタ塗りのままなので、
-   リングだけを重ねる。
-   PR#16 Opus レビュー must-2: 黄色単体は白背景で非テキストコントラスト3:1を
-   満たさない(1.53:1)。黄色リングの内外に濃色/白のアウトライン線を重ねた二重枠にし、
-   アウトライン自体が3:1以上を満たすようにする(緊急セルは赤背景用に白系アウトラインへ
-   切り替える。scratchpad/contrast.mjs で計算済み)。 */
+   代わりに、そのセルだけ暗い面に反転し(--surface-scanning)、セル内側に収まる
+   (inset、隣セルへはみ出さない)黄色枠を ::after で一本だけ重ねる。
+   黄色(--scan-ring)は暗い面に対し3:1を大きく超える(DESIGN §2 の実測表)ので、
+   白縁・二重枠の box-shadow は持たない。 */
 .tile.scanning {
+  color: var(--scan-text);
   background: var(--surface-scanning);
   z-index: 1;
 }
 
-.tile.scanning.tile-urgent {
-  background: var(--urgent-bg);
+.tile.scanning .tile-detail,
+.tile.scanning .tile-preview {
+  color: var(--scan-text-muted);
 }
 
 .tile.scanning::after {
@@ -646,16 +636,7 @@ h1[data-fit='single'] {
   position: absolute;
   inset: 4px;
   border: var(--scan-ring-width) solid var(--scan-ring);
-  box-shadow:
-    0 0 0 2px var(--scan-ring-outline),
-    inset 0 0 0 2px var(--scan-ring-outline);
   pointer-events: none;
-}
-
-.tile.scanning.tile-urgent::after {
-  box-shadow:
-    0 0 0 2px var(--scan-ring-outline-urgent),
-    inset 0 0 0 2px var(--scan-ring-outline-urgent);
 }
 
 .tile-number {
@@ -717,10 +698,6 @@ h1[data-fit='single'] {
   font-size: calc(var(--font-scale) * clamp(0.92rem, 1.8vh, 1.1rem));
   font-weight: 800;
   text-align: center;
-}
-
-.tile-urgent .tile-detail {
-  color: var(--urgent-text-muted);
 }
 
 /* Issue #3 追加指示: 下位画面へ進むタイル(navigate)の山形アイコン+中身の予告。
