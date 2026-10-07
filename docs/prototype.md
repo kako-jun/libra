@@ -6,16 +6,19 @@
 
 It is not a hospital system replacement and does not replace a nurse call. The prototype is intentionally local, static, and tablet-first.
 
-## Prototype scope
+## Prototype scope (historical)
 
-This file records the scope of the first prototype. It is historical; the current specification is `docs/requirements.md` and the implemented feature list is in `docs/features.md`.
+This is the scope of the first prototype, kept as a record. It is not the current specification; see `docs/requirements.md` and `docs/features.md`.
 
-- Entry paths: home starts with Emergency, then yes / no, discomfort, comfort / requests, letter board (and optional Morse input)
+- Two entry paths: urgent and slow
 - Large tiles that can be read at bedside distance
-- Phrase display for each choice, with an always-visible message area
+- One-tap phrase display for urgent messages
+- Slow menus for pain location, discomfort, mood, and a small letter board
 - Speech mode switch: off, sound only, short speech, full speech
-- Always-on automatic scanning; any key / Bluetooth shutter runs the current scan target, and a direct tap runs the tapped tile
-- Number keys 1-9 activate visible tiles only with `?dev` in the URL
+- Automatic scanning with Space / Enter activation
+- Keyboard shortcuts: number keys activate visible tiles, Escape goes back
+
+Current state: home starts with Emergency, then yes / no, discomfort, comfort / requests, letter board (and optional Morse input). Any key / Bluetooth shutter runs the current scan target and a direct tap runs the tapped tile. Number keys 1-9 work only with `?dev` in the URL, and Escape is an ordinary key (a switch press), not "back".
 
 ## Next candidates
 
@@ -23,4 +26,5 @@ This file records the scope of the first prototype. It is historical; the curren
 - ~~Add editable phrase sets~~ (done: caregiver menu "フレーズ", #8)
 - ~~Add scan speed controls~~ (done: caregiver menu "スキャン間隔")
 - ~~Add actual PWA icons~~ (icons done; install copy is still open)
+- ~~Add caregiver confirmation mode~~ (dropped: Emergency takes no confirmation step, requirements §4.3)
 - Add Japanese / English display toggle
