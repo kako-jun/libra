@@ -25,6 +25,7 @@
 // - scan-ring-surface: スキャン枠が黄色一本(box-shadow・::before なし)で、スキャン中の面が緊急入口・通常タイルと
 //   異なり赤タイルが無いことを、4テーマ × 4サイズ × 6状態 × 全タイルで実描画から確認する(#36/#33)。
 //   SCAN_RING_ONLY=1 でこの検査だけ、SCAN_RING_REPORT_DIR で画像と測定値を保存する
+// - theme-parity: 明るい/夜間で同条件のラベルpx・セル寸法・案内帯高さ・寸法トークンが一致する(テーマは色だけ, #65)。THEME_PARITY_ONLY=1 でこの検査だけ
 // - no-overlap: 狭い横向き/縦向き/タブレット幅で、案内領域・「介助者用」ボタンがホーム/文字盤のタイルと重ならないことを確認する
 
 import http from 'node:http'
@@ -1449,6 +1450,154 @@ async function checkMorseLegendFit(chromium, port) {
   return failures
 }
 
+// Issue #65: テーマ(明るい/夜間)は色トークンだけを持ち、寸法・文字の大きさを変えない。
+// 同じ条件(画面サイズ・文字サイズ・高コントラスト・案内帯・状態)で明るい/夜間を実描画で測り、
+// ラベルのpx・セル寸法・案内帯の高さ・メッセージ欄の高さ・寸法トークンが一致すること(テーマ間差0)を確認する。
+// 設定が実際に効いたこと(data-theme / data-high-contrast / data-font-size と保存設定)を読み戻し、不一致なら失敗にする。
+async function checkThemeParity(chromium, port) {
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+  const maxNotes = { minHoldMs: 500, auditoryScan: true, voiceMode: 'full', activateOn: 'release' }
+  const viewports = [
+    [390, 844],
+    [568, 320],
+    [320, 568],
+    [768, 1024],
+  ]
+  const states = [
+    { name: 'home', path: [] },
+    { name: 'emergency+message', path: ['緊急', '苦しい', '不快', '痰を取ってほしい'] },
+  ]
+  const measure = async (width, height, settings, path) => {
+    const context = await browser.newContext({ viewport: { width, height } })
+    const page = await context.newPage()
+    await page.addInitScript(
+      (value) => {
+        window.localStorage.removeItem('libra:emergency')
+        window.localStorage.setItem('libra', JSON.stringify(value))
+      },
+      { intervalMs: 600000, morseEnabled: true, ...settings },
+    )
+    await page.goto(`http://localhost:${port}/`)
+    await page.waitForTimeout(300)
+    const applied = await page.evaluate(() => ({
+      theme: document.documentElement.dataset.theme,
+      highContrast: document.documentElement.dataset.highContrast,
+      fontSize: document.documentElement.dataset.fontSize,
+      stored: JSON.parse(window.localStorage.getItem('libra') ?? '{}'),
+    }))
+    if (
+      applied.theme !== settings.theme ||
+      applied.highContrast !== String(settings.highContrast) ||
+      applied.fontSize !== settings.fontSize ||
+      applied.stored.theme !== settings.theme
+    ) {
+      await context.close()
+      return { guard: `設定が反映されていない ${JSON.stringify(applied)}` }
+    }
+    for (const label of path) {
+      const tile = page
+        .locator('.grid-board .tile')
+        .filter({ has: page.getByText(label, { exact: true }) })
+        .first()
+      const box = await tile.boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.down()
+      await page.waitForTimeout(700)
+      await page.mouse.up()
+      await page.waitForTimeout(900)
+    }
+    const m = await page.evaluate(() => {
+      const root = document.documentElement
+      const tiles = [...document.querySelectorAll('.grid-board .tile')]
+      const px = (el) => Number.parseFloat(getComputedStyle(el).fontSize)
+      const h = (sel) => document.querySelector(sel)?.getBoundingClientRect().height ?? 0
+      const token = (name) => getComputedStyle(root).getPropertyValue(name).trim()
+      return {
+        tiles: tiles.length,
+        theme: root.dataset.theme,
+        labelMin: Math.min(...tiles.map((t) => px(t.querySelector('.tile-label')))),
+        sizes: [...new Set(tiles.map((t) => `${t.offsetWidth}x${t.offsetHeight}`))].join(','),
+        notes: h('.screen-notes'),
+        message: h('.message-panel'),
+        tokens: [
+          '--label-cqi',
+          '--label-cqb',
+          '--label-ratio',
+          '--font-scale',
+          '--scan-ring-width',
+          '--grid-line-width',
+        ]
+          .map((name) => `${name}=${token(name)}`)
+          .join(' '),
+      }
+    })
+    await context.close()
+    return m
+  }
+
+  try {
+    for (const [width, height] of viewports) {
+      // 全組合せは実測(DESIGN §11)で取り、この自動検査は時間を抑えて互いに素な4通りだけ回す
+      for (const [fontSize, highContrast, band] of [
+        ['standard', false, false],
+        ['standard', true, true],
+        ['xlarge', false, true],
+        ['xlarge', true, false],
+      ]) {
+        for (const state of states) {
+          const name = `${width}x${height} ${fontSize} hc=${highContrast} band=${band ? 'max' : 'default'} ${state.name}`
+          const result = {}
+          for (const theme of ['light', 'dark']) {
+            result[theme] = await measure(
+              width,
+              height,
+              { theme, fontSize, highContrast, ...(band ? maxNotes : {}) },
+              state.path,
+            )
+            if (result[theme].guard)
+              failures.push(`[theme-parity ${name} ${theme}] ${result[theme].guard}`)
+          }
+          const [l, d] = [result.light, result.dark]
+          if (l.guard || d.guard) continue
+          if (l.tiles < 5 || l.tiles !== d.tiles) {
+            failures.push(
+              `[theme-parity ${name}] 想定の状態に到達していない(明 ${l.tiles} / 夜 ${d.tiles} タイル)`,
+            )
+            continue
+          }
+          if (Math.abs(l.labelMin - d.labelMin) > 0.01) {
+            failures.push(
+              `[theme-parity ${name}] ラベルの大きさがテーマで違う(明 ${l.labelMin.toFixed(2)}px / 夜 ${d.labelMin.toFixed(2)}px)`,
+            )
+          }
+          if (l.sizes !== d.sizes) {
+            failures.push(
+              `[theme-parity ${name}] セル寸法がテーマで違う(明 ${l.sizes} / 夜 ${d.sizes})`,
+            )
+          }
+          if (Math.abs(l.notes - d.notes) > 0.01 || Math.abs(l.message - d.message) > 0.01) {
+            failures.push(
+              `[theme-parity ${name}] 案内帯/メッセージ欄の高さがテーマで違う(案内 明 ${l.notes} / 夜 ${d.notes}、メッセージ 明 ${l.message} / 夜 ${d.message})`,
+            )
+          }
+          if (l.tokens !== d.tokens) {
+            failures.push(
+              `[theme-parity ${name}] 寸法トークンがテーマで違う(明 ${l.tokens} / 夜 ${d.tokens})`,
+            )
+          }
+        }
+      }
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 // Issue #36/#33: スキャン枠は黄色一本(box-shadow・::before なし)で、スキャン中のタイルの面が
 // 緊急入口・通常タイルの面と異なり、赤いタイルが無いことを実描画(computed style)で確認する。
 // 4テーマ(明/夜 × 高コントラスト) × 4サイズ × 6状態 × 全タイルを順にスキャン状態にして測る。
@@ -1789,6 +1938,16 @@ async function main() {
     scanRingFailures.forEach((f) => console.error(f))
   }
   allFailures.push(...scanRingFailures)
+  port += 1
+
+  console.log(`--- checking: theme-parity (port ${port}) ---`)
+  const themeParityFailures = await checkThemeParity(chromium, port)
+  if (themeParityFailures.length === 0) {
+    console.log('[theme-parity] OK')
+  } else {
+    themeParityFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...themeParityFailures)
 
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)
@@ -1806,6 +1965,15 @@ if (process.env.SCAN_RING_ONLY === '1') {
     process.exitCode = 1
   } else {
     console.log('[scan-ring-surface] OK')
+  }
+} else if (process.env.THEME_PARITY_ONLY === '1') {
+  const { chromium } = await import('playwright')
+  const failures = await checkThemeParity(chromium, 4740)
+  if (failures.length > 0) {
+    failures.forEach((failure) => console.error(failure))
+    process.exitCode = 1
+  } else {
+    console.log('[theme-parity] OK')
   }
 } else if (process.env.ISSUE37_ONLY === '1') {
   const { chromium } = await import('playwright')
