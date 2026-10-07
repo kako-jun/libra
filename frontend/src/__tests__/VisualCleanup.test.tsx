@@ -68,9 +68,11 @@ const tokenIn = (body: string, name: string): string | undefined => {
   return all.length ? all[all.length - 1][1].trim() : undefined
 }
 type Theme = 'light' | 'dark'
-/** テーマ × 高コントラストで実際に効くトークン値(基底 → テーマ → HC 全体 → テーマ+HC の順に後勝ち) */
+/** テーマ × 高コントラストで実際に効くトークン値(基底(寸法は `:root` 単独) → テーマ(色) → HC 全体 → テーマ+HC の順に後勝ち) */
 const effective = (theme: Theme, hc: boolean, name: string): string | undefined => {
   const bodies = [
+    // Issue #65: 寸法トークン(--scan-ring-width 等)はテーマ非依存の `:root` 単独ブロックが基底
+    blocksOf(':root'),
     theme === 'light'
       ? `${blocksOf(`:root,\n:root[data-theme='light']`)}\n${blocksOf(`:root[data-theme='light']`)}`
       : blocksOf(`:root[data-theme='dark']`),

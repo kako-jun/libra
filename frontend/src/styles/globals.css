@@ -1,12 +1,20 @@
 /* ===================================================================
-   Design tokens (Issue #3)
+   Design tokens (Issue #3, Issue #65)
    ------------------------------------------------------------------
    すべての色は変数に集約する。ハードコード色を残さない。
    data-theme="light"(明るい・昼、既定) / "dark"(夜間向け) を :root に付け、
-   値だけを切り替える。構造(セレクタ)はテーマ間で共通。介助者設定「表示」で
-   light/dark/auto を選べ、auto は prefers-color-scheme に追従して App.tsx が
-   実際の data-theme を light/dark のどちらかに解決する(このCSSはlight/darkの
-   2値しか見ない)。data-high-contrast="true" はどちらのテーマにも重ねて効く。 */
+   値だけを切り替える。介助者設定「表示」で light/dark/auto を選べ、auto は
+   prefers-color-scheme に追従して App.tsx が実際の data-theme を light/dark の
+   どちらかに解決する(このCSSはlight/darkの2値しか見ない)。
+   data-high-contrast="true" はどちらのテーマにも重ねて効く。
+
+   Issue #65 の規則: **テーマは色トークンだけを定義する**。寸法・余白・文字の大きさ・
+   レイアウト係数(--font-scale / --label-* / --scan-ring-* / --grid-line-width)は
+   テーマのブロックに置かず、下の「寸法トークン」ブロック(:root 単独、テーマ非依存)に
+   一箇所だけ定義する。ブレークポイント・文字サイズ・高コントラストはこの寸法を
+   上書きするが、すべて data-theme を含まないセレクタなので、テーマの有無で
+   詳細度の食い違い(明るいテーマだけ上書きが負ける等)が起きない。
+   この規則は src/__tests__/ThemeColorsOnly.test.ts が静的に検査する。 */
 :root,
 :root[data-theme='light'] {
   --bg: #eafaf1;
@@ -24,13 +32,6 @@
   --urgent-text: #ffffff;
   --urgent-text-muted: #ffd9d6;
   --scan-ring: #facc15;
-  --scan-ring-width: 6px;
-  /* Issue #34: スキャン枠(.tile.scanning::after)がセルの縁から占める厚み
-     = 外側のずれ(inset 4px) + 黄色リングの太さ + 内側の余白(2px)。
-     タイルの文字・予告・山形アイコンは、スキャン中でなくてもこの内側に置き、
-     枠が来ても隠さず、選択で位置・大きさが変わらないようにする。
-     高コントラストでリングが太くなる(9px)と自動で追従する */
-  --scan-ring-inset: calc(4px + var(--scan-ring-width) + 2px);
   /* Issue #33: 黄色一本の枠を隣接色に対し3:1以上で見せるため、スキャン中のタイルは
      暗い面に反転する(白縁・二重枠は持たない)。文字色もここで反転する */
   --scan-text: #f3fbf7;
@@ -50,25 +51,8 @@
      既定(通常の濃い緑背景)は明るいボタン */
   --caregiver-button-bg: #f3fbf7;
   --caregiver-button-text: #052e2b;
-  --font-scale: 1;
-  /* PR#16 4巡目 must-F: タイルラベルの文字サイズ専用の変数。--font-scale(vhベースの
-     上限を押し上げるためのもの)とは別に、cqi/cqbの頭打ち値に直接掛ける比率として
-     用意する(下の --tile-label-font 参照)。
-     PR#16 5巡目 must-G 再検証: 標準0.8だと、4巡目でcqi/cqb係数をブレークポイント間で
-     統一した(15/20に固定)ことと合わさって、スマホ幅で標準時のラベルが22〜28%
-     縮小する新規バグが出た。係数をブレークポイント別に戻す(下の --label-cqi/
-     --label-cqb 参照)のに合わせ、標準側にも少し余白を残しつつ縮小幅を抑えるため
-     0.8→0.85 に引き上げる(値は kako-jun 未確認の既定値、後で調整できるよう
-     CSS変数にしてある) */
-  --label-ratio: 0.85;
-  /* PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数を CSS 変数にする。
-     ブレークポイントごとに違う値(下の @media 参照)をここ1か所で持つ
-     (Issue #47 で固定格子にしたため、JS側(gridLayout.ts)はもうこの値を読まない) */
-  --label-cqi: 15;
-  --label-cqb: 20;
   /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る */
   --grid-line: #cde3d4;
-  --grid-line-width: 1px;
 }
 
 :root[data-theme='dark'] {
@@ -85,7 +69,6 @@
   --urgent-text: #ffffff;
   --urgent-text-muted: #ffd9d6;
   --scan-ring: #facc15;
-  --scan-ring-width: 6px;
   --scan-text: #eafaf1;
   --scan-text-muted: #c9ecd9;
   --caregiver-panel-bg: #14261f;
@@ -145,6 +128,42 @@
   --message-text: #ffffff;
   --text-muted: #c9ecd9;
   --grid-line: #4a8a68;
+}
+
+/* ===================================================================
+   寸法トークン(Issue #65): テーマ非依存。定義はここ一箇所だけ。
+   上書きできるのは data-theme を含まない次のセレクタだけ:
+   - @media 内の :root(ブレークポイント。--label-cqi/--label-cqb)
+   - :root[data-font-size](--font-scale / --label-ratio)
+   - :root[data-high-contrast='true'] とそのメディアクエリ(--grid-line-width / --scan-ring-width)。
+     高コントラストは利用者が選ぶアクセシビリティ設定でテーマとは別軸で、
+     明るい/夜間のどちらでも同じ寸法になる */
+:root {
+  --scan-ring-width: 6px;
+  /* Issue #34: スキャン枠(.tile.scanning::after)がセルの縁から占める厚み
+     = 外側のずれ(inset 4px) + 黄色リングの太さ + 内側の余白(2px)。
+     タイルの文字・予告・山形アイコンは、スキャン中でなくてもこの内側に置き、
+     枠が来ても隠さず、選択で位置・大きさが変わらないようにする。
+     高コントラストでリングが太くなる(9px)と自動で追従する */
+  --scan-ring-inset: calc(4px + var(--scan-ring-width) + 2px);
+  --font-scale: 1;
+  /* PR#16 4巡目 must-F: タイルラベルの文字サイズ専用の変数。--font-scale(vhベースの
+     上限を押し上げるためのもの)とは別に、cqi/cqbの頭打ち値に直接掛ける比率として
+     用意する(下の --tile-label-font 参照)。
+     PR#16 5巡目 must-G 再検証: 標準0.8だと、4巡目でcqi/cqb係数をブレークポイント間で
+     統一した(15/20に固定)ことと合わさって、スマホ幅で標準時のラベルが22〜28%
+     縮小する新規バグが出た。係数をブレークポイント別に戻す(下の --label-cqi/
+     --label-cqb 参照)のに合わせ、標準側にも少し余白を残しつつ縮小幅を抑えるため
+     0.8→0.85 に引き上げる(値は kako-jun 未確認の既定値、後で調整できるよう
+     CSS変数にしてある) */
+  --label-ratio: 0.85;
+  /* PR#16 5巡目 must-G: --tile-label-font の cqi/cqb 係数を CSS 変数にする。
+     ブレークポイントごとに違う値(下の @media 参照)をここ1か所で持つ
+     (Issue #47 で固定格子にしたため、JS側(gridLayout.ts)はもうこの値を読まない) */
+  --label-cqi: 15;
+  --label-cqb: 20;
+  /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る(色は --grid-line) */
+  --grid-line-width: 1px;
 }
 
 /* 文字サイズ（介助者設定）。clamp() の結果に係数を掛けるだけで、

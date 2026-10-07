@@ -381,19 +381,21 @@ describe('Issue #47: App の固定格子・空きセル', () => {
   })
 
   describe('スキャン枠の余白(--scan-ring-inset, #34)の静的検査', () => {
-    const ringWidth = (block: RegExp) => {
-      const m = css.match(block)
+    const ringWidth = (block: RegExp, src = css) => {
+      const m = src.match(block)
       expect(m, String(block)).toBeTruthy()
       return Number.parseFloat((m as RegExpMatchArray)[1])
     }
 
     it('標準 12px(= 4 + 6 + 2)、高コントラスト 15px(= 4 + 9 + 2)になる', () => {
       expect(css).toMatch(/--scan-ring-inset:\s*calc\(4px \+ var\(--scan-ring-width\) \+ 2px\)/)
+      // Issue #65: 基底の枠の太さは @media の外の `:root` 単独ブロック(テーマ非依存)に1つだけ。
+      // テーマのブロックには持たない(ThemeColorsOnly.test.ts が検査)ので、明るい/夜間で同じ
       const standard = ringWidth(
-        /:root,\s*:root\[data-theme='light'\]\s*\{[^}]*?--scan-ring-width:\s*(\d+)px/s,
+        /(?:^|\})\s*:root\s*\{[^}]*?--scan-ring-width:\s*(\d+)px/s,
+        css.replace(/\/\*[\s\S]*?\*\//g, ''),
       )
-      const dark = ringWidth(/:root\[data-theme='dark'\]\s*\{[^}]*?--scan-ring-width:\s*(\d+)px/s)
-      expect(dark).toBe(standard)
+      expect(css).not.toMatch(/:root\[data-theme='(?:light|dark)'\]\s*\{[^}]*?--scan-ring-width/s)
       const high = ringWidth(
         /:root\[data-high-contrast='true'\]\s*\{[^}]*?--scan-ring-width:\s*(\d+)px/s,
       )
