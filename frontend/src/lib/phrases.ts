@@ -206,8 +206,8 @@ function upgradeLegacyDefaultText(group: PhraseGroup, phrase: Phrase): Phrase {
 /** 未知の値を安全な PhraseSets へ丸める。壊れた項目は捨て、id の重複は後ろを捨てる。 */
 export function normalizePhraseSets(
   input: unknown,
-  /** 旧既定(句点なし)を新既定へ昇格するか。settings.ts は印が古いときだけ true にする */
-  upgradeLegacy = true,
+  /** 旧既定(句点なし)を新既定へ昇格するか。既定は false。settings.ts が印の古い保存値・取り込みにだけ true を渡す */
+  upgradeLegacy = false,
 ): PhraseSets {
   if (typeof input !== 'object' || input === null) return {}
   const raw = input as Record<string, unknown>
@@ -248,7 +248,8 @@ export const PAIN_INTENSITY_WORDS: Record<PainIntensity, string> = {
 
 /**
  * 痛い場所の全文に強さを入れる。「胸が痛いです」→「胸がとても痛いです」。
- * 全文に「痛いです」が無い(介助者が自由に編集した)ときは、末尾に（とても）を足す。
+ * 全文に「痛いです」が無い(介助者が自由に編集した)ときは、強さを（とても）の形で足す。
+ * 句点で終わる文は句点の前に入れ(「…変です（とても）。」)、句点がない文は末尾に足す。
  */
 export function composePainText(text: string, intensity: PainIntensity): string {
   const word = PAIN_INTENSITY_WORDS[intensity]

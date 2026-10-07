@@ -60,6 +60,7 @@ describe('Issue #46 phrasesVersion: 一度きりの昇格', () => {
   it('印が将来の版でも据え置き(新しい版のデータを壊さない)', () => {
     const s = normalizeSettings({ phrasesVersion: 2, phrases: { painLocation: [LEGACY_HEAD] } })
     expect(headText(s)).toBe('頭が痛いです')
+    expect(s.phrasesVersion).toBe(2) // 印を現行(1)へ書き戻さない
   })
 
   it('印が数値でない(壊れた値)は印なしとして昇格する', () => {
@@ -141,6 +142,17 @@ describe('Issue #46 phrasesVersion: 一度きりの昇格', () => {
         importJson({ phrasesVersion: PHRASES_VERSION, phrases: { painLocation: [LEGACY_HEAD] } }),
       )
       expect(headText(s!)).toBe('頭が痛いです')
+    })
+
+    it('将来の版の印(2)の JSON を取り込んでも、印は 1 に書き戻されず据え置く', () => {
+      const s = parseSettingsJson(
+        importJson({ phrasesVersion: 2, phrases: { painLocation: [LEGACY_HEAD] } }),
+      )
+      expect(s!.phrasesVersion).toBe(2)
+      expect(headText(s!)).toBe('頭が痛いです')
+      // 保存→再読み込みでも印は2のまま
+      saveSettings(s!)
+      expect(loadSettings().phrasesVersion).toBe(2)
     })
 
     it('書き出しに印が入り、書き出し→取り込みの往復で文面も印も変わらない', () => {

@@ -68,6 +68,9 @@ const read = (file: string) => SOURCES[file]
 const endsWithKuten = (s: string) => s.endsWith('。')
 const LABEL_END = /[。、．，.,！!？?]$/
 
+/** 旧既定の昇格を明示して使う(normalizePhraseSets の既定は昇格しない) */
+const upgradeLegacy = (input: unknown) => normalizePhraseSets(input, true)
+
 function legacy(text: string): string {
   return text.replace(/。$/, '')
 }
@@ -92,12 +95,12 @@ describe('Issue #46 normalizePhraseSets: 旧既定の昇格', () => {
   )
 
   it('全グループの旧既定(句点なし)が、新既定へ昇格する(label/tone/idは保たれる)', () => {
-    const result = normalizePhraseSets(allLegacy)
+    const result = upgradeLegacy(allLegacy)
     for (const g of PHRASE_GROUPS) expect(result[g]).toEqual(DEFAULT_PHRASES[g])
   })
 
   it('昇格しても label と tone は保存値のまま(label だけ書き換えた既定は label を保つ)', () => {
-    const result = normalizePhraseSets({
+    const result = upgradeLegacy({
       discomfort: [{ id: 'suffering', label: 'つらい', text: '苦しいです', tone: 'calm' }],
     })
     expect(result.discomfort).toEqual([
@@ -106,7 +109,7 @@ describe('Issue #46 normalizePhraseSets: 旧既定の昇格', () => {
   })
 
   it('既に新既定のものはそのまま', () => {
-    const result = normalizePhraseSets({ discomfort: DEFAULT_PHRASES.discomfort })
+    const result = upgradeLegacy({ discomfort: DEFAULT_PHRASES.discomfort })
     expect(result.discomfort).toEqual(DEFAULT_PHRASES.discomfort)
   })
 
@@ -117,16 +120,16 @@ describe('Issue #46 normalizePhraseSets: 旧既定の昇格', () => {
       { id: 'reposition', label: '向き', text: '' + '体の向きを変えたいです。。' },
       { id: 'toilet', label: 'トイレ', text: 'トイレ' },
     ]
-    expect(normalizePhraseSets({ discomfort: rewritten }).discomfort).toEqual(rewritten)
+    expect(upgradeLegacy({ discomfort: rewritten }).discomfort).toEqual(rewritten)
   })
 
   it('旧既定の文面でも、別グループの id なら不変(同グループ・同id の既定が無い)', () => {
     // 'hot' は discomfortOther の id。discomfort には無い
     const other = [{ id: 'hot', label: '暑い', text: '暑いです' }]
-    expect(normalizePhraseSets({ discomfort: other }).discomfort).toEqual(other)
+    expect(upgradeLegacy({ discomfort: other }).discomfort).toEqual(other)
     // 同じ id で別グループの既定文(discomfortOther の hot)を moodRequest に置いても不変
     const crossText = [{ id: 'fine', label: '大丈夫', text: '寒いです' }]
-    expect(normalizePhraseSets({ moodRequest: crossText }).moodRequest).toEqual(crossText)
+    expect(upgradeLegacy({ moodRequest: crossText }).moodRequest).toEqual(crossText)
   })
 
   it('未知 id(カスタム)は旧既定と同じ文面でも不変', () => {
@@ -134,12 +137,12 @@ describe('Issue #46 normalizePhraseSets: 旧既定の昇格', () => {
       { id: 'c1', label: '苦しい', text: '苦しいです' },
       { id: 'xyz', label: 'ありがとう', text: 'ありがとう' },
     ]
-    expect(normalizePhraseSets({ discomfort: custom }).discomfort).toEqual(custom)
+    expect(upgradeLegacy({ discomfort: custom }).discomfort).toEqual(custom)
   })
 
   it('別グループ・同 id の既定の文が別の文なら、自グループの既定とも違うので不変', () => {
     const edited = [{ id: 'head', label: '頭', text: '頭が痛いです' + '!' }]
-    expect(normalizePhraseSets({ painLocation: edited }).painLocation).toEqual(edited)
+    expect(upgradeLegacy({ painLocation: edited }).painLocation).toEqual(edited)
   })
 
   it('取り込みJSON(parseSettingsJson)経由でも同じに昇格し、書き換え済みは据え置き', () => {
@@ -162,16 +165,16 @@ describe('Issue #46 normalizePhraseSets: 旧既定の昇格', () => {
   })
 
   it('冪等: 2回かけても1回と同じ', () => {
-    const once = normalizePhraseSets(allLegacy)
-    expect(normalizePhraseSets(once)).toEqual(once)
+    const once = upgradeLegacy(allLegacy)
+    expect(upgradeLegacy(once)).toEqual(once)
     const mixed = {
       discomfort: [
         { id: 'suffering', label: 'a', text: '苦しいです' },
         { id: 'zzz', label: 'b', text: '苦しいです' },
       ],
     }
-    const m1 = normalizePhraseSets(mixed)
-    expect(normalizePhraseSets(m1)).toEqual(m1)
+    const m1 = upgradeLegacy(mixed)
+    expect(upgradeLegacy(m1)).toEqual(m1)
   })
 
   it('空文字・非文字列・null/undefined・custom id が混ざっても落ちず、壊れた項目だけ捨てる', () => {
@@ -192,12 +195,12 @@ describe('Issue #46 normalizePhraseSets: 旧既定の昇格', () => {
     }
     let result: ReturnType<typeof normalizePhraseSets> = {}
     expect(() => {
-      result = normalizePhraseSets(input)
+      result = upgradeLegacy(input)
     }).not.toThrow()
     expect(result.discomfort?.map((p) => p.id)).toEqual(['suffering', 'reposition'])
     expect(result.discomfort?.[0].text).toBe('') // 空文字は昇格しない
     expect(result.discomfort?.[1].text).toBe('体の向きを変えたいです。')
-    expect(normalizePhraseSets(undefined)).toEqual({})
+    expect(upgradeLegacy(undefined)).toEqual({})
   })
 })
 

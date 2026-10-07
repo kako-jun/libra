@@ -113,8 +113,12 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 }
 
 /** 保存値・取り込みJSONのフレーズが、昇格済み(印が現行以上)か */
+function currentPhrasesMark(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
 function hasCurrentPhrasesMark(value: unknown): boolean {
-  return typeof value === 'number' && Number.isFinite(value) && value >= PHRASES_VERSION
+  return currentPhrasesMark(value) >= PHRASES_VERSION
 }
 
 /** 未知の値を安全な Settings へ丸める。壊れた値・範囲外は base(既定では既定値)にする。 */
@@ -177,8 +181,11 @@ export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTI
       raw.phrases === undefined
         ? base.phrases
         : normalizePhraseSets(raw.phrases, !hasCurrentPhrasesMark(raw.phrasesVersion)),
-    // フレーズを受け取ったら昇格済みの印を付ける。受け取らないときは今の印のまま
-    phrasesVersion: raw.phrases === undefined ? base.phrasesVersion : PHRASES_VERSION,
+    // フレーズを受け取ったら昇格済みの印を付ける(将来の版の印は書き戻さず保つ)。受け取らないときは今の印のまま
+    phrasesVersion:
+      raw.phrases === undefined
+        ? base.phrasesVersion
+        : Math.max(currentPhrasesMark(raw.phrasesVersion), PHRASES_VERSION),
   }
   // 語の区切りは文字の確定より常に長くする(画面の表示と実際の動作をずらさないため、保存値で保証する)
   result.morseWordGapMs = Math.max(

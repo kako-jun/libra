@@ -8,6 +8,13 @@
 //   JSX の <p>/<li> の本文テキスト(App/PhraseEditor)| 最後が文字なら「。」で終わる(ラベル用クラスは除く)
 //   JSX の <button>/<h2>/<h3> のテキスト            | 句読点で終わらない
 //   変異(「。」を消す/状態値を文にして「。」なし)   | 上の検査が落ちること(下の「変異」テストで検出器自体を確認)
+//
+// 限界: 静的走査が見逃すのは、最後の子が {式}・子要素の要素(<p>{note}</p> など)、div/span 等の
+// 対象外タグ、実行時に組み立てる動的な文言。描画テストが見るのは PhraseEditor の注意書きだけ。
+// 誤検出しうるのは、導入文(「次の手順:」)や閉じ括弧で終わる本文(「…（注）」)。
+// 逃げ道は、見出し・ラベル用の p/li にクラス名へ label を含めること。
+// 変異テストは特定の文言(PhraseEditor の「定型文だけです。」「…末尾）。」「フレーズを追加」)に
+// 依存するので、その文言を変えたらテスト側の置換も更新する。
 import { describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import ts from 'typescript'
