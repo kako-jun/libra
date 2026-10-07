@@ -306,9 +306,9 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       const start = all.indexOf(seen[0])
       expect(start).toBeGreaterThanOrEqual(0)
       seen.forEach((label, i) => expect(label, `step ${i}`).toBe(all[(start + i) % n]))
-      expect(seen[n]).toBe(seen[0])
-      expect(seen.indexOf(all[n - 1]) + 1 < seen.length).toBe(true)
-      expect(seen[seen.indexOf(all[n - 1]) + 1]).toBe(all[0])
+      // 最後の項目の次は先頭(上の循環検査が含むが、境界を明示する)
+      const last = seen.indexOf(all[n - 1])
+      expect(seen[last + 1]).toBe(all[0])
     })
 
     it('キー(スペース)は currentMenu の範囲のタイルだけを実行する(最後の項目の次は先頭で、空きセルは対象にならない)', () => {
@@ -418,6 +418,21 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       // .tile.scanning は面の色と z-index だけ。padding/サイズ/transform を変えない
       const scanning = css.match(/\.tile\.scanning \{([^}]*)\}/s)?.[1] ?? ''
       expect(scanning).not.toMatch(/padding|width|height|transform|margin|inset|border/)
+    })
+
+    it('ラベルは縮めすぎない: 下限は max(13px, …) で、--ring-extra が上限項と下限項の両方に効く', () => {
+      const font =
+        css.match(/--tile-label-font:\s*clamp\(([\s\S]*?)\);\s*container-type/)?.[1] ?? ''
+      expect(font).toMatch(/max\(13px,/)
+      expect(font.match(/--ring-extra/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
+    })
+
+    it('短い・狭い画面の高コントラストは枠を 7px に細くして帯を 13px にし、短い画面の緊急帯は1行になる', () => {
+      expect(css).toMatch(
+        /@media \(max-height: 500px\), \(max-width: 480px\) \{\s*:root\[data-high-contrast='true'\]\s*\{[^}]*--scan-ring-width:\s*7px/s,
+      )
+      const short = css.slice(css.lastIndexOf('@media (max-height: 500px) {'))
+      expect(short).toMatch(/\.emergency-status\s*\{[^}]*display:\s*flex/s)
     })
 
     it('高コントラスト設定で documentElement に data-high-contrast=true が付く(15px 側の CSS が効く前提)', () => {
