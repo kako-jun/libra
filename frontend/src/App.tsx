@@ -1300,6 +1300,7 @@ export default function App() {
         <For each={currentMenu()}>
           {(item, index) => (
             <div
+              // tile-{tone}(例 tile-urgent)は意味を示すだけのクラスで、CSS にルールは無い(見た目は変えない。#36)
               class={`tile tile-${item.tone ?? 'neutral'}`}
               classList={{
                 scanning: scanState().index === index(),
