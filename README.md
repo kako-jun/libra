@@ -30,8 +30,10 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 | Emergency (silent)                                                     | Working                                                              |
 | Yes / No                                                               | Working                                                              |
 | Discomfort / mood / pain location                                      | Working                                                              |
-| Letter board                                                           | Prototype (simplified entry; full 2-stage kana keyboard is planned)  |
+| Letter board (2-stage: row, then character; 46 kana + long-vowel mark) | Working (real-device check pending, #4)                              |
 | Speech mode                                                            | Working                                                              |
+| Morse input (optional; SOS = emergency)                                | Working (real-device check pending)                                  |
+| Haptic feedback (vibration patterns)                                   | Working (Android real-device check pending, #13)                     |
 | Caregiver menu (settings)                                              | Working                                                              |
 | Offline (Service Worker precache)                                      | Working                                                              |
 | Screen Wake Lock                                                       | Working                                                              |
