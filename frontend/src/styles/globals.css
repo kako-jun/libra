@@ -626,8 +626,7 @@ h1[data-fit='single'] {
   z-index: 1;
 }
 
-.tile.scanning .tile-detail,
-.tile.scanning .tile-preview {
+.tile.scanning :is(.tile-detail, .tile-preview) {
   color: var(--scan-text-muted);
 }
 
