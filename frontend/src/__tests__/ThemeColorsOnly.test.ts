@@ -18,7 +18,7 @@ type Rule = { selector: string; decls: Decl[]; media: string | null }
 
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
 
-/** 入れ子は @media の1段だけを扱う簡易パーサ(このCSSはそれ以上入れ子にしない) */
+/** at-rule の入れ子を再帰して読む簡易パーサ。media には at-rule の連鎖(例 `@media (...) > @supports (...)`)が入る */
 function parseRules(src: string): Rule[] {
   const rules: Rule[] = []
   const text = stripComments(src)
@@ -36,9 +36,11 @@ function parseRules(src: string): Rule[] {
         j++
       }
       const inner = body.slice(open + 1, j - 1)
-      if (head.startsWith('@media')) {
-        walk(inner, head.replace(/\s+/g, ' '))
-      } else if (!head.startsWith('@')) {
+      if (head.startsWith('@')) {
+        // @media / @supports / @container / @layer など、どの at-rule の中も再帰して読む(入れ子の連鎖を media に持つ)
+        const chain = `${media ? `${media} > ` : ''}${head.replace(/\s+/g, ' ')}`
+        walk(inner, chain)
+      } else {
         const decls: Decl[] = inner
           .split(';')
           .map((d) => d.trim())
@@ -59,25 +61,9 @@ function parseRules(src: string): Rule[] {
 /** テーマのブロック = セレクタに data-theme を含むルール(明るいテーマの `:root, :root[data-theme='light']` を含む) */
 const isThemeRule = (r: Rule) => /\[data-theme/.test(r.selector)
 
-/** 色トークンの許可リスト(名前規則)。テーマのブロックに書いてよいのはこの名前だけ */
-const COLOR_TOKEN_NAMES = new RegExp(
-  '^--(' +
-    [
-      'bg',
-      'surface(-calm|-positive|-scanning)?',
-      'text(-muted)?',
-      'message-(bg|text)',
-      'urgent-(bg|text|text-muted)',
-      'scan-(ring|text|text-muted)',
-      'grid-line',
-      'caregiver-[a-z-]+-(bg|text|border)',
-      'caregiver-(button|close)-(bg|text)',
-      'caregiver-close-bg',
-    ].join('|') +
-    ')$',
-)
-/** 色の値: 16進(#rgb/#rrggbb/#rrggbbaa)・rgb()/hsl() のみ。長さ・数値・calc・var(寸法)は不可 */
-const COLOR_VALUE = /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla)\([^)]*\))$/i
+/** 長さ・calc を含む値は色ではない(color-mix() / oklch() / transparent / var(別名) などの色表現は許す) */
+const LENGTH_OR_CALC =
+  /calc\(|(?<![\w#.-])-?\d*\.?\d+(?:px|rem|em|vh|vw|vmin|vmax|cqi|cqb|ch|pt)\b/i
 
 /** 寸法/係数トークン(テーマに持たせない) */
 const DIMENSION_TOKENS = [
@@ -100,20 +86,25 @@ describe('Issue #65: テーマのブロックは色トークンだけ', () => {
     expect(themeRules.flatMap((r) => r.decls).length).toBeGreaterThan(40)
   })
 
-  it('テーマのブロックの宣言は、色トークンの名前規則に合う --custom-property で、値が色リテラルのものだけ(通常プロパティ・寸法は不可)', () => {
+  it('テーマのブロックの宣言は --custom-property だけで、寸法トークン一覧に載っておらず、値に長さ単位・calc を含まない', () => {
     const offenders: string[] = []
     for (const r of parseRules(css).filter(isThemeRule)) {
       for (const d of r.decls) {
-        if (!COLOR_TOKEN_NAMES.test(d.prop))
-          offenders.push(`${r.selector} { ${d.prop} } 名前が色トークンの許可リスト外`)
-        else if (!COLOR_VALUE.test(d.value))
-          offenders.push(`${r.selector} { ${d.prop}: ${d.value} } 値が色リテラルでない`)
+        if (!d.prop.startsWith('--')) offenders.push(`${r.selector} { ${d.prop} } 通常プロパティ`)
+        else if (DIMENSION_TOKENS.includes(d.prop))
+          offenders.push(`${r.selector} { ${d.prop} } 寸法トークン`)
+        else if (LENGTH_OR_CALC.test(d.value))
+          offenders.push(`${r.selector} { ${d.prop}: ${d.value} } 値が長さ・calc`)
       }
     }
     expect(offenders).toEqual([])
   })
 
-  it('テーマのブロックは @media の中に無い(テーマ色をブレークポイントで変えない)', () => {
+  it('CSS に prefers-color-scheme を書かない(テーマの解決は App.tsx。メディアクエリ内の :root で寸法をテーマ別にしない)', () => {
+    expect(stripComments(css)).not.toMatch(/prefers-color-scheme/)
+  })
+
+  it('テーマのブロックはどの at-rule(@media / @supports / @container 等)の中にも無い', () => {
     expect(parseRules(css).filter((r) => isThemeRule(r) && r.media !== null)).toEqual([])
   })
 
@@ -144,6 +135,18 @@ describe('Issue #65: 寸法/係数トークンの定義はテーマ非依存ブ�
       expect(defs.filter(isThemeRule).map((r) => r.selector)).toEqual([])
     })
   }
+
+  it('寸法の上書きを含む at-rule は、単独の @media(prefers-color-scheme を含まない)だけ', () => {
+    const offenders = rules()
+      .filter((r) => r.media !== null && r.decls.some((d) => DIMENSION_TOKENS.includes(d.prop)))
+      .filter(
+        (r) =>
+          !/^@media [^>]*$/.test(r.media as string) ||
+          /prefers-color-scheme/.test(r.media as string),
+      )
+      .map((r) => `${r.media} ${r.selector}`)
+    expect(offenders).toEqual([])
+  })
 
   it('上書きは指定のセレクタだけ: @media 内は `:root` か高コントラスト、それ以外は font-size / high-contrast 属性', () => {
     const allowed = (r: Rule) =>

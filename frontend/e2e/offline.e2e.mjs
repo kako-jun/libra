@@ -1528,6 +1528,7 @@ async function checkThemeParity(chromium, port) {
           '--label-ratio',
           '--font-scale',
           '--scan-ring-width',
+          '--scan-ring-inset',
           '--grid-line-width',
         ]
           .map((name) => `${name}=${token(name)}`)
