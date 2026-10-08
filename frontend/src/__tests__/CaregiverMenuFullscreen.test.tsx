@@ -12,7 +12,8 @@ beforeAll(async () => {
   // @ts-expect-error node:fs の型定義は無い(実行時には存在する)
   const fs = (await import('node:fs')) as { readFileSync: (path: string, enc: string) => string }
   const cwd = (globalThis as unknown as { process: { cwd: () => string } }).process.cwd()
-  css = fs.readFileSync(`${cwd}/src/styles/globals.css`, 'utf8')
+  // コメントは全 helper の共通入口(css 本体)で除去する。規則本体・セレクタ側どちらのコメントも拾わない。
+  css = fs.readFileSync(`${cwd}/src/styles/globals.css`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
 })
 
 /** メディアクエリの外にある(行頭の)単独セレクタの規則本体 */
@@ -36,6 +37,8 @@ const allRuleBodies = (selector: string): string[] => {
  * メディアクエリ内も含め、セレクタ(カンマ区切りの一つ)の「末尾の複合セレクタ」が cls で始まる規則の本体。
  * `.caregiver-overlay .caregiver-panel { … }` のような子孫・複合指定も拾う。
  * `.caregiver-panel input` のように cls が祖先側にあるだけの規則(対象は別要素)は拾わない。
+ * 制約: セレクタは単純にカンマ分割するため、`:is(.a, .caregiver-panel)` / `:not(...)` のように
+ * 括弧内にカンマを含むセレクタは正しく分解できない(現行 CSS に該当は無い)。
  */
 const subjectRuleBodies = (cls: string): string[] => {
   const out: string[] = []
