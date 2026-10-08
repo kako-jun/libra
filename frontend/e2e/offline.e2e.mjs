@@ -961,6 +961,8 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
       await page.waitForTimeout(300)
       for (const label of path) await hold(page, label)
       if (goHome) await hold(page, '戻る')
+      // BIZ UDPGothic の読み込み前は代替フォントで折り返しが変わるので、測定の直前に待つ
+      await page.evaluate(() => document.fonts.ready)
       const result = await page.evaluate(() => {
         // 見えている行だけ: 要素の箱の外(-webkit-line-clamp で隠れた行)は除き、箱でクリップする
         const lines = (el) => {
