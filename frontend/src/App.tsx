@@ -1038,6 +1038,11 @@ export default function App() {
         '[data-caregiver-control]',
       )
       if (caregiverControl && (event.key === 'Enter' || event.key === ' ')) return
+      // パンくずの祖先ボタンも同様。Enter / Space はボタン標準の click に任せ、本人のスイッチ入力にしない
+      const breadcrumbControl = (event.target as HTMLElement | null)?.closest?.(
+        '[data-breadcrumb-control]',
+      )
+      if (breadcrumbControl && (event.key === 'Enter' || event.key === ' ')) return
       if (showDevNumbers && /^[1-9]$/.test(event.key)) {
         // 開発補助(?dev限定): 数字キーで先頭9項目を直接実行する。スイッチ扱いより先に処理し二重実行しない
         event.preventDefault()
@@ -1172,13 +1177,30 @@ export default function App() {
           <nav aria-label="現在地">
             <ol class="screen-breadcrumb">
               <For each={screenBreadcrumb()}>
-                {(title, index) => (
+                {(item, index) => (
                   <li
                     aria-current={
                       index() === screenBreadcrumb().length - 1 ? 'location' : undefined
                     }
                   >
-                    {title}
+                    <Show when={item.screen} fallback={item.title}>
+                      {(target) => (
+                        <button
+                          type="button"
+                          class="breadcrumb-link"
+                          data-breadcrumb-control
+                          onClick={() => {
+                            // 介助者メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
+                            if (caregiverMenuOpen()) return
+                            // パンくず移動はタイル選択ではないので、どの祖先でも採用確認を消す
+                            setAcceptedSelection(null)
+                            goTo(target())
+                          }}
+                        >
+                          {item.title}
+                        </button>
+                      )}
+                    </Show>
                   </li>
                 )}
               </For>

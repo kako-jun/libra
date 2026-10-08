@@ -37,32 +37,35 @@ describe('buildMenu の共通規則', () => {
     }
 
     for (const screen of PATIENT_SCREEN_IDS) {
-      expect(buildScreenBreadcrumb(screen), screen).toEqual(expectedBreadcrumbs[screen])
+      expect(
+        buildScreenBreadcrumb(screen).map((item) => item.title),
+        screen,
+      ).toEqual(expectedBreadcrumbs[screen])
     }
   })
 
   it('すべてのScreenIdのパンくずはhomeから始まり、最終画面まで親定義をたどる', () => {
     for (const screen of PATIENT_SCREEN_IDS) {
       const breadcrumb = buildScreenBreadcrumb(screen)
-      expect(breadcrumb[0]).toBe('ホーム')
+      expect(breadcrumb[0].title).toBe('ホーム')
       expect(breadcrumb.at(-1)).toBeDefined()
       expect(breadcrumb.length).toBeGreaterThanOrEqual(1)
-      if (screen === 'home') expect(breadcrumb).toEqual(['ホーム'])
+      if (screen === 'home') expect(breadcrumb).toEqual([{ title: 'ホーム' }])
     }
   })
 
   it('動的画面のパンくずは採用した痛みの場所・文字盤の行を含む', () => {
     expect(buildScreenBreadcrumb('painIntensity', { painLabel: '胸' })).toEqual([
-      'ホーム',
-      '不快',
-      '胸',
-      '痛みの強さ',
+      { title: 'ホーム', screen: 'home' },
+      { title: '不快', screen: 'discomfort' },
+      { title: '胸', screen: 'painLocation' },
+      { title: '痛みの強さ' },
     ])
     expect(buildScreenBreadcrumb('lettersRow', { letterRowLabel: 'あ行' })).toEqual([
-      'ホーム',
-      '文字盤',
-      'あ行',
-      '文字盤・文字',
+      { title: 'ホーム', screen: 'home' },
+      { title: '文字盤', screen: 'letters' },
+      { title: 'あ行' },
+      { title: '文字盤・文字' },
     ])
   })
 

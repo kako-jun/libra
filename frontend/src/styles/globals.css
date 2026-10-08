@@ -1381,6 +1381,29 @@ h1[data-fit='single'] {
   flex: 0 0 auto;
 }
 
+/* Issue #69: 祖先は押せるボタン。下線で押せると分かる。色は --text-muted のまま(各テーマで3:1以上) */
+.screen-breadcrumb .breadcrumb-link {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-overflow: ellipsis;
+  white-space: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.screen-breadcrumb .breadcrumb-link:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
 .screen-guide h2 {
   margin: 0;
   font-size: clamp(1.05rem, 3.2vh, 2rem);
