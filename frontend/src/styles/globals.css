@@ -251,8 +251,8 @@ button {
      height を固定してビューポートちょうどの高さに収め、overflow:hidden を実際に効かせる。
      縦方向にブラウザ UI が出入りする環境向けに 100dvh を優先し、非対応環境は 100vh に
      フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
-  /* overlay(position:fixed; inset:0)基準の100%。vh/dvh は非対応・URLバー変動で下端が切れうるため使わない */
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
   /* kako-jun 追加指示: 介助ボタンをメッセージ欄内(右上)へ移し、
      下部に確保していた約130pxの帯を廃止。タイル領域を画面下端まで使う */
   padding: 0;

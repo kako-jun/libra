@@ -52,6 +52,25 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
     }
   })
 
+  it('メディアクエリ内でも固定帯の flex と .caregiver-panel の height を上書きしていない', () => {
+    for (const sel of ['.caregiver-header', '.caregiver-notes', '.caregiver-tablist']) {
+      for (const b of allRuleBodies(sel)) {
+        expect(b, sel).not.toMatch(/(^|[;\s])flex(-grow|-shrink|-basis)?:\s*(?!none)[^\s;]/)
+      }
+    }
+    for (const b of allRuleBodies('.caregiver-panel')) {
+      expect(b).not.toMatch(/(^|[;\s])(max-|min-)?height:\s*(?!100%)[^\s;]/)
+    }
+  })
+
+  it('本人画面 .app-shell は 100dvh 固定で、overlay 用の height:100% を持たない(退行防止)', () => {
+    const bodies = allRuleBodies('.app-shell')
+    expect(bodies.length).toBeGreaterThan(0)
+    const joined = bodies.join('\n')
+    expect(joined).toMatch(/height:\s*100dvh/)
+    expect(joined).not.toMatch(/(^|[;\s])height:\s*100%/)
+  })
+
   it('.caregiver-tabpanel の子要素は読みやすい幅(960px)に抑える', () => {
     expect(ruleBody('.caregiver-tabpanel > *')).toMatch(/max-inline-size:\s*960px/)
   })
