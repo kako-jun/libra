@@ -32,9 +32,24 @@ const allRuleBodies = (selector: string): string[] => {
   return out
 }
 
+/**
+ * メディアクエリ内も含め、セレクタ(カンマ区切りの一つ)の「末尾の複合セレクタ」が cls で始まる規則の本体。
+ * `.caregiver-overlay .caregiver-panel { … }` のような子孫・複合指定も拾う。
+ * `.caregiver-panel input` のように cls が祖先側にあるだけの規則(対象は別要素)は拾わない。
+ */
+const subjectRuleBodies = (cls: string): string[] => {
+  const out: string[] = []
+  const head = new RegExp(`^${cls.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`)
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sels = m[1].replace(/\/\*[\s\S]*?\*\//g, '').split(',').map((x) => x.trim())
+    if (sels.some((sel) => head.test(sel.split(/[\s>+~]+/).pop() ?? ''))) out.push(m[2])
+  }
+  return out
+}
+
 describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
   it('メディアクエリ内を含め、.caregiver-panel に max-height/角丸/影が、.caregiver-overlay に grid/中央寄せ/背景/余白が戻っていない', () => {
-    const panels = allRuleBodies('.caregiver-panel')
+    const panels = subjectRuleBodies('.caregiver-panel')
     const overlays = allRuleBodies('.caregiver-overlay')
     expect(panels.length).toBeGreaterThan(0)
     expect(overlays.length).toBeGreaterThan(0)
@@ -58,17 +73,31 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
         expect(b, sel).not.toMatch(/(^|[;\s])flex(-grow|-shrink|-basis)?:\s*(?!none)[^\s;]/)
       }
     }
-    for (const b of allRuleBodies('.caregiver-panel')) {
+    for (const b of subjectRuleBodies('.caregiver-panel')) {
       expect(b).not.toMatch(/(^|[;\s])(max-|min-)?height:\s*(?!100%)[^\s;]/)
     }
   })
 
-  it('本人画面 .app-shell は 100dvh 固定で、overlay 用の height:100% を持たない(退行防止)', () => {
-    const bodies = allRuleBodies('.app-shell')
+  it('本人画面 .app-shell の height は 100vh(フォールバック)と 100dvh だけで、メディアクエリ内でも他の値で上書きしない', () => {
+    const bodies = subjectRuleBodies('.app-shell')
     expect(bodies.length).toBeGreaterThan(0)
-    const joined = bodies.join('\n')
-    expect(joined).toMatch(/height:\s*100dvh/)
-    expect(joined).not.toMatch(/(^|[;\s])height:\s*100%/)
+    const heights = bodies.flatMap((b) =>
+      [...b.matchAll(/(?:^|[;\s])height:\s*([^;}]+)/g)].map((m) => m[1].trim()),
+    )
+    // overlay 用の height:100% などが混ざらない(全ての height 宣言が 100vh/100dvh)
+    for (const h of heights) expect(['100vh', '100dvh'], `height: ${h}`).toContain(h)
+    // dvh 非対応環境向けの 100vh フォールバックと、100dvh の両方がある
+    expect(heights).toContain('100vh')
+    expect(heights).toContain('100dvh')
+  })
+
+  it('html, body, #root に height を持たせない(min-height: 100vh のみ。100% 高さの連鎖で本人画面が変わる退行の防止)', () => {
+    for (const sel of ['html', 'body', '#root']) {
+      const bodies = allRuleBodies(sel)
+      expect(bodies.length, sel).toBeGreaterThan(0)
+      for (const b of bodies) expect(b, sel).not.toMatch(/(^|[;\s])(max-)?height:/)
+    }
+    expect(allRuleBodies('#root').join('\n')).toMatch(/min-height:\s*100vh/)
   })
 
   it('.caregiver-tabpanel の子要素は読みやすい幅(960px)に抑える', () => {
@@ -99,6 +128,17 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
   it('.caregiver-tabpanel だけがスクロールする(overflow-y: auto)', () => {
     expect(ruleBody('.caregiver-tabpanel')).toMatch(/overflow-y:\s*auto/)
     expect(ruleBody('.caregiver-panel')).toMatch(/overflow:\s*hidden/)
+    // メディアクエリ内・複合セレクタでも上書きして退行させない
+    for (const b of subjectRuleBodies('.caregiver-tabpanel')) {
+      for (const m of b.matchAll(/(?:^|[;\s])overflow(?:-y)?:\s*([^;}]+)/g)) {
+        expect(m[1].trim()).toBe('auto')
+      }
+    }
+    for (const b of subjectRuleBodies('.caregiver-panel')) {
+      for (const m of b.matchAll(/(?:^|[;\s])overflow(?:-y)?:\s*([^;}]+)/g)) {
+        expect(m[1].trim()).toBe('hidden')
+      }
+    }
   })
 })
 
