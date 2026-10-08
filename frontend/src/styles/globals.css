@@ -746,6 +746,30 @@ h1[data-fit='single'] {
   white-space: nowrap;
 }
 
+/* Issue #71: セルの高さに余裕があるときだけ、予告を最大2行(2行目の終わりを省略)にする。
+   足りないセルは従来どおり1行+省略。しきい値は .tile(container-type:size)の content-box の
+   高さ。ラベルの避け領域(margin-bottom)は予告が1行ぶん増える分だけ、必ず同じ条件で広げる。
+   文字サイズ・色・山形アイコンの位置・読み上げ対象(ラベルのみ)は変えない */
+@container (min-height: 72px) {
+  .tile-preview {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    /* 2行目が出ると予告が上へ伸び、1行目が右端の山形アイコン(top:50%)の列へ届く。
+       ラベルと同じアイコン避け幅を右側に足して、文字がアイコンと縦に重ならないようにする */
+    padding-right: clamp(20px, 12cqi, 36px);
+  }
+
+  .tile-nav .tile-label {
+    margin-bottom: calc(
+      var(--font-scale) * clamp(22px, 20cqb, 48px) + 1.1 *
+        max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font))
+    );
+  }
+}
+
 /* ===================================================================
    介助者 UI — 目立たないが介助者には分かる見た目。
    =================================================================== */
