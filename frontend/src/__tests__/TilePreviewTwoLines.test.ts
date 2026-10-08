@@ -73,7 +73,7 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(blocks[0].condition).toMatch(/^\(\s*min-height:\s*\d+(\.\d+)?px\s*\)$/)
   })
 
-  it('しきい値は 1行セル(content 約25〜59px)を2行にせず、2行セル(約84px以上)を2行にできる範囲(60〜84px)', () => {
+  it('しきい値は 72px 前後(60〜84px の範囲)。境界付近にもセルがあり画面サイズ次第で行数が割れるのは許容した仕様(DESIGN.md)', () => {
     const n = Number(previewBlocks()[0].condition.match(/(\d+(?:\.\d+)?)px/)?.[1])
     expect(n).toBeGreaterThan(60)
     expect(n).toBeLessThan(84)
@@ -93,14 +93,29 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(labels.length).toBeGreaterThan(0)
     const mb = decl(labels.join('\n'), 'margin-bottom')
     expect(mb).toBeDefined()
-    // 予告1行ぶん(行高 1.1 × 予告の font-size)が加算されている
-    expect(mb).toMatch(/1\.1\s*\*/)
+    // 予告1行ぶん(行高 1.1 × 予告の font-size)が加算されている。足す項は、ベースの
+    // .tile-preview の font-size の式と(空白を畳んで)同じ文字列であること(1.1 * 0.5rem 等の取り違えを許さない)
+    const previewFont = decl(bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n'), 'font-size')
+    expect(previewFont).toBeDefined()
+    const squash = (x: string): string => x.replace(/\s+/g, '')
+    expect(squash(mb ?? '')).toContain(`1.1*${squash(previewFont ?? '')}`)
     expect(mb).toMatch(/clamp\(22px,\s*20cqb,\s*48px\)/)
     // ラベルの margin-bottom を変える @container は、他に無い(別条件への分離を許さない)
     const others = containerBlocks(css).filter(
       (b) => b.start !== block.start && bodiesOf(b.body, '.tile-nav .tile-label').some((x) => /margin-bottom/.test(x)),
     )
     expect(others).toEqual([])
+  })
+
+  it('@container 内の .tile-preview は、ラベルと同じ山形アイコン避け(右側 clamp(20px, 12cqi, 36px))を持つ', () => {
+    const joined = bodiesOf(previewBlocks()[0].body, '.tile-preview').join('\n')
+    const avoid = 'clamp(20px, 12cqi, 36px)'
+    expect(decl(joined, 'padding-right')).toBe(avoid)
+    // ラベル側(ベース)の避け幅と同じ式であること
+    const label = bodiesOf(withoutContainerBlocks(css), '.tile-nav .tile-label').join('\n')
+    expect(decl(label, 'margin-right')).toBe(avoid)
+    // 予告の位置(right)は変えない
+    expect(joined).not.toMatch(/(^|[;\s])right:/)
   })
 
   it('ベース(@container の外)の .tile-preview は 1行+省略のまま', () => {

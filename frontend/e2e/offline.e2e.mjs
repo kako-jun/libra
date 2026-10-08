@@ -910,6 +910,108 @@ async function checkTightScreenLabelsAndRing(chromium, port) {
   return failures
 }
 
+/**
+ * Issue #71: 予告(.tile-preview)が2行モードのセルで、遷移タイルの「ラベルの行矩形」「予告の行矩形」
+ * 「山形アイコン(.tile-chevron)の矩形」が互いに交差しないことを検査する(Range.getClientRects() の
+ * 文字の行矩形で測る。要素矩形ではない)。予告の右側のアイコン避け(padding-right)を外すと、
+ * 2行目が出た予告の1行目が右端のアイコンの列へ届いて落ちる。
+ * 検査した状態に2行モードの遷移タイルが1つも無いと、検査が空振りなので失敗にする。
+ */
+async function checkTilePreviewTwoLineOverlap(chromium, port) {
+  const base = `http://localhost:${port}/`
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+  const maxNotes = { minHoldMs: 500, auditoryScan: true, voiceMode: 'full', activateOn: 'release' }
+  const fivePath = [
+    ...['苦しい', '痛い', '息ができない', '吐きそう', '胸が痛い'].flatMap((d) => ['緊急', d]),
+    '不快',
+    '痰を取ってほしい',
+    '不快',
+  ]
+  // [名前, viewport, 設定, 押すタイルの列, 最後に「戻る」でホームへ戻るか]
+  const cases = [
+    ['390x844 特大 高コントラスト 緊急詳細5件+伝達 ホーム', { width: 390, height: 844 }, { fontSize: 'xlarge', highContrast: true, ...maxNotes }, fivePath, true],
+    ['320x480 特大 ホーム', { width: 320, height: 480 }, { fontSize: 'xlarge' }, [], false],
+    ['320x568 標準 ホーム', { width: 320, height: 568 }, { fontSize: 'standard' }, [], false],
+    ['844x390 特大 高コントラスト 緊急詳細5件+伝達 不快', { width: 844, height: 390 }, { fontSize: 'xlarge', highContrast: true, ...maxNotes }, fivePath, false],
+  ]
+  const hold = async (page, label) => {
+    const tile = page.locator('.grid-board .tile').filter({ has: page.getByText(label, { exact: true }) }).first()
+    const box = await tile.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.waitForTimeout(700)
+    await page.mouse.up()
+    await page.waitForTimeout(900)
+  }
+  try {
+    for (const [name, viewport, settings, path, goHome] of cases) {
+      const context = await browser.newContext({ viewport })
+      const page = await context.newPage()
+      await page.addInitScript(
+        (value) => {
+          window.localStorage.removeItem('libra:emergency')
+          window.localStorage.setItem('libra', JSON.stringify(value))
+        },
+        { intervalMs: 60000, morseEnabled: true, ...settings },
+      )
+      await page.goto(base)
+      await page.waitForTimeout(300)
+      for (const label of path) await hold(page, label)
+      if (goHome) await hold(page, '戻る')
+      const result = await page.evaluate(() => {
+        // 見えている行だけ: 要素の箱の外(-webkit-line-clamp で隠れた行)は除き、箱でクリップする
+        const lines = (el) => {
+          const r = document.createRange()
+          r.selectNodeContents(el)
+          const box = el.getBoundingClientRect()
+          return [...r.getClientRects()]
+            .filter((x) => x.width > 0 && x.height > 0 && x.top >= box.top - 0.5 && x.bottom <= box.bottom + 0.5)
+            .map((x) => ({
+              left: Math.max(x.left, box.left),
+              right: Math.min(x.right, box.right),
+              top: x.top,
+              bottom: x.bottom,
+            }))
+        }
+        const hit = (a, b) =>
+          Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.01 &&
+          Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.01
+        const out = { twoLine: 0, nav: 0, bad: [] }
+        for (const tile of document.querySelectorAll('.grid-board .tile-nav')) {
+          const label = tile.querySelector('.tile-label')
+          const preview = tile.querySelector('.tile-preview')
+          const chevron = tile.querySelector('.tile-chevron')
+          if (!label || !preview || !chevron) continue
+          out.nav += 1
+          // 2行モード = @container 内で white-space: normal になっている(display は flow-root と報告される)
+          if (getComputedStyle(preview).whiteSpace !== 'normal') continue
+          out.twoLine += 1
+          const c = chevron.getBoundingClientRect()
+          const ll = lines(label)
+          const pl = lines(preview)
+          const name = label.textContent
+          if (pl.some((p) => hit(p, c))) out.bad.push(`${name}: 予告の行とアイコン`)
+          if (ll.some((l) => hit(l, c))) out.bad.push(`${name}: ラベルの行とアイコン`)
+          if (ll.some((l) => pl.some((p) => hit(l, p)))) out.bad.push(`${name}: ラベルの行と予告の行`)
+        }
+        return out
+      })
+      if (result.twoLine === 0) {
+        failures.push(`[preview-two-lines ${name}] 2行モードの遷移タイルが無い(検査が空振り) ${JSON.stringify(result)}`)
+      }
+      for (const b of result.bad) failures.push(`[preview-two-lines ${name}] 行矩形が交差 ${b}`)
+      await context.close()
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 async function checkBackNavigationAndEmergencyRetention(chromium, port) {
   const server = await startServer(DIST_DIR, 'plain', port)
   const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
@@ -1909,6 +2011,16 @@ async function main() {
     issue37Failures.forEach((f) => console.error(f))
   }
   allFailures.push(...issue37Failures)
+  port += 1
+
+  console.log(`--- checking: preview-two-lines-overlap (port ${port}) ---`)
+  const previewTwoLineFailures = await checkTilePreviewTwoLineOverlap(chromium, port)
+  if (previewTwoLineFailures.length === 0) {
+    console.log('[preview-two-lines-overlap] OK')
+  } else {
+    previewTwoLineFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...previewTwoLineFailures)
   port += 1
 
   console.log(`--- checking: tight-labels-and-ring (port ${port}) ---`)
