@@ -757,6 +757,9 @@ h1[data-fit='single'] {
     -webkit-line-clamp: 2;
     line-clamp: 2;
     white-space: normal;
+    /* 2行目が出ると予告が上へ伸び、1行目が右端の山形アイコン(top:50%)の列へ届く。
+       ラベルと同じアイコン避け幅を右側に足して、文字がアイコンと縦に重ならないようにする */
+    padding-right: clamp(20px, 12cqi, 36px);
   }
 
   .tile-nav .tile-label {
