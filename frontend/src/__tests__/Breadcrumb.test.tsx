@@ -136,16 +136,32 @@ describe('App: パンくずの祖先クリック', () => {
     expect(tileLabels(container)).toContain('緊急')
   })
 
-  it('ホームへ戻ると採用確認が消える。中間祖先へ戻るときは消さない', () => {
+  it('どの祖先へ移動しても採用確認が消える(中間祖先・ホームとも)', () => {
     const { container } = render(() => <App />)
     toPainIntensity(container)
     expect(container.querySelector('.selection-confirmation')).not.toBeNull()
 
     fireEvent.click(crumbButton(container, '不快'))
-    expect(container.querySelector('.selection-confirmation')).not.toBeNull()
+    expect(container.querySelector('.selection-confirmation')).toBeNull()
 
+    selectByLabel(container, '痛い')
+    selectByLabel(container, '胸')
+    expect(container.querySelector('.selection-confirmation')).not.toBeNull()
     fireEvent.click(crumbButton(container, 'ホーム'))
     expect(container.querySelector('.selection-confirmation')).toBeNull()
+  })
+
+  it('介助者メニュー表示中は背後のパンくずボタンを押しても遷移しない', () => {
+    const { container } = render(() => <App />)
+    toPainIntensity(container)
+    const before = crumb(container).textContent
+    const sel = container.querySelector('.selection-confirmation')?.textContent
+    fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
+    fireEvent.click(crumbButton(container, 'ホーム'))
+    expect(crumb(container).textContent).toBe(before)
+    expect(container.querySelector('.selection-confirmation')?.textContent).toBe(sel)
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
   })
 
   it('緊急状態中でもパンくずから移動でき、緊急表示が維持される', () => {
@@ -177,6 +193,10 @@ describe('App: パンくずの祖先クリック', () => {
     expect(crumbButtons(container).map((b) => b.textContent)).toEqual(['ホーム'])
   })
 
+  // スコープ: 合成 KeyboardEvent は jsdom でボタンの既定アクティベーション(Enter/Space で click)を起こさないため、
+  // ここでは「本人のスイッチ入力として扱われない(defaultPrevented でない・メッセージが出ない)」ことだけを検証する。
+  // 実ブラウザでフォーカスしたホーム + Space でホームへ移動することは確認済み(#72 レビュー)。
+  // @testing-library/user-event は未導入のため、新規依存は足していない。
   it('パンくずボタンにフォーカスした Enter/Space は本人のスイッチ入力にならない', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, '不快')

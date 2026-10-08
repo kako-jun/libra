@@ -1190,7 +1190,9 @@ export default function App() {
                           class="breadcrumb-link"
                           data-breadcrumb-control
                           onClick={() => {
-                            if (target() === 'home') setAcceptedSelection(null)
+                            if (caregiverMenuOpen()) return
+                            // パンくず移動はタイル選択ではないので、どの祖先でも採用確認を消す
+                            setAcceptedSelection(null)
                             goTo(target())
                           }}
                         >
