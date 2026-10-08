@@ -251,8 +251,8 @@ button {
      height を固定してビューポートちょうどの高さに収め、overflow:hidden を実際に効かせる。
      縦方向にブラウザ UI が出入りする環境向けに 100dvh を優先し、非対応環境は 100vh に
      フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
-  height: 100vh;
-  height: 100dvh;
+  /* overlay(position:fixed; inset:0)基準の100%。vh/dvh は非対応・URLバー変動で下端が切れうるため使わない */
+  height: 100%;
   /* kako-jun 追加指示: 介助ボタンをメッセージ欄内(右上)へ移し、
      下部に確保していた約130pxの帯を廃止。タイル領域を画面下端まで使う */
   padding: 0;
@@ -788,8 +788,8 @@ h1[data-fit='single'] {
   /* Issue #68: ポップアップではなく画面全体の設定画面。高さを固定してタブ切替で外枠が動かない */
   box-sizing: border-box;
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
+  /* overlay(position:fixed; inset:0)基準の100%。vh/dvh は非対応・URLバー変動で下端が切れうるため使わない */
+  height: 100%;
   padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
     max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   overflow: hidden;
@@ -871,6 +871,11 @@ h1[data-fit='single'] {
   min-height: 6rem;
   padding: 4px 2px 8px;
   overflow-y: auto;
+}
+
+/* 広い画面で中身が間延びしないよう、タブ内の子要素だけ読みやすい幅に抑える(パネル・ヘッダ・タブ列は全幅) */
+.caregiver-tabpanel > * {
+  max-inline-size: 960px;
 }
 
 .caregiver-section-title {

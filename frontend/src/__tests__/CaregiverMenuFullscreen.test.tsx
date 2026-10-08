@@ -1,6 +1,7 @@
 // Issue #68: 介助者メニューは画面全体の設定画面。高さ固定でタブ切替時に外枠が動かない。
-// jsdom はレイアウト寸法を測れないため、(1) globals.css の規則を静的に縛り、
-// (2) 全タブ切替で外枠・ヘッダ・タブ列・案内帯が同一DOMノードのまま(再マウントされない)を確認する。
+// jsdom はレイアウト寸法を測れないため、(1) globals.css の規則を静的に縛り(メディアクエリ内も含む)、
+// (2) 全タブ切替で外枠・ヘッダ・タブ列・案内帯の構造が不変(同一DOMノード・tabpanel は1つ)であることを確認する。
+// (2) は構造の不変条件であり、#68 の退行(高さが中身で決まる等)そのものはCSS側の静的検証が捕まえる。
 // 実寸(getBoundingClientRect の一致)は実ブラウザで確認する。
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
@@ -21,7 +22,40 @@ const ruleBody = (selector: string): string => {
   return matches.map((m) => m[1]).join('\n')
 }
 
+/** メディアクエリ内も含め、全ての規則のうちセレクタ(カンマ区切りの一つ)が完全一致するものの本体 */
+const allRuleBodies = (selector: string): string[] => {
+  const out: string[] = []
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sels = m[1].replace(/\/\*[\s\S]*?\*\//g, '').split(',').map((x) => x.trim())
+    if (sels.includes(selector)) out.push(m[2])
+  }
+  return out
+}
+
 describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
+  it('メディアクエリ内を含め、.caregiver-panel に max-height/角丸/影が、.caregiver-overlay に grid/中央寄せ/背景/余白が戻っていない', () => {
+    const panels = allRuleBodies('.caregiver-panel')
+    const overlays = allRuleBodies('.caregiver-overlay')
+    expect(panels.length).toBeGreaterThan(0)
+    expect(overlays.length).toBeGreaterThan(0)
+    for (const b of panels) {
+      expect(b).not.toMatch(/max-height|border-radius|box-shadow/)
+    }
+    for (const b of overlays) {
+      expect(b).not.toMatch(/display:\s*grid|place-items|place-content|background|padding/)
+    }
+  })
+
+  it('.caregiver-header / .caregiver-notes / .caregiver-tablist は flex: none の固定帯', () => {
+    for (const sel of ['.caregiver-header', '.caregiver-notes', '.caregiver-tablist']) {
+      expect(ruleBody(sel), sel).toMatch(/(^|[;\s])flex:\s*none/)
+    }
+  })
+
+  it('.caregiver-tabpanel の子要素は読みやすい幅(960px)に抑える', () => {
+    expect(ruleBody('.caregiver-tabpanel > *')).toMatch(/max-inline-size:\s*960px/)
+  })
+
   it('.caregiver-overlay は画面全体に固定され、暗幕・中央寄せ・余白を持たない', () => {
     const body = ruleBody('.caregiver-overlay')
     expect(body).toMatch(/position:\s*fixed/)
@@ -32,10 +66,10 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
     expect(body).not.toMatch(/padding/)
   })
 
-  it('.caregiver-panel は幅100%・高さ100dvh固定で、角丸・影のないポップアップでない不透明背景', () => {
+  it('.caregiver-panel は幅100%・高さ100%(overlay基準)固定で、角丸・影のないポップアップでない不透明背景', () => {
     const body = ruleBody('.caregiver-panel')
     expect(body).toMatch(/(^|[;\s])width:\s*100%/)
-    expect(body).toMatch(/(^|[;\s])height:\s*100dvh/)
+    expect(body).toMatch(/(^|[;\s])height:\s*100%/)
     // 高さが中身で決まる max-height 方式に戻さない
     expect(body).not.toMatch(/max-height/)
     expect(body).not.toMatch(/border-radius/)
@@ -49,7 +83,7 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
   })
 })
 
-describe('Issue #68: 全タブ切替で外枠が動かない(DOM構造)', () => {
+describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造の不変条件)', () => {
   afterEach(() => cleanup())
 
   const TAB_LABELS = [
