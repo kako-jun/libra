@@ -467,7 +467,8 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(notes[0]).toBe(
         '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
       )
-      expect(notes[1]).toContain('外側のタップやキー入力')
+      expect(notes[1]).toContain('キー入力で閉じ')
+      expect(notes[1]).not.toContain('外側')
       expect(notes[1]).toContain('タブ上の←/→/Home/End')
       expect(notes[1]).toContain('入力欄・スライダー・チェックボックス操作中')
       // モールス入力が無効(既定)なので、モールスの時間停止は出さずスキャン停止だけ

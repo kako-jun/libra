@@ -267,10 +267,10 @@ describe('案内の共通性質', () => {
 })
 
 describe('buildCaregiverMenuNotes', () => {
-  it('所定の3行が固定順で出る(60秒タップ・外側タップ/キー・スキャン停止)', () => {
+  it('所定の3行が固定順で出る(60秒タップ・キーで閉じる・スキャン停止)', () => {
     expect(buildCaregiverMenuNotes(60000)).toEqual([
       '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
-      '外側のタップやキー入力で閉じ、ホーム先頭から再開（入力欄・スライダー・チェックボックス操作中の文字/矢印/Home/Endキーと、タブ上の←/→/Home/Endは閉じません）。',
+      'キー入力で閉じ、ホーム先頭から再開（入力欄・スライダー・チェックボックス操作中の文字/矢印/Home/Endキーと、タブ上の←/→/Home/Endは閉じません）。',
       '開いている間は、スキャンが止まります。',
     ])
   })
@@ -390,7 +390,8 @@ describe('短縮形(compact)にも操作・条件の事実が残る', () => {
     })
     expect(idle).toContain('60秒タップなしで閉じてホームへ')
     expect(idle).toContain('打鍵では延びず')
-    expect(outside).toContain('外側タップ・キーで閉じ')
+    expect(outside).toContain('キーで閉じ')
+    expect(outside).not.toContain('外側')
     expect(outside).toContain('ホーム先頭から再開')
     expect(outside).toContain('入力欄の編集・タブ移動キーは除く')
     expect(stops).toContain('スキャン')
