@@ -779,25 +779,22 @@ h1[data-fit='single'] {
   position: fixed;
   inset: 0;
   z-index: 30;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgb(0 0 0 / 55%);
 }
 
 .caregiver-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: min(960px, 100%);
-  max-height: calc(100vh - 32px);
-  max-height: calc(100dvh - 32px);
-  padding: 16px;
+  /* Issue #68: ポップアップではなく画面全体の設定画面。高さを固定してタブ切替で外枠が動かない */
+  box-sizing: border-box;
+  width: 100%;
+  /* overlay(position:fixed; inset:0)基準の100%。vh/dvh は非対応・URLバー変動で下端が切れうるため使わない */
+  height: 100%;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   overflow: hidden;
   color: var(--text);
   background: var(--caregiver-panel-bg);
-  border-radius: 14px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
   /* Issue #5: 親(.app-shell)の touch-action:none / user-select:none を打ち消し、
      スライダー操作・チェックボックス・文言の選択など通常の介助者操作を妨げない */
   touch-action: auto;
@@ -874,6 +871,11 @@ h1[data-fit='single'] {
   min-height: 6rem;
   padding: 4px 2px 8px;
   overflow-y: auto;
+}
+
+/* 広い画面で中身が間延びしないよう、タブ内の子要素だけ読みやすい幅に抑える(パネル・ヘッダ・タブ列は全幅) */
+.caregiver-tabpanel > * {
+  max-inline-size: 960px;
 }
 
 .caregiver-section-title {

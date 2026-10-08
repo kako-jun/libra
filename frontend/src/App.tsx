@@ -982,7 +982,8 @@ export default function App() {
 
       if (caregiverMenuOpen()) {
         // M3(b): パネル内のタップは通常の介助者操作。パネル外(オーバーレイ背景)へのタップは
-        // メニューを閉じてスキャンをホーム先頭から再開する。この押下自体では項目を実行しない
+        // メニューを閉じてスキャンをホーム先頭から再開する。この押下自体では項目を実行しない。
+        // 全画面パネル化(#68)後は実ブラウザでパネル外が存在せず到達しない。合成イベント/支援技術への防御として残す
         if (target?.closest('.caregiver-panel')) {
           resetCaregiverIdleTimer()
           return
