@@ -151,6 +151,16 @@ describe('App: パンくずの祖先クリック', () => {
     expect(container.querySelector('.selection-confirmation')).toBeNull()
   })
 
+  it('選んだ場所(痛みの場所ラベル)へ移動しても採用確認が消える', () => {
+    const { container } = render(() => <App />)
+    toPainIntensity(container)
+    expect(container.querySelector('.selection-confirmation')).not.toBeNull()
+
+    fireEvent.click(crumbButton(container, '胸'))
+    expect(crumb(container).textContent).toContain('痛い場所')
+    expect(container.querySelector('.selection-confirmation')).toBeNull()
+  })
+
   it('介助者メニュー表示中は背後のパンくずボタンを押しても遷移しない', () => {
     const { container } = render(() => <App />)
     toPainIntensity(container)

@@ -1190,6 +1190,7 @@ export default function App() {
                           class="breadcrumb-link"
                           data-breadcrumb-control
                           onClick={() => {
+                            // 介助者メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
                             if (caregiverMenuOpen()) return
                             // パンくず移動はタイル選択ではないので、どの祖先でも採用確認を消す
                             setAcceptedSelection(null)
