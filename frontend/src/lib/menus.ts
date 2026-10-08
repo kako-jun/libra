@@ -101,25 +101,37 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   morse: 'モールス入力',
 }
 
+export interface BreadcrumbItem {
+  title: string
+  /** 移動先。祖先だけが持つ。現在地と、移動先が現在地自身の動的要素は持たない。 */
+  screen?: ScreenId
+}
+
 /** 現在地をホームからの親子経路として表示する。全ScreenIdをPARENT_SCREENから導出する。 */
 export function buildScreenBreadcrumb(
   screen: ScreenId,
   dynamic?: { painLabel?: string; letterRowLabel?: string },
-): string[] {
+): BreadcrumbItem[] {
   const path: ScreenId[] = [screen]
   let current = screen
   while (current !== 'home') {
     current = PARENT_SCREEN[current]
     path.unshift(current)
   }
-  const titles = path.map((id) => SCREEN_TITLES[id])
+  const items: BreadcrumbItem[] = path.map((id, index) =>
+    index === path.length - 1
+      ? { title: SCREEN_TITLES[id] }
+      : { title: SCREEN_TITLES[id], screen: id },
+  )
   if (screen === 'painIntensity' && dynamic?.painLabel) {
-    titles[titles.length - 2] = dynamic.painLabel
+    // 選んだ場所のラベルは痛い場所の選択階層にあたる。移動先は painLocation
+    items[items.length - 2] = { title: dynamic.painLabel, screen: 'painLocation' }
   }
   if (screen === 'lettersRow' && dynamic?.letterRowLabel) {
-    titles.splice(titles.length - 1, 0, dynamic.letterRowLabel)
+    // 行ラベルの移動先は現在地自身なのでリンクにしない
+    items.splice(items.length - 1, 0, { title: dynamic.letterRowLabel })
   }
-  return titles
+  return items
 }
 
 /** 画面上部に常に出す、本人向けの目的と操作案内。選択結果や緊急状態はここへ混ぜない。 */

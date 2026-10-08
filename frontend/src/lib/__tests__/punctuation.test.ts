@@ -372,7 +372,7 @@ describe('Issue #46 文言の規則(静的検査)', () => {
           if (item.preview) expect(item.preview.endsWith('。')).toBe(false)
         }
       }
-      labels.push(SCREEN_TITLES[screen], ...buildScreenBreadcrumb(screen))
+      labels.push(SCREEN_TITLES[screen], ...buildScreenBreadcrumb(screen).map((item) => item.title))
     }
     labels.push(...Object.values(PHRASE_GROUP_LABELS), ...URGENT_DETAIL_ITEMS.map((i) => i.label))
     // タブ名・アクションラベル(App.tsx の CAREGIVER_TABS)
