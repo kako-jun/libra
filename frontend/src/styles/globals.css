@@ -237,7 +237,6 @@ button {
    安全弁になる（タイル自体の余裕はコンテナクエリで確保する）。 */
 .message-panel h1,
 .emergency-details,
-.emergency-sub,
 .tile-label {
   word-break: auto-phrase;
   line-break: strict;
@@ -333,10 +332,6 @@ button {
   grid-area: details;
 }
 
-.message-panel .emergency-sub {
-  grid-area: sub;
-}
-
 /* 介助ボタンはメッセージ欄右上に置く(文字と重ならないよう grid で専用列を確保する。
    position:fixed はやめ、通常のレイアウトに組み込む) */
 .message-panel-controls {
@@ -411,13 +406,6 @@ h1[data-fit='single'] {
 /* 「・」で区切って一続きの文として読みやすくする(先頭項目には付けない) */
 .emergency-details li:not(:first-child)::before {
   content: '・';
-}
-
-.emergency-sub {
-  margin: 8px 0 0;
-  color: var(--urgent-text-muted);
-  font-size: clamp(1.4rem, 4.2vh, 3.2rem);
-  font-weight: 800;
 }
 
 .letter-strip {
@@ -1060,8 +1048,7 @@ h1[data-fit='single'] {
 
   /* S-new-3: 詳細が積み上がってもタイルが画面外にはみ出さないよう、
      見出し下の表示を狭幅では小さくする */
-  .emergency-details,
-  .emergency-sub {
+  .emergency-details {
     font-size: clamp(1rem, 3.2vh, 1.6rem);
   }
 }
@@ -1297,7 +1284,7 @@ h1[data-fit='single'] {
 }
 
 .app-shell.is-morse .screen-guide h2 {
-  font-size: clamp(0.95rem, 2.4vh, 1.3rem);
+  font-size: clamp(1rem, 2.4vh, 1.3rem);
 }
 
 @media (max-height: 500px), (max-width: 480px) {
@@ -1405,66 +1392,54 @@ h1[data-fit='single'] {
   min-width: 0;
 }
 
-.screen-name,
 .message-panel-label {
   margin: 0 0 2px;
-  color: var(--text-muted);
+  /* Issue #81: 「直前に伝えたこと」は濃緑/赤のメッセージ枠の中に置かれる。--text-muted は薄い地用で
+     枠の上ではライト 1.44:1 だった。枠の文字色(通常=--message-text/緊急=--urgent-text)をそのまま継ぐ */
+  color: inherit;
   /* Issue #81: 本人が読む補助文字は 16px(1rem)未満にしない(短い画面でも) */
   font-size: 1rem;
   font-weight: 700;
 }
 
-/* Issue #81: 「直前に伝えたこと」は濃緑/赤のメッセージ枠の中に置かれる。--text-muted は薄い地用で
-   枠の上ではライト 1.44:1 だった。枠の文字色(通常=--message-text/緊急=--urgent-text)をそのまま継ぐ */
-.message-panel-label {
-  color: inherit;
-}
-
 .screen-breadcrumb {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 0.35em;
+  /* Issue #81 M1: 16px の祖先名は狭い画面の深い階層で 1 行に収まらない。祖先は押して戻る
+     ボタン(#69)なので「…」で省略せず、収まらないときだけ折り返す(各項目は nowrap) */
+  flex-wrap: wrap;
+  gap: 0 0.25em;
   min-width: 0;
   margin: 0 0 2px;
   padding: 0;
-  overflow: hidden;
   list-style: none;
   color: var(--text-muted);
   /* Issue #81: パンくずも 16px(1rem)未満にしない */
   font-size: 1rem;
   font-weight: 700;
+  line-height: 1.15;
   white-space: nowrap;
+}
+
+.screen-breadcrumb li {
+  flex: 0 0 auto;
 }
 
 .screen-breadcrumb li + li::before {
   content: '›';
-  margin-right: 0.35em;
+  margin-right: 0.25em;
   color: var(--text-muted);
 }
 
-.screen-breadcrumb li:not(:last-child) {
-  flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.screen-breadcrumb li:last-child {
-  flex: 0 0 auto;
-}
-
-/* Issue #69: 祖先は押せるボタン。下線で押せると分かる。色は --text-muted のまま(各テーマで3:1以上) */
+/* Issue #69: 祖先は押せるボタン。下線で押せると分かる。色は --text-muted のまま(各テーマで4.5:1以上) */
 .screen-breadcrumb .breadcrumb-link {
-  max-width: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
   border: 0;
   background: none;
   color: inherit;
   font: inherit;
   text-decoration: underline;
   text-underline-offset: 0.15em;
-  text-overflow: ellipsis;
   white-space: inherit;
   cursor: pointer;
   touch-action: manipulation;

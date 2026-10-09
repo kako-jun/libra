@@ -1450,6 +1450,76 @@ async function checkIssue37SmallViewport(chromium, port) {
   return failures
 }
 
+// Issue #81 M1: パンくずの祖先は押して戻るボタン(#69)。16px の文字が狭い画面の深い階層で
+// 「…」に省略されると名前が読めず使えない。収まらないときは折り返し、省略(text-overflow)しない。
+// 深い階層(痛みの強さ・文字盤の行)で、全 li と button が scrollWidth <= clientWidth、
+// 各 li の computed font-size が 16px 以上であることを、320x568 と 360x640 で実描画で測る。
+async function checkBreadcrumbNotTruncated(chromium, port) {
+  const server = await startServer(DIST_DIR, 'plain', port)
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
+  const failures = []
+
+  try {
+    for (const [width, height] of [
+      [320, 568],
+      [360, 640],
+    ]) {
+      const page = await browser.newPage({ viewport: { width, height } })
+      await page.addInitScript(() => {
+        localStorage.setItem('libra', JSON.stringify({ intervalMs: 600000 }))
+      })
+      await page.goto(`http://localhost:${port}/`)
+      const open = async (label) => {
+        await page
+          .locator('.tile', {
+            has: page.locator('.tile-label', { hasText: new RegExp(`^${label}$`) }),
+          })
+          .first()
+          .click()
+        await page.waitForTimeout(500)
+      }
+      const measure = async (caseName, expected) => {
+        const r = await page.evaluate(() => {
+          const lis = [...document.querySelectorAll('.screen-breadcrumb li')]
+          return lis.map((li) => {
+            const button = li.querySelector('button')
+            return {
+              text: li.textContent,
+              liCut: li.scrollWidth > li.clientWidth,
+              buttonCut: button ? button.scrollWidth > button.clientWidth : false,
+              fontSize: parseFloat(getComputedStyle(li).fontSize),
+            }
+          })
+        })
+        const tag = `[breadcrumb ${width}x${height} ${caseName}]`
+        if (JSON.stringify(r.map((x) => x.text)) !== JSON.stringify(expected)) {
+          failures.push(`${tag} unexpected path ${JSON.stringify(r.map((x) => x.text))}`)
+        }
+        for (const x of r) {
+          if (x.liCut || x.buttonCut) failures.push(`${tag} "${x.text}" is truncated`)
+          if (x.fontSize < 16) failures.push(`${tag} "${x.text}" font-size ${x.fontSize}px < 16px`)
+        }
+      }
+      await open('不快')
+      await open('痛い')
+      await open('胸')
+      await measure('painIntensity', ['ホーム', '不快', '胸', '痛みの強さ'])
+      await page.goto(`http://localhost:${port}/`)
+      await open('文字盤')
+      await open('あ行')
+      await measure('lettersRow', ['ホーム', '文字盤', 'あ行', '文字盤・文字'])
+      await page.close()
+    }
+  } catch (error) {
+    failures.push(`[breadcrumb-not-truncated] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 // Issue #46/#57: モールス凡例(.morse-legend)が固定パネル(.morse-panel, overflow:hidden)の中に
 // 収まり、文字が切れないことを実描画で確認する。本人はスクロールできないため全項目が見える必要がある。
 // 句点・符号の注記で行が増えても、高コントラスト+緊急中+押下時間の下限あり(凡例が最も多い)でも
@@ -2013,6 +2083,16 @@ async function main() {
   allFailures.push(...issue37Failures)
   port += 1
 
+  console.log(`--- checking: breadcrumb-not-truncated (port ${port}) ---`)
+  const breadcrumbFailures = await checkBreadcrumbNotTruncated(chromium, port)
+  if (breadcrumbFailures.length === 0) {
+    console.log('[breadcrumb-not-truncated] OK')
+  } else {
+    breadcrumbFailures.forEach((f) => console.error(f))
+  }
+  allFailures.push(...breadcrumbFailures)
+  port += 1
+
   console.log(`--- checking: preview-two-lines-overlap (port ${port}) ---`)
   const previewTwoLineFailures = await checkTilePreviewTwoLineOverlap(chromium, port)
   if (previewTwoLineFailures.length === 0) {
@@ -2096,6 +2176,15 @@ if (process.env.SCAN_RING_ONLY === '1') {
     process.exitCode = 1
   } else {
     console.log('[issue37-small-viewport] OK')
+  }
+} else if (process.env.BREADCRUMB_ONLY === '1') {
+  const { chromium } = await import('playwright')
+  const failures = await checkBreadcrumbNotTruncated(chromium, 4750)
+  if (failures.length > 0) {
+    failures.forEach((failure) => console.error(failure))
+    process.exitCode = 1
+  } else {
+    console.log('[breadcrumb-not-truncated] OK')
   }
 } else if (process.env.MORSE_LEGEND_ONLY === '1') {
   const { chromium } = await import('playwright')
