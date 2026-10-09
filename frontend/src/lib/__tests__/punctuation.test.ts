@@ -52,7 +52,13 @@ import {
   buildScreenBreadcrumb,
   type ScreenId,
 } from '../menus'
-import { buildCaregiverMenuNotes, buildScreenNotes, type ScreenNotesContext } from '../guidance'
+import {
+  buildBehaviorNotes,
+  buildCaregiverMenuNotes,
+  buildScreenNotes,
+  type BehaviorNotesContext,
+  type ScreenNotesContext,
+} from '../guidance'
 import { DEFAULT_SETTINGS, parseSettingsJson } from '../settings'
 
 const SOURCES: Record<string, string> = {
@@ -291,7 +297,7 @@ describe('Issue #46 phraseProblem', () => {
 })
 
 describe('Issue #46 文言の規則(静的検査)', () => {
-  const baseSettings: ScreenNotesContext['settings'] = {
+  const baseSettings: ScreenNotesContext['settings'] & BehaviorNotesContext['settings'] = {
     ...DEFAULT_SETTINGS,
     minHoldMs: 800,
     activateOn: 'release',
@@ -301,7 +307,7 @@ describe('Issue #46 文言の規則(静的検査)', () => {
   }
   const allNotes = (): string[] => {
     const out: string[] = []
-    for (const screen of PATIENT_SCREEN_IDS) {
+    {
       for (const compact of [false, true]) {
         for (const emergencyActive of [false, true]) {
           for (const activateOn of ['press', 'release'] as const) {
@@ -309,12 +315,13 @@ describe('Issue #46 文言の規則(静的検査)', () => {
               for (const canVibrate of [true, false]) {
                 out.push(
                   ...buildScreenNotes({
-                    screen,
-                    showUndo: true,
                     emergencyActive,
                     vibrationAwaitsTouch: true,
                     canVibrate,
                     compact,
+                    settings: baseSettings,
+                  }),
+                  ...buildBehaviorNotes({
                     settings: { ...baseSettings, activateOn, minHoldMs },
                   }),
                 )
