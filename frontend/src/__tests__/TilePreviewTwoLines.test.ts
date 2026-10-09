@@ -87,6 +87,14 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(decl(joined, 'white-space')).toBe('normal')
   })
 
+  it('2行モードの予告は「・」でだけ折り返し(keep-all)、1項目が行幅を超えるときだけ途中で切る(overflow-wrap: anywhere)。1行モード(ベース)には付けない(Issue #82)', () => {
+    const joined = bodiesOf(previewBlocks()[0].body, '.tile-preview').join('\n')
+    expect(decl(joined, 'word-break')).toBe('keep-all')
+    expect(decl(joined, 'overflow-wrap')).toBe('anywhere')
+    const base = bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n')
+    expect(base).not.toMatch(/word-break|overflow-wrap/)
+  })
+
   it('予告の2行化と、ラベルの避け領域(margin-bottom)拡大が「同じ @container ブロック」にある', () => {
     const block = previewBlocks()[0]
     const labels = bodiesOf(block.body, '.tile-nav .tile-label')
@@ -94,9 +102,10 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     const mb = decl(labels.join('\n'), 'margin-bottom')
     expect(mb).toBeDefined()
     // 予告1行ぶん(行高 1.1 × 予告の font-size)が加算されている。足す項は、ベースの
-    // .tile-preview の font-size の式と(空白を畳んで)同じ文字列であること(1.1 * 0.5rem 等の取り違えを許さない)
+    // .tile-preview の font-size と同じ変数(--tile-preview-font。式は .tile で1か所だけ定義)であること
+    // (1.1 * 0.5rem 等の取り違えを許さない)
     const previewFont = decl(bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n'), 'font-size')
-    expect(previewFont).toBeDefined()
+    expect(previewFont).toBe('var(--tile-preview-font)')
     const squash = (x: string): string => x.replace(/\s+/g, '')
     expect(squash(mb ?? '')).toContain(`1.1*${squash(previewFont ?? '')}`)
     expect(mb).toMatch(/clamp\(22px,\s*20cqb,\s*48px\)/)
@@ -123,11 +132,17 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(chevrons.length).toBe(1)
     const top = (decl(chevrons[0], 'top') ?? '').replace(/\s+/g, '')
     expect(top.startsWith('min(50%,')).toBe(true)
-    // 予告2行ぶん(行高1.1 × 2 × 予告の font-size)をベースの式と同じ文字列で引く
+    // 予告2行ぶん(行高1.1 × 2 × 予告の font-size)を、ベースと同じ変数 --tile-preview-font で引く
     const previewFont = decl(bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n'), 'font-size') ?? ''
     const squash = (x: string): string => x.replace(/\s+/g, '')
+    expect(squash(previewFont)).toBe('var(--tile-preview-font)')
     expect(top).toContain(`2.2*${squash(previewFont)}`)
     expect(top).toContain('100%-var(--scan-ring-inset)')
+    // アイコンと予告の上端の間に 1〜2px の余白を残す(DPR や丸めが違っても行の矩形が交差しない)
+    const gap = top.match(/-(\d+(?:\.\d+)?)px\)\)$/)
+    expect(gap).not.toBeNull()
+    expect(Number(gap?.[1])).toBeGreaterThanOrEqual(1)
+    expect(Number(gap?.[1])).toBeLessThanOrEqual(2)
     // アイコン高さの半分 = 幅 clamp(14px, 9cqi, 28px) × 0.6(viewBox 24/20 の半分)
     const base = bodiesOf(withoutContainerBlocks(css), '.tile-chevron').join('\n')
     expect(decl(base, 'width')).toBe('clamp(14px, 9cqi, 28px)')
@@ -137,7 +152,7 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(decl(base, 'transform')).toBe('translateY(-50%)')
   })
 
-  it('.tile-preview は align-self: end で下端を明示し、place-items:center の影響を受けない(Issue #82)', () => {
+  it('.tile-preview は align-self: end で下端を明示する(エンジン差の保険。Issue #82)', () => {
     const base = bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n')
     expect(decl(base, 'align-self')).toBe('end')
     expect(decl(base, 'bottom')).toBe('var(--scan-ring-inset)')
@@ -171,8 +186,14 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
   it('予告の font-size(ラベルの50%の式)と色は @container 内で上書きされない', () => {
     const joined = bodiesOf(previewBlocks()[0].body, '.tile-preview').join('\n')
     expect(joined).not.toMatch(/font-size|(^|[;\s])color:/)
-    // ベース側は式が維持されている
+    // ベース側は変数を参照し、その式(ラベルの50%・最小 0.85rem 相当)は .tile に1か所だけある
     const base = bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n')
-    expect(decl(base, 'font-size')).toMatch(/0\.5\s*\*\s*var\(--tile-label-font\)/)
+    expect(decl(base, 'font-size')).toBe('var(--tile-preview-font)')
+    const def = decl(bodiesOf(css, '.tile').join('\n'), '--tile-preview-font')
+    expect(def).toMatch(/0\.5\s*\*\s*var\(--tile-label-font\)/)
+    expect(def).toMatch(/0\.85rem/)
+    expect(css.match(/--tile-preview-font:/g)?.length).toBe(1)
+    // 式の写し(var を使わず直接書く)が他に残っていない
+    expect(css.match(/0\.5\s*\*\s*var\(--tile-label-font\)/g)?.length).toBe(1)
   })
 })
