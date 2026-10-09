@@ -1308,11 +1308,11 @@ async function checkFontSizeMonotonicity(chromium, port) {
       // Issue #34 でスキャン枠の厚みぶん余白を取るためセルが低くなった結果。
       // 4巡目の回帰値(22.0px)より下だが、固定格子の仕様上の値なので新しい実測を基準にする
       { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 21 },
-      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['4'], minPx: 21 },
+      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['5'], minPx: 21 },
       // 実測41.17px
       { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
       // 実測28.79px
-      { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['4'], minPx: 27 },
+      { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['5'], minPx: 27 },
     ]
     for (const { vw, vh, screenName, keys, minPx } of standardLabelMinimums) {
       const context = await browser.newContext({ viewport: { width: vw, height: vh } })
@@ -1329,6 +1329,12 @@ async function checkFontSizeMonotonicity(chromium, port) {
       }
       await page.waitForTimeout(150)
       await page.evaluate(() => document.fonts.ready)
+      // 数字キーが意図した画面(不快)を開いたことを確かめる(快と取り違えると別の画面を検査してしまう)
+      const crumb = await page.locator('.screen-breadcrumb').textContent()
+      const expectedCrumb = screenName === 'home' ? 'ホーム' : '不快'
+      if (!(crumb ?? '').trim().endsWith(expectedCrumb)) {
+        failures.push(`[standard-label-min ${vw}x${vh} ${screenName}] 想定外の画面を検査している(パンくず: ${crumb})`)
+      }
       const size = await page.evaluate(() => {
         const labels = [...document.querySelectorAll('.tile-label')].map((el) =>
           parseFloat(getComputedStyle(el).fontSize),

@@ -251,8 +251,9 @@ export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
     navigate('discomfort-nav', '不快', 'discomfort', options.phrases),
     navigate('requests-nav', '要望', 'requests', options.phrases),
     navigate('letters-nav', '文字盤', 'letters'),
-    // 上級者向けの逃げ道。文字盤より後ろ(優先度は最下位)
-    ...(options.morseEnabled ? [navigate('morse-nav', 'モールス', 'morse')] : []),
+    // 上級者向けの逃げ道。文字盤より後ろ(優先度は最下位)。取り消しが出ている間(伝達直後の2周だけ)は
+    // 入口を畳み、ホームを常に8項目以内に保つ(固定格子に収め、はい・いいえを小さくしない。Issue #93)
+    ...(options.morseEnabled && !showUndo ? [navigate('morse-nav', 'モールス', 'morse')] : []),
   ])
 }
 

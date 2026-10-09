@@ -423,11 +423,19 @@ describe('モールス入力(Issue #14)', () => {
     ])
   })
 
-  it('取り消し表示中にモールスも有効だと、ホームは9項目になる(Issue #93。2周だけの状態。格子は8セルのままスクロール)', () => {
-    const items = buildMenu('home', { showUndo: true, emergencyActive: false, morseEnabled: true })
-    expect(items).toHaveLength(9)
+  it('取り消し表示中はモールスの入口を畳み、ホームはどの条件でも8項目以内(Issue #93)', () => {
+    for (const showUndo of [true, false]) {
+      for (const morseEnabled of [true, false]) {
+        for (const emergencyActive of [true, false]) {
+          const items = buildMenu('home', { showUndo, emergencyActive, morseEnabled })
+          expect(items.length, `undo=${showUndo} morse=${morseEnabled} emg=${emergencyActive}`).toBeLessThanOrEqual(8)
+          const hasUndo = showUndo && !emergencyActive
+          expect(items.some((i) => i.id === 'morse-nav')).toBe(morseEnabled && !hasUndo)
+        }
+      }
+    }
     const noUndo = buildMenu('home', { showUndo: false, emergencyActive: false, morseEnabled: true })
-    expect(noUndo).toHaveLength(8)
+    expect(noUndo.at(-1)?.label).toBe('モールス')
   })
 
   it('モールス画面は戻る・緊急だけを構造として持ち、戻る先はホーム', () => {

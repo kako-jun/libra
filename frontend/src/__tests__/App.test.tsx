@@ -2239,6 +2239,13 @@ describe('App', () => {
       expect(container.querySelectorAll('.tile-empty')).toHaveLength(0)
     })
 
+    it('Issue #47/#93: 横長ホーム7項目の空きセルは aria-hidden', () => {
+      const { container } = render(() => <App />)
+      setViewport(1000, 500)
+      const empty = container.querySelector('.tile-empty')
+      expect(empty?.getAttribute('aria-hidden')).toBe('true')
+    })
+
     it('向きが変わると固定格子が切り替わる(横長 4列×2行 / 縦長 2列×4行)', () => {
       const { container } = render(() => <App />)
 

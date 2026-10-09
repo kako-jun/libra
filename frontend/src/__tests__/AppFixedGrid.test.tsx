@@ -510,6 +510,30 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     })
   })
 
+  describe('取り消し表示中にモールスが有効でも、ホームは8項目で格子に収まる(Issue #93)', () => {
+    for (const [w, h] of [
+      [390, 844],
+      [844, 390],
+    ] as const) {
+      it(`${w}x${h}: grid-fill のまま・空きセルなし・モールスの入口は取り消し中だけ畳まれる`, () => {
+        setViewport(w, h)
+        setSettings({ intervalMs: INTERVAL_MS, morseEnabled: true })
+        const { container } = render(() => <App />)
+        expect(labels(container)).toContain('モールス')
+        press(container, 'はい')
+        expect(labels(container)).toContain('取り消し')
+        expect(labels(container)).not.toContain('モールス')
+        expect(labels(container)).toHaveLength(8)
+        expect(board(container).classList.contains('grid-fill')).toBe(true)
+        expect(emptyCells(container)).toHaveLength(0)
+        // 取り消しが消える(2周後)とモールスが戻る
+        vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 8 * 2 + INTERVAL_MS)
+        expect(labels(container)).not.toContain('取り消し')
+        expect(labels(container)).toContain('モールス')
+      })
+    }
+  })
+
   describe('文字盤の行段階(14項目): スクロール・sticky 緊急は従来どおり', () => {
     it('9項目以上は fill しない(grid-fill なし)・空きセルなし・緊急タイルが sticky', () => {
       for (const [w, h] of [
