@@ -1405,7 +1405,8 @@ h1[data-fit='single'] {
 .screen-breadcrumb {
   display: flex;
   /* Issue #81 M1: 16px の祖先名は狭い画面の深い階層で 1 行に収まらない。祖先は押して戻る
-     ボタン(#69)なので「…」で省略せず、収まらないときだけ折り返す(各項目は nowrap) */
+     ボタン(#69)なので「…」で省略せず、収まらないときだけ折り返す。項目どうしの間で折り返し、
+     1 項目だけで列に入りきらない長い自作ラベルは、その項目の中で折り返す(下の li) */
   flex-wrap: wrap;
   gap: 0 0.25em;
   min-width: 0;
@@ -1417,16 +1418,26 @@ h1[data-fit='single'] {
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.15;
-  white-space: nowrap;
 }
 
+/* 通常の短いラベルは 1 行のまま。列(max-width:100%)を超える 1 項目だけ中で折り返す。
+   ellipsis は使わない(祖先名が読めなくなる) */
 .screen-breadcrumb li {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  /* ボタン(inline-block)と区切りを flex で並べる。区切りが折り返した文字の下に落ちず、末尾の行の右に付く */
+  display: flex;
+  align-items: flex-end;
 }
 
-.screen-breadcrumb li + li::before {
+/* 区切りは前の項目の末尾に付ける。折り返した 2 行目の先頭が「›」で始まらないようにする */
+.screen-breadcrumb li:not(:last-child)::after {
   content: '›';
-  margin-right: 0.25em;
+  flex: none;
+  margin-left: 0.25em;
   color: var(--text-muted);
 }
 
@@ -1440,7 +1451,11 @@ h1[data-fit='single'] {
   font: inherit;
   text-decoration: underline;
   text-underline-offset: 0.15em;
-  white-space: inherit;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
   cursor: pointer;
   touch-action: manipulation;
 }
