@@ -35,7 +35,7 @@ import {
   type ScreenNotesContext,
 } from '../guidance'
 
-const UNDO = '「取り消し」は伝えた直後の1周だけ出ます。'
+const UNDO = '「取り消し」は伝えた直後の2周だけ出ます。'
 const NO_VIBRATE = 'この端末は振動できません（緊急中の周期振動なし）。'
 const NO_UNDO_IN_EMERGENCY = '緊急中は「取り消し」なし（緊急は取り消せないため）。'
 const VIBRATION = '緊急中は3秒ごとに振動（呼び出し継続の合図。本人の入力直後は休む）。'
@@ -267,11 +267,12 @@ describe('案内の共通性質', () => {
 })
 
 describe('buildCaregiverMenuNotes', () => {
-  it('所定の3行が固定順で出る(60秒タップ・キーで閉じる・スキャン停止)', () => {
+  it('所定の4行が固定順で出る(60秒タップ・キーで閉じる・スキャン停止・無入力でホームへ)', () => {
     expect(buildCaregiverMenuNotes(60000)).toEqual([
       '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
       'キー入力で閉じ、ホーム先頭から再開（入力欄・スライダー・チェックボックス操作中の文字/矢印/Home/Endキーと、タブ上の←/→/Home/Endは閉じません）。',
       '開いている間は、スキャンが止まります。',
+      '入力がないまま3周すると、ホームに戻ります（モールス入力・ホームを除く）。',
     ])
   })
 
@@ -282,7 +283,7 @@ describe('buildCaregiverMenuNotes', () => {
     expect(buildCaregiverMenuNotes(60000, { morseEnabled: false })[2]).not.toContain('モールス')
   })
 
-  it('短縮形も3行・同じ事実を保つ(出る行数は変わらない)', () => {
+  it('短縮形も同じ行数・同じ事実を保つ(出る行数は変わらない)', () => {
     const full = buildCaregiverMenuNotes(60000, { morseEnabled: true })
     const compact = buildCaregiverMenuNotes(60000, { morseEnabled: true, compact: true })
     expect(compact).toHaveLength(full.length)
@@ -290,6 +291,7 @@ describe('buildCaregiverMenuNotes', () => {
     expect(compact[0]).toContain('打鍵では延びず')
     expect(compact[1]).toContain('入力欄の編集')
     expect(compact[2]).toContain('モールス')
+    expect(compact[3]).toContain('3周無入力でホームへ')
     for (let i = 0; i < full.length; i += 1) expect(compact[i].length).toBeLessThan(full[i].length)
   })
 
@@ -350,8 +352,8 @@ describe('短縮形(compact)にも操作・条件の事実が残る', () => {
     settings: SettingsOverride,
   ) => notes('home', { ...state, compact: true }, settings).join('\n')
 
-  it('取り消しは「伝えた直後の1周だけ」出ること(取り消し項目が消える条件)を含む', () => {
-    expect(compactNotes({ showUndo: true }, {})).toContain('伝えた直後の1周だけ')
+  it('取り消しは「伝えた直後の2周だけ」出ること(取り消し項目が消える条件)を含む', () => {
+    expect(compactNotes({ showUndo: true }, {})).toContain('伝えた直後の2周だけ')
   })
 
   it('緊急中の取り消しなし・振動の周期と、入力直後は休むことを含む', () => {
