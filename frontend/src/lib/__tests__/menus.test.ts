@@ -375,7 +375,11 @@ describe('文字盤(§4.6)', () => {
     const items = buildMenu('letters', homeOptions)
     expect(items).toHaveLength(14)
     expect(items.some((item) => item.label === 'はい・いいえ')).toBe(false)
-    expect(items.some((item) => item.action.type === 'navigate' && String(item.action.screen) === 'lettersYesNo')).toBe(false)
+    expect(
+      items.some(
+        (item) => item.action.type === 'navigate' && String(item.action.screen) === 'lettersYesNo',
+      ),
+    ).toBe(false)
     expect(PATIENT_SCREEN_IDS as readonly string[]).not.toContain('lettersYesNo')
     expect(Object.keys(PARENT_SCREEN)).not.toContain('lettersYesNo')
   })
