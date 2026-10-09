@@ -1,6 +1,6 @@
 // Issue #84: ページ(ドキュメント)を構造上スクロール不可にする。
 // 実ブラウザ(Chromium)ではアドレスバー出入りによる 100vh と見える高さの食い違いを再現できないため、
-// 原因そのもの(html/body/#root に 100vh 基準の高さが残る)と、固定(overflow:hidden / position:fixed)を
+// 原因そのもの(html/body に 100vh 基準の高さが残る、.app-shell が 100vh/100dvh のまま)と、固定(overflow:hidden / position:fixed)を
 // globals.css の静的検証で縛る(@media 内の上書きも含む)。
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -23,18 +23,21 @@ const bodies = (selector: string): string[] => {
 }
 
 describe('Issue #84: ページのスクロール固定', () => {
-  it.each(['html', 'body', '#root'])('%s に 100vh 基準の高さ(height/min-height/max-height)を置かない', (sel) => {
-    const all = bodies(sel)
-    expect(all.length, sel).toBeGreaterThan(0)
-    for (const b of all) {
-      expect(b, sel).not.toMatch(/(?:^|[;\s])(?:min-|max-)?height:\s*[^;]*\d+vh/)
-    }
-  })
+  it.each(['html', 'body', '#app', '.app-shell'])(
+    '%s に vh 系(vh/svh/lvh/dvh)基準の高さ(height/min-height/max-height)を置かない',
+    (sel) => {
+      const all = bodies(sel)
+      expect(all.length, sel).toBeGreaterThan(0)
+      for (const b of all) {
+        expect(b, sel).not.toMatch(/(?:^|[;\s])(?:min-|max-)?height:\s*[^;]*\d+[sld]?vh/)
+      }
+    },
+  )
 
   it.each(['html', 'body'])('%s は overflow:hidden で、他の規則で上書きされない', (sel) => {
     const all = bodies(sel)
     expect(all.some((b) => /overflow:\s*hidden/.test(b)), sel).toBe(true)
-    for (const b of all) expect(b, sel).not.toMatch(/overflow:\s*(?!hidden)[a-z]+/)
+    for (const b of all) expect(b, sel).not.toMatch(/overflow(?:-[xy])?:\s*(?!hidden)[a-z]+/)
   })
 
   it('body は position:fixed; inset:0 で見える領域に固定される', () => {
@@ -43,13 +46,20 @@ describe('Issue #84: ページのスクロール固定', () => {
     expect(all).toMatch(/inset:\s*0/)
   })
 
-  it('html, body, #root に height を持たせない(100% 連鎖は .app-shell が潰れた過去がある。高さは body の inset が確定する)', () => {
-    for (const sel of ['html', 'body', '#root']) {
+  it('html, body に height/min-height を持たせない(高さは body の inset が確定する)', () => {
+    for (const sel of ['html', 'body']) {
       for (const b of bodies(sel)) expect(b, sel).not.toMatch(/(?:^|[;\s])(?:min-|max-)?height:/)
     }
   })
 
-  it('.app-shell は 100dvh を維持する(親が確定した高さの内側にぴったり収める)', () => {
-    expect(bodies('.app-shell').join('\n')).toMatch(/height:\s*100dvh/)
+  it('#app と .app-shell は height:100% の連鎖で body の確定高さを受ける(.app-shell だけでは親が潰れるので #app とセット)', () => {
+    for (const sel of ['#app', '.app-shell']) {
+      const all = bodies(sel).join('\n')
+      expect(all, sel).toMatch(/(?:^|[;\s])height:\s*100%/)
+    }
+  })
+
+  it('.app-shell は overflow:hidden を維持する', () => {
+    expect(bodies('.app-shell').join('\n')).toMatch(/overflow:\s*hidden/)
   })
 })

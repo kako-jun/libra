@@ -186,8 +186,10 @@
 
 html,
 body,
-#root {
-  min-width: 320px;
+#app {
+  /* Issue #84: min-width は置かない。body が position:fixed; width:100% で幅を画面に合わせるため、
+     320px の下限があると 320px 未満の端末(Galaxy Fold 閉状態の 280px 幅など)で右が切れて届かない。
+     280px 幅でも格子・文言が収まることを実ブラウザで確認済み */
   margin: 0;
 }
 
@@ -195,9 +197,8 @@ body,
    1画面」にする。以前の min-height:100vh は、スマホで large viewport(アドレスバーが隠れた時の大きな
    高さ)になり、見える高さより長いドキュメントができてドラッグで動いた(ヘッダ見切れ・フッタ浮き)。
    100vh 基準の高さはここに置かない。body は position:fixed; inset:0 で見える領域に釘付けにし
-   (高さは inset で確定する。100% の高さ連鎖は .app-shell が潰れた過去があるため作らない)、
-   iOS Safari の「body の overflow:hidden だけではドキュメントが動く」ケースも防ぐ。
-   .app-shell 自身は従来どおり 100dvh(下記) */
+   (高さは inset で確定する)、iOS Safari の「body の overflow:hidden だけではドキュメントが動く」
+   ケースも防ぐ。#app → .app-shell は body 基準の height:100% で受ける(下記) */
 html,
 body {
   overflow: hidden;
@@ -207,6 +208,13 @@ body {
   position: fixed;
   inset: 0;
   width: 100%;
+}
+
+/* Issue #84: アプリのマウント先(frontend/index.html の <div id="app">)。body(position:fixed; inset:0)
+   の高さは確定しているので 100% で受ける。.app-shell だけを 100% にすると親(#app)が auto 高さで
+   潰れる(過去に 390x844 でタイルが 195x24 になった)ため、必ず #app とセットで持つ */
+#app {
+  height: 100%;
 }
 
 /* Issue #5: 常設運用での誤作動防止。pull-to-refresh・オーバースクロールのバウンスを止める。
@@ -255,10 +263,12 @@ button {
      スクロールし、緊急表示を含むメッセージパネルが画面外に出てしまう不具合があった
      (実機 Playwright 検証: 844x390 で h1 top -32px、320x568 で -266px)。
      height を固定してビューポートちょうどの高さに収め、overflow:hidden を実際に効かせる。
-     縦方向にブラウザ UI が出入りする環境向けに 100dvh を優先し、非対応環境は 100vh に
-     フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
-  height: 100vh;
-  height: 100dvh;
+     Issue #84: 以前は 100vh/100dvh だったが、dvh 非対応ブラウザ(iOS 15.4 未満、Chrome 108 未満)
+     では 100vh(large viewport)になり body(position:fixed; inset:0)より高くなって、body の
+     overflow:hidden で下端(格子の最下段)が画面外に切れて見えなくなる。そこで body 基準の
+     #app → .app-shell の height:100% 連鎖に変えた(.caregiver-panel が overlay 基準の 100% を
+     使っているのと同じ考え方)。.app-shell だけを 100% にすると親 #app が潰れるので #app とセット */
+  height: 100%;
   /* kako-jun 追加指示: 介助ボタンをメッセージ欄内(右上)へ移し、
      下部に確保していた約130pxの帯を廃止。タイル領域を画面下端まで使う */
   padding: 0;
