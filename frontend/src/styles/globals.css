@@ -1223,7 +1223,6 @@ h1[data-fit='single'] {
    スクロールできない)。案内の上に積まれる枠(画面名・直前の選択・直前に伝えたこと)を詰め、
    狭い/低い画面(390x844・568x320・844x390・320x568)でも全項目が画面内に収まるようにする。
    スクロールで逃がさず、全項目が収まること自体を保証する(DESIGN.md §10 の実測表)。 */
-.app-shell.is-morse .selection-confirmation,
 .app-shell.is-morse .message-panel,
 .app-shell.is-morse .screen-breadcrumb {
   display: none;
@@ -1311,7 +1310,7 @@ h1[data-fit='single'] {
    Issue #44: 緊急状態・画面案内・選択結果を別々の意味領域に分離する。
    =================================================================== */
 .app-shell {
-  grid-template-rows: auto auto auto auto auto 1fr;
+  grid-template-rows: auto auto auto auto 1fr;
 }
 
 .emergency-status {
@@ -1451,7 +1450,7 @@ h1[data-fit='single'] {
 }
 
 .message-panel {
-  grid-row: 4;
+  grid-row: 3;
   display: block;
   min-height: 0;
   max-height: 24vh;
@@ -1469,31 +1468,12 @@ h1[data-fit='single'] {
 }
 
 .letter-strip {
-  grid-row: 5;
+  grid-row: 4;
 }
 
 .grid-board,
 .morse-panel {
-  grid-row: 6;
-}
-
-.selection-confirmation {
-  grid-row: 3;
-  min-width: 0;
-  min-height: 30px;
-  padding: 5px 18px;
-  overflow: hidden;
-  color: var(--text-muted);
-  background: var(--bg);
-  border-bottom: var(--grid-line-width) solid var(--grid-line);
-  font-size: clamp(0.8rem, 1.8vh, 1rem);
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.selection-confirmation span {
-  font-weight: 700;
+  grid-row: 5;
 }
 
 @media (max-width: 480px), (max-height: 500px) {
@@ -1514,12 +1494,6 @@ h1[data-fit='single'] {
   .screen-guide h2 {
     font-size: clamp(0.95rem, 3.8vh, 1.35rem);
   }
-
-  .selection-confirmation {
-    min-height: 26px;
-    padding: 4px 12px;
-    font-size: 0.78rem;
-  }
 }
 
 /* ===================================================================
@@ -1529,11 +1503,11 @@ h1[data-fit='single'] {
    本人はスクロールできないため、帯は高さ分だけタイル/メッセージ領域を縮め、はみ出さない。
    =================================================================== */
 .app-shell {
-  grid-template-rows: auto auto auto auto auto 1fr auto;
+  grid-template-rows: auto auto auto auto 1fr auto;
 }
 
 .screen-notes {
-  grid-row: 7;
+  grid-row: 6;
   min-width: 0;
   padding: 4px 18px;
   color: var(--text-muted);
@@ -1592,11 +1566,6 @@ h1[data-fit='single'] {
     margin: 0;
     font-size: 0.7rem;
     line-height: 1.1;
-  }
-
-  .selection-confirmation {
-    min-height: 0;
-    padding-block: 2px;
   }
 
   .screen-notes {

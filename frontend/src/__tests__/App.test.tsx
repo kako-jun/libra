@@ -305,21 +305,17 @@ describe('App', () => {
     selectByLabel(container, '不快')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('ホーム')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('不快')
 
     selectByLabel(container, '痛い')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛い場所')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('痛い')
 
     selectByLabel(container, '胸')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('胸')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛みの強さ')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('胸')
 
     selectByLabel(container, '戻る')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛い場所')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).not.toContain('痛みの強さ')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('戻る')
   })
 
   it('Issue #37: 開発用の直接番号入力でも採用内容と現在地が更新される', () => {
@@ -328,7 +324,6 @@ describe('App', () => {
     window.history.replaceState({}, '', '/')
     fireEvent.keyDown(window, { key: '4' }) // home の4番目=不快
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('不快')
   })
 
   it('Issue #37: 通常伝達・緊急詳細は採用確認を重複表示せず、専用領域だけを使う', () => {
@@ -377,11 +372,11 @@ describe('App', () => {
     expect(container.querySelector('.screen-guide')?.getAttribute('aria-label')).toBe('現在の画面')
   })
 
-  it('Issue #37: 採用確認はナビゲーションと選択を示し、伝達・緊急・取り消しでは専用領域に分ける', () => {
+  it('Issue #75: 「選択:」の帯は廃止。遷移・選択・伝達・緊急のどれでも出ず、現在地と専用領域だけが示す', () => {
     const { container } = render(() => <App />)
     const confirmation = () =>
       container.querySelector('.selection-confirmation')?.textContent ?? null
-    const expectAccepted = (label: string) => expect(confirmation()).toContain(label)
+    const expectAccepted = (_label: string) => expect(confirmation()).toBeNull()
 
     selectByLabel(container, '不快')
     expectAccepted('不快') // navigate
@@ -399,6 +394,8 @@ describe('App', () => {
     expectAccepted('あ行') // letterRow
     selectByLabel(container, 'あ')
     expectAccepted('あ') // letterAppend
+    // 選んだ文字は文字盤の入力欄に出る(帯の代わり)
+    expect(container.querySelector('.letter-strip')?.textContent).toContain('あ')
 
     selectByLabel(container, '確定')
     expect(confirmation()).toBeNull() // letterCommit; message panel owns the transmission

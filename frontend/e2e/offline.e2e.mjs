@@ -1385,7 +1385,7 @@ async function checkIssue37SmallViewport(chromium, port) {
           return { x, y, width, height, bottom, right }
         }
         const guide = rect('.screen-guide')
-        const accepted = rect('.selection-confirmation')
+        const accepted = document.querySelector('.selection-confirmation')
         const board = rect('.grid-board')
         const tiles = [...document.querySelectorAll('.grid-board .tile')].map((tile) => {
           const { x, y, width, height, bottom, right } = tile.getBoundingClientRect()
@@ -1393,18 +1393,21 @@ async function checkIssue37SmallViewport(chromium, port) {
         })
         return {
           guide,
-          accepted,
+          accepted: Boolean(accepted),
           board,
           tiles,
           viewport: { width: innerWidth, height: innerHeight },
         }
       })
-      if (!result.guide || !result.accepted || !result.board) {
-        failures.push(`[${caseName}] guide, selection confirmation, or grid is missing`)
+      if (!result.guide || !result.board) {
+        failures.push(`[${caseName}] guide or grid is missing`)
         return
       }
-      if (result.guide.bottom > result.accepted.y || result.accepted.bottom > result.board.y) {
-        failures.push(`[${caseName}] breadcrumb/confirmation overlaps the tile grid`)
+      if (result.accepted) {
+        failures.push(`[${caseName}] the removed selection strip (#75) is rendered`)
+      }
+      if (result.guide.bottom > result.board.y) {
+        failures.push(`[${caseName}] breadcrumb overlaps the tile grid`)
       }
       if (result.board.height < 100 || result.board.bottom > result.viewport.height + 1) {
         failures.push(`[${caseName}] tile grid is compressed or extends below the viewport`)
@@ -1425,9 +1428,6 @@ async function checkIssue37SmallViewport(chromium, port) {
     if (JSON.stringify(painPath) !== JSON.stringify(['ホーム', '不快', '胸', '痛みの強さ'])) {
       failures.push(`[painIntensity] incorrect breadcrumb: ${JSON.stringify(painPath)}`)
     }
-    if (!(await page.locator('.selection-confirmation').textContent()).includes('胸')) {
-      failures.push('[painIntensity] accepted location is not shown')
-    }
     await checkLayout('painIntensity')
 
     await select('戻る')
@@ -1438,9 +1438,6 @@ async function checkIssue37SmallViewport(chromium, port) {
     const rowPath = await page.locator('.screen-breadcrumb li').allTextContents()
     if (JSON.stringify(rowPath) !== JSON.stringify(['ホーム', '文字盤', 'あ行', '文字盤・文字'])) {
       failures.push(`[lettersRow] incorrect breadcrumb: ${JSON.stringify(rowPath)}`)
-    }
-    if (!(await page.locator('.selection-confirmation').textContent()).includes('あ行')) {
-      failures.push('[lettersRow] accepted row is not shown')
     }
     await checkLayout('lettersRow')
   } catch (error) {

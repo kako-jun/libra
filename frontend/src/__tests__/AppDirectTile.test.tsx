@@ -550,10 +550,10 @@ describe('Issue #38: タイル直接選択', () => {
   })
 
   describe('直接選択後の表示とアクセシビリティ', () => {
-    it('直接選択すると採用表示(#37)とパンくずが更新される', () => {
+    it('直接選択するとパンくずが更新される(「選択:」の帯は #75 で廃止)', () => {
       const { container } = render(() => <App />)
       fireEvent.pointerDown(tile(container, '不快'), { pointerId: 1 })
-      expect(container.querySelector('.selection-confirmation')?.textContent).toContain('不快')
+      expect(container.querySelector('.selection-confirmation')).toBeNull()
       expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
     })
 
