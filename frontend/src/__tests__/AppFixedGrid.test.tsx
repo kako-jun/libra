@@ -357,6 +357,48 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     })
   })
 
+  describe('快・要望(7項目)の余り1セルは操作の対象外(Issue #78)', () => {
+    for (const [name, w, h] of [
+      ['縦長', 390, 844],
+      ['横長', 844, 390],
+    ] as const) {
+      it(`${name}: 空きセルは1つで、フォーカス・スキャン・クリックの対象にならない`, () => {
+        setViewport(w, h)
+        setSettings({ intervalMs: INTERVAL_MS })
+        const { container } = render(() => <App />)
+        press(container, '快・要望')
+        // 「もっと」を除いた 続けて・やめて・変えて・要望・気分 + 戻る・緊急 = 7項目、8セル中の余り1
+        expect(labels(container)).toHaveLength(7)
+        expect(labels(container)).not.toContain('もっと')
+        const empties = emptyCells(container)
+        expect(empties).toHaveLength(1)
+        const cell = empties[0] as HTMLElement
+        expect(cell.getAttribute('aria-hidden')).toBe('true')
+        // キー操作で到達できない(tabindex 無し=非フォーカス、または -1)
+        expect([null, '-1']).toContain(cell.getAttribute('tabindex'))
+        expect(cell.classList.contains('tile')).toBe(false)
+
+        // スキャンを数周させても空きセルには付かず、スキャン中はタイルちょうど1つ
+        const hBefore = container.querySelector('h1')?.textContent
+        const labelsBefore = labels(container)
+        vi.advanceTimersByTime(HEAD_HOLD_MS)
+        for (let i = 0; i < 7 * 3 + 2; i += 1) {
+          expect(container.querySelectorAll('.grid-board .scanning').length, `step ${i}`).toBe(1)
+          expect(container.querySelector('.tile-empty.scanning')).toBeNull()
+          vi.advanceTimersByTime(INTERVAL_MS)
+        }
+
+        // 空きセルのクリックでは何も実行されない
+        fireEvent.pointerDown(cell, { pointerId: 1 })
+        fireEvent.pointerUp(cell, { pointerId: 1 })
+        fireEvent.click(cell)
+        expect(container.querySelector('h1')?.textContent).toBe(hBefore)
+        expect(labels(container)).toEqual(labelsBefore)
+        expect(container.querySelector('.emergency-status')).toBeNull()
+      })
+    }
+  })
+
   describe('スキャン対象が遷移してもタイルの矩形(クラス・インラインスタイル)は変わらない', () => {
     it('scanning が移ってもタイルの style 属性・タイル数・空きセル数は不変(位置・大きさを変えない)', () => {
       setViewport(390, 844)

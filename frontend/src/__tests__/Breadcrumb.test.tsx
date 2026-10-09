@@ -136,41 +136,14 @@ describe('App: パンくずの祖先クリック', () => {
     expect(tileLabels(container)).toContain('緊急')
   })
 
-  it('どの祖先へ移動しても採用確認が消える(中間祖先・ホームとも)', () => {
-    const { container } = render(() => <App />)
-    toPainIntensity(container)
-    expect(container.querySelector('.selection-confirmation')).not.toBeNull()
-
-    fireEvent.click(crumbButton(container, '不快'))
-    expect(container.querySelector('.selection-confirmation')).toBeNull()
-
-    selectByLabel(container, '痛い')
-    selectByLabel(container, '胸')
-    expect(container.querySelector('.selection-confirmation')).not.toBeNull()
-    fireEvent.click(crumbButton(container, 'ホーム'))
-    expect(container.querySelector('.selection-confirmation')).toBeNull()
-  })
-
-  it('選んだ場所(痛みの場所ラベル)へ移動しても採用確認が消える', () => {
-    const { container } = render(() => <App />)
-    toPainIntensity(container)
-    expect(container.querySelector('.selection-confirmation')).not.toBeNull()
-
-    fireEvent.click(crumbButton(container, '胸'))
-    expect(crumb(container).textContent).toContain('痛い場所')
-    expect(container.querySelector('.selection-confirmation')).toBeNull()
-  })
-
   it('介助者メニュー表示中は背後のパンくずボタンを押しても遷移しない', () => {
     const { container } = render(() => <App />)
     toPainIntensity(container)
     const before = crumb(container).textContent
-    const sel = container.querySelector('.selection-confirmation')?.textContent
     fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
     expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
     fireEvent.click(crumbButton(container, 'ホーム'))
     expect(crumb(container).textContent).toBe(before)
-    expect(container.querySelector('.selection-confirmation')?.textContent).toBe(sel)
     expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
   })
 

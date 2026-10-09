@@ -20,7 +20,6 @@
   --bg: #eafaf1;
   --surface: #ffffff;
   --surface-calm: #dcf5e6;
-  --surface-positive: #c9f0d9;
   /* Issue #33: 黄枠単体(vs白 1.53)ではWCAG非テキスト3:1を満たさない。アウトラインで補わず、
      スキャン中の面を暗くして黄枠(vs #0f241d 10.63)を一本で見せる */
   --surface-scanning: #0f241d;
@@ -47,7 +46,7 @@
   --caregiver-action-disabled-bg: #e5e7eb;
   --caregiver-action-disabled-text: #6b7280;
   --caregiver-close-bg: #052e2b;
-  /* メッセージ欄の色調(通常/肯定/緊急)ごとに3:1以上を保つため上書きする。
+  /* メッセージ欄の色調(通常/緊急)ごとに3:1以上を保つため上書きする。
      既定(通常の濃い緑背景)は明るいボタン */
   --caregiver-button-bg: #f3fbf7;
   --caregiver-button-text: #052e2b;
@@ -59,7 +58,6 @@
   --bg: #07140f;
   --surface: #17362a;
   --surface-calm: #123a29;
-  --surface-positive: #1a4a32;
   --surface-scanning: #6b5510;
   --text: #eafaf1;
   --text-muted: #9fc4b0;
@@ -92,14 +90,7 @@
    計算済み(scratchpad/contrast.mjs、WCAG relative luminance):
    - 通常(濃緑背景)・緊急(赤背景): 明るいボタン(#f3fbf7地/#052e2b文字)で
      どちらのテーマでも3:1以上(最小4.71:1)
-   - 肯定(淡緑背景、明るいテーマのみ): 明るいボタンは1.18:1で不足するため、
-     この組み合わせだけ濃いボタンに反転する(11.84:1)
-   - 肯定(暗緑背景、暗いテーマ): 明るいボタンのままで9.64:1を満たす */
-:root[data-theme='light'][data-message-tone='positive'] {
-  --caregiver-button-bg: #052e2b;
-  --caregiver-button-text: #f3fbf7;
-}
-
+   - 肯定/穏やかの色調は #77 で廃止(文脈で決まるため)。通常・緊急の2種だけ */
 /* 高コントラスト: 明暗どちらの案にも重ねて効く（介助者設定、既定 OFF）。
    区切り線・スキャン枠を太くし、区切り線/text-muted の彩度も強める */
 :root[data-high-contrast='true'] {
@@ -113,7 +104,6 @@
   --message-text: #ffffff;
   --surface: #ffffff;
   --surface-calm: #d7f4e2;
-  --surface-positive: #b8ecd0;
   --text-muted: #33463e;
   --grid-line: #6b9b83;
 }
@@ -123,7 +113,6 @@
   --text: #ffffff;
   --surface: #000000;
   --surface-calm: #001a10;
-  --surface-positive: #00301c;
   --message-bg: #000000;
   --message-text: #ffffff;
   --text-muted: #c9ecd9;
@@ -196,11 +185,35 @@
 }
 
 html,
-body,
-#root {
-  min-width: 320px;
-  min-height: 100vh;
+body {
+  /* Issue #84: min-width は置かない。body が position:fixed; width:100% で幅を画面に合わせるため、
+     320px の下限があると 320px 未満の端末(Galaxy Fold 閉状態の 280px 幅など)で右が切れて届かない。
+     280px 幅でも格子・文言が収まることを実ブラウザで確認済み */
   margin: 0;
+}
+
+/* Issue #84: ページ(ドキュメント)を構造上スクロール不可にし、本人画面を常に「見えている画面ぴったりの
+   1画面」にする。以前の min-height:100vh は、スマホで large viewport(アドレスバーが隠れた時の大きな
+   高さ)になり、見える高さより長いドキュメントができてドラッグで動いた(ヘッダ見切れ・フッタ浮き)。
+   100vh 基準の高さはここに置かない。body は position:fixed; inset:0 で見える領域に釘付けにし
+   (高さは inset で確定する)、iOS Safari の「body の overflow:hidden だけではドキュメントが動く」
+   ケースも防ぐ。#app → .app-shell は body 基準の height:100% で受ける(下記) */
+html,
+body {
+  overflow: hidden;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+/* Issue #84: アプリのマウント先(frontend/index.html の <div id="app">)。body(position:fixed; inset:0)
+   の高さは確定しているので 100% で受ける。.app-shell だけを 100% にすると親(#app)が auto 高さで
+   潰れる(過去に 390x844 でタイルが 195x24 になった)ため、必ず #app とセットで持つ */
+#app {
+  height: 100%;
 }
 
 /* Issue #5: 常設運用での誤作動防止。pull-to-refresh・オーバースクロールのバウンスを止める。
@@ -249,10 +262,12 @@ button {
      スクロールし、緊急表示を含むメッセージパネルが画面外に出てしまう不具合があった
      (実機 Playwright 検証: 844x390 で h1 top -32px、320x568 で -266px)。
      height を固定してビューポートちょうどの高さに収め、overflow:hidden を実際に効かせる。
-     縦方向にブラウザ UI が出入りする環境向けに 100dvh を優先し、非対応環境は 100vh に
-     フォールバックする(dvh 未対応ブラウザは行ごとこの宣言を無視するため later-wins で足りる) */
-  height: 100vh;
-  height: 100dvh;
+     Issue #84: 以前は 100vh/100dvh だったが、dvh 非対応ブラウザ(iOS 15.4 未満、Chrome 108 未満)
+     では 100vh(large viewport)になり body(position:fixed; inset:0)より高くなって、body の
+     overflow:hidden で下端(格子の最下段)が画面外に切れて見えなくなる。そこで body 基準の
+     #app → .app-shell の height:100% 連鎖に変えた(.caregiver-panel が overlay 基準の 100% を
+     使っているのと同じ考え方)。.app-shell だけを 100% にすると親 #app が潰れるので #app とセット */
+  height: 100%;
   /* kako-jun 追加指示: 介助ボタンをメッセージ欄内(右上)へ移し、
      下部に確保していた約130pxの帯を廃止。タイル領域を画面下端まで使う */
   padding: 0;
@@ -336,11 +351,6 @@ button {
 :root[data-message-tone='urgent'] .message-panel {
   color: var(--urgent-text);
   background: var(--urgent-bg);
-}
-
-:root[data-message-tone='positive'] .message-panel {
-  background: var(--surface-positive);
-  color: var(--text);
 }
 
 /* PR#16 3巡目 must-1(should-b を撤回): h1 に --font-scale を効かせる should-b を
@@ -616,16 +626,10 @@ h1[data-fit='single'] {
 }
 
 /* Issue #36: 赤は上部メッセージ欄(.message-panel の urgent 色調と .emergency-status)だけ。
-   タイルは赤くしない(tone: 'urgent' のタイルも、緊急入口も通常面)。緊急入口は色や面で
+   タイルは赤くしない(tone: 'urgent' のタイルも、緊急入口も通常面)。
+   Issue #77: 肯定/穏やかのトーンは廃止。全タイルが同じ通常面(.tile の --surface)。
+   --surface-calm は案内枠など非タイル用途。緊急入口は色や面で
    区別せず、ラベル「緊急」・固定位置(ホーム先頭/下位画面2番目)・上部の緊急状態帯の文言で示す */
-.tile-calm {
-  background: var(--surface-calm);
-}
-
-.tile-positive {
-  background: var(--surface-positive);
-}
-
 /* Issue #3/#33: スキャン対象は遠目でも一目で分かる強調にする。
    隙間なしの格子では拡大(scale)すると隣のセルと重なるため使わない。
    代わりに、そのセルだけ暗い面に反転し(--surface-scanning)、セル内側に収まる
@@ -777,8 +781,8 @@ h1[data-fit='single'] {
   /* kako-jun 追加指示: 画面隅への固定配置(position:fixed)をやめ、案内欄右上の
      .message-panel-controls 内に通常のレイアウトとして置く。
      PR#16 should-1: 色をハードコード(rgb(0 0 0 / 22%))せず、メッセージ欄の色調
-     (通常/肯定/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text、
-     :root[data-message-tone]で上書き)にする */
+     (通常/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text)にする。
+     通常・緊急とも既定の色で、メッセージ欄の色調による上書きはない */
   z-index: 20;
   /* Issue #22: 表記を「介助者用」にしたため幅は内容に合わせる(正方形の固定幅をやめる) */
   width: auto;
@@ -1220,10 +1224,9 @@ h1[data-fit='single'] {
 }
 
 /* Issue #57: モールス画面は案内を常に全項目見せる(本人はスイッチのみ・touch-action:none で
-   スクロールできない)。案内の上に積まれる枠(画面名・直前の選択・直前に伝えたこと)を詰め、
+   スクロールできない)。案内の上に積まれる枠(緊急の帯・直前に伝えたこと)を詰め、
    狭い/低い画面(390x844・568x320・844x390・320x568)でも全項目が画面内に収まるようにする。
    スクロールで逃がさず、全項目が収まること自体を保証する(DESIGN.md §10 の実測表)。 */
-.app-shell.is-morse .selection-confirmation,
 .app-shell.is-morse .message-panel,
 .app-shell.is-morse .screen-breadcrumb {
   display: none;
@@ -1308,10 +1311,10 @@ h1[data-fit='single'] {
 }
 
 /* ===================================================================
-   Issue #44: 緊急状態・画面案内・選択結果を別々の意味領域に分離する。
+   Issue #44: 緊急状態・画面案内・直前に伝えたことを別々の意味領域に分離する。
    =================================================================== */
 .app-shell {
-  grid-template-rows: auto auto auto auto auto 1fr;
+  grid-template-rows: auto auto auto auto 1fr;
 }
 
 .emergency-status {
@@ -1451,7 +1454,7 @@ h1[data-fit='single'] {
 }
 
 .message-panel {
-  grid-row: 4;
+  grid-row: 3;
   display: block;
   min-height: 0;
   max-height: 24vh;
@@ -1469,31 +1472,12 @@ h1[data-fit='single'] {
 }
 
 .letter-strip {
-  grid-row: 5;
+  grid-row: 4;
 }
 
 .grid-board,
 .morse-panel {
-  grid-row: 6;
-}
-
-.selection-confirmation {
-  grid-row: 3;
-  min-width: 0;
-  min-height: 30px;
-  padding: 5px 18px;
-  overflow: hidden;
-  color: var(--text-muted);
-  background: var(--bg);
-  border-bottom: var(--grid-line-width) solid var(--grid-line);
-  font-size: clamp(0.8rem, 1.8vh, 1rem);
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.selection-confirmation span {
-  font-weight: 700;
+  grid-row: 5;
 }
 
 @media (max-width: 480px), (max-height: 500px) {
@@ -1514,12 +1498,6 @@ h1[data-fit='single'] {
   .screen-guide h2 {
     font-size: clamp(0.95rem, 3.8vh, 1.35rem);
   }
-
-  .selection-confirmation {
-    min-height: 26px;
-    padding: 4px 12px;
-    font-size: 0.78rem;
-  }
 }
 
 /* ===================================================================
@@ -1529,11 +1507,11 @@ h1[data-fit='single'] {
    本人はスクロールできないため、帯は高さ分だけタイル/メッセージ領域を縮め、はみ出さない。
    =================================================================== */
 .app-shell {
-  grid-template-rows: auto auto auto auto auto 1fr auto;
+  grid-template-rows: auto auto auto auto 1fr auto;
 }
 
 .screen-notes {
-  grid-row: 7;
+  grid-row: 6;
   min-width: 0;
   padding: 4px 18px;
   color: var(--text-muted);
@@ -1578,8 +1556,8 @@ h1[data-fit='single'] {
     padding-block: 3px;
   }
 
-  /* 緊急の帯・直前に伝えたこと・選択確認の余白も詰め、案内の帯の分の高さを作る
-     (緊急+伝達メッセージ+選択確認が重なる 568x320 でも8項目の格子を埋めるため) */
+  /* 緊急の帯・直前に伝えたことの余白も詰め、案内の帯の分の高さを作る
+     (緊急+伝達メッセージが重なる 568x320 でも8項目の格子を埋めるため) */
   .emergency-status {
     padding-block: 4px;
   }
@@ -1592,11 +1570,6 @@ h1[data-fit='single'] {
     margin: 0;
     font-size: 0.7rem;
     line-height: 1.1;
-  }
-
-  .selection-confirmation {
-    min-height: 0;
-    padding-block: 2px;
   }
 
   .screen-notes {

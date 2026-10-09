@@ -38,7 +38,7 @@ export const PHRASE_GROUP_LABELS: Record<PhraseGroup, string> = {
   discomfort: '不快',
   discomfortOther: '不快・その他',
   painLocation: '痛い場所',
-  // 快・要望の中の「要望 →」。快・要望の最上位(続けて/やめて/もっと/変えて)は編集できない固定項目
+  // 快・要望の中の「要望 →」。快・要望の最上位(続けて/やめて/変えて)は編集できない固定項目
   moodRequest: '要望',
   feelings: '気分',
 }
@@ -110,8 +110,8 @@ export const DEFAULT_PHRASES: Record<PhraseGroup, Phrase[]> = {
     { id: 'other', label: 'その他', text: 'その他の場所が痛いです。' },
   ],
   moodRequest: [
-    { id: 'fine', label: '大丈夫', text: '大丈夫です。', tone: 'positive' },
-    { id: 'thanks', label: 'ありがとう', text: 'ありがとう。', tone: 'positive' },
+    { id: 'fine', label: '大丈夫', text: '大丈夫です。' },
+    { id: 'thanks', label: 'ありがとう', text: 'ありがとう。' },
     { id: 'sleep', label: '眠りたい', text: '眠りたいです。' },
     { id: 'quiet', label: '静かにしてほしい', text: '静かにしてほしいです。' },
     { id: 'family', label: '家族に会いたい', text: '家族に会いたいです。' },
@@ -124,7 +124,7 @@ export const DEFAULT_PHRASES: Record<PhraseGroup, Phrase[]> = {
   ],
 }
 
-const TONES: Tone[] = ['neutral', 'urgent', 'calm', 'positive']
+const TONES: Tone[] = ['neutral', 'urgent']
 
 /** 表示に使えない理由。使える項目なら null(編集画面で理由を示すのに使う) */
 export function phraseProblem(phrase: Phrase): string | null {

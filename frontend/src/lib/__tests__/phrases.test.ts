@@ -219,4 +219,25 @@ describe('composePainText(痛みの強さ)', () => {
   it('既定の痛い場所はすべて強さを入れられる(「痛いです」を含む)', () => {
     for (const p of DEFAULT_PHRASES.painLocation) expect(p.text).toContain('痛いです')
   })
+
+  it('#77: 旧い保存値の tone: positive / calm は読み込み時に neutral(tone なし)へ正規化し、urgent は残す', () => {
+    const sets = normalizePhraseSets({
+      moodRequest: [
+        { id: 'a', label: 'あ', text: 'あ。', tone: 'positive' },
+        { id: 'b', label: 'い', text: 'い。', tone: 'calm' },
+        { id: 'c', label: 'う', text: 'う。', tone: 'urgent' },
+      ],
+    })
+    const list = sets.moodRequest ?? []
+    expect(list).toHaveLength(3)
+    expect(list[0].tone).toBeUndefined()
+    expect(list[1].tone).toBeUndefined()
+    expect(list[2].tone).toBe('urgent')
+  })
+
+  it('#77: 既定フレーズに positive / calm は残っていない', () => {
+    for (const group of PHRASE_GROUPS) {
+      for (const p of DEFAULT_PHRASES[group]) expect(['positive', 'calm']).not.toContain(p.tone)
+    }
+  })
 })

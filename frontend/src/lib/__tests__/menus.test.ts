@@ -273,7 +273,7 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
   it('快・要望タイルの予告は遷移先(moodRequest)から自動生成される', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
     const moodTile = items.find((item) => item.id === 'mood-nav')
-    expect(moodTile?.preview).toBe('続けて・やめて・もっと・変えて…')
+    expect(moodTile?.preview).toBe('続けて・やめて・変えて・要望…')
   })
 
   it('文字盤タイルの予告は遷移先(letters)から自動生成される', () => {
@@ -466,14 +466,13 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     expect(PARENT_SCREEN.painIntensity).toBe('painLocation')
   })
 
-  it('快・要望: 戻る→緊急→続けて→やめて→もっと→変えて→要望→気分(8項目)', () => {
+  it('快・要望: 戻る→緊急→続けて→やめて→変えて→要望→気分(7項目。余りの1セルは空きセル)', () => {
     const items = buildMenu('moodRequest', homeOptions)
     expect(items.map((i) => i.label)).toEqual([
       '戻る',
       '緊急',
       '続けて',
       'やめて',
-      'もっと',
       '変えて',
       '要望',
       '気分',
@@ -481,15 +480,14 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     expect(items.length).toBeLessThanOrEqual(8)
   })
 
-  it('続けて・やめて・もっと・変えて は、はい・いいえと同じく編集できない固定項目(編集内容の影響を受けない)', () => {
+  it('続けて・やめて・変えて は、はい・いいえと同じく編集できない固定項目(編集内容の影響を受けない)', () => {
     const phrases = { moodRequest: [], feelings: [] }
     const items = buildMenu('moodRequest', { ...homeOptions, phrases })
-    expect(items.slice(2, 6).map((i) => i.label)).toEqual(['続けて', 'やめて', 'もっと', '変えて'])
-    const texts = items.slice(2, 6).map((i) => (i.action.type === 'message' ? i.action.text : null))
+    expect(items.slice(2, 5).map((i) => i.label)).toEqual(['続けて', 'やめて', '変えて'])
+    const texts = items.slice(2, 5).map((i) => (i.action.type === 'message' ? i.action.text : null))
     expect(texts).toEqual([
       '続けてください。',
       'やめてください。',
-      'もっとお願いします。',
       '変えてください。',
     ])
   })

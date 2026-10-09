@@ -101,10 +101,10 @@ describe('Issue #46 normalizePhraseSets: 旧既定の昇格', () => {
 
   it('昇格しても label と tone は保存値のまま(label だけ書き換えた既定は label を保つ)', () => {
     const result = upgradeLegacy({
-      discomfort: [{ id: 'suffering', label: 'つらい', text: '苦しいです', tone: 'calm' }],
+      discomfort: [{ id: 'suffering', label: 'つらい', text: '苦しいです', tone: 'urgent' }],
     })
     expect(result.discomfort).toEqual([
-      { id: 'suffering', label: 'つらい', text: '苦しいです。', tone: 'calm' },
+      { id: 'suffering', label: 'つらい', text: '苦しいです。', tone: 'urgent' },
     ])
   })
 

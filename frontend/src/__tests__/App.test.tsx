@@ -300,38 +300,33 @@ describe('App', () => {
     expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
   })
 
-  it('Issue #37: 選択後の現在地と採用内容を表示し、戻ると親画面へ追従する', () => {
+  it('Issue #37: 選択後の現在地をパンくずに表示し、戻ると親画面へ追従する', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, '不快')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('ホーム')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('不快')
 
     selectByLabel(container, '痛い')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛い場所')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('痛い')
 
     selectByLabel(container, '胸')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('胸')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛みの強さ')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('胸')
 
     selectByLabel(container, '戻る')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('痛い場所')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).not.toContain('痛みの強さ')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('戻る')
   })
 
-  it('Issue #37: 開発用の直接番号入力でも採用内容と現在地が更新される', () => {
+  it('Issue #37: 開発用の直接番号入力でも現在地が更新される', () => {
     window.history.replaceState({}, '', '/?dev')
     const { container } = render(() => <App />)
     window.history.replaceState({}, '', '/')
     fireEvent.keyDown(window, { key: '4' }) // home の4番目=不快
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
-    expect(container.querySelector('.selection-confirmation')?.textContent).toContain('不快')
   })
 
-  it('Issue #37: 通常伝達・緊急詳細は採用確認を重複表示せず、専用領域だけを使う', () => {
+  it('Issue #37: 通常伝達・緊急詳細は専用領域だけを使う', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, 'はい')
     expect(container.querySelector('.selection-confirmation')).toBeNull()
@@ -377,28 +372,30 @@ describe('App', () => {
     expect(container.querySelector('.screen-guide')?.getAttribute('aria-label')).toBe('現在の画面')
   })
 
-  it('Issue #37: 採用確認はナビゲーションと選択を示し、伝達・緊急・取り消しでは専用領域に分ける', () => {
+  it('Issue #75: 「選択:」の帯は廃止。遷移・選択・伝達・緊急のどれでも出ず、現在地と専用領域だけが示す', () => {
     const { container } = render(() => <App />)
     const confirmation = () =>
       container.querySelector('.selection-confirmation')?.textContent ?? null
-    const expectAccepted = (label: string) => expect(confirmation()).toContain(label)
+    const expectNoStrip = () => expect(confirmation()).toBeNull()
 
     selectByLabel(container, '不快')
-    expectAccepted('不快') // navigate
+    expectNoStrip() // navigate
     selectByLabel(container, '痛い')
-    expectAccepted('痛い') // painLocation
+    expectNoStrip() // painLocation
     selectByLabel(container, '胸')
-    expectAccepted('胸') // pain location selected; intensity is not yet transmitted
+    expectNoStrip() // pain location selected; intensity is not yet transmitted
     selectByLabel(container, '戻る')
-    expectAccepted('戻る') // back
+    expectNoStrip() // back
     selectByLabel(container, '戻る')
     selectByLabel(container, '戻る')
     selectByLabel(container, '文字盤')
-    expectAccepted('文字盤') // navigate
+    expectNoStrip() // navigate
     selectByLabel(container, 'あ行')
-    expectAccepted('あ行') // letterRow
+    expectNoStrip() // letterRow
     selectByLabel(container, 'あ')
-    expectAccepted('あ') // letterAppend
+    expectNoStrip() // letterAppend
+    // 選んだ文字は文字盤の入力欄に出る(帯の代わり)
+    expect(container.querySelector('.letter-strip')?.textContent).toContain('あ')
 
     selectByLabel(container, '確定')
     expect(confirmation()).toBeNull() // letterCommit; message panel owns the transmission
@@ -418,6 +415,48 @@ describe('App', () => {
     selectByLabel(container, '苦しい') // emergency detail
     expect(confirmation()).toBeNull()
     expect(container.querySelector('.emergency-status')?.textContent).toContain('苦しい')
+  })
+
+  it('Issue #75: .app-shell の直下には許可された領域しかなく、帯が別名で再導入されない', () => {
+    // 新しい領域を足すときはここへ追記する(帯の再導入を別のクラス名で許さないための許可リスト)
+    const ALLOWED = new Set([
+      'emergency-status',
+      'screen-guide',
+      'message-panel',
+      'hold-progress',
+      'letter-strip',
+      'morse-panel',
+      'grid-board',
+      'screen-notes',
+      'caregiver-overlay',
+    ])
+    const { container } = render(() => <App />)
+    const seen = new Set<string>()
+    const collect = () => {
+      const shell = container.querySelector('.app-shell')
+      for (const child of Array.from(shell?.children ?? [])) {
+        seen.add(child.className.split(/\s+/)[0] ?? '')
+      }
+    }
+    collect()
+    selectByLabel(container, '不快')
+    selectByLabel(container, '痛い')
+    selectByLabel(container, '胸')
+    collect()
+    selectByLabel(container, '戻る')
+    selectByLabel(container, '戻る')
+    selectByLabel(container, '戻る')
+    selectByLabel(container, '文字盤')
+    selectByLabel(container, 'あ行')
+    selectByLabel(container, 'あ')
+    collect()
+    selectByLabel(container, '確定')
+    selectByLabel(container, '緊急')
+    selectByLabel(container, '苦しい')
+    collect()
+    expect(seen.size).toBeGreaterThan(3)
+    const unexpected = [...seen].filter((c) => !ALLOWED.has(c))
+    expect(unexpected).toEqual([])
   })
 
   it('Issue #37: 選んだ場所・文字行を再選択すると案内とパンくずの動的値も切り替わる', () => {
@@ -1650,13 +1689,12 @@ describe('App', () => {
     expect(oscillatorStartCount).toBe(0)
   })
 
-  it('nit: 取り消しで戻したメッセージのトーン(緊急以外)も復元される', () => {
+  it('取り消しで戻したメッセージも復元され、トーンは neutral のまま(#77: はいは肯定扱いしない)', () => {
     const { container } = render(() => <App />)
-    // 「はい」(positive) を表示させてから「いいえ」(neutral)を選ぶと、取り消しで
-    // 「はい」のトーン(positive)まで復元されるべき
+    // 「はい」を表示させてから「いいえ」を選び、取り消すと「はい」に戻る(トーンはどちらも neutral)
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
-    fireEvent.keyDown(window, { key: ' ' }) // はい(positive) → home
-    expect(document.documentElement.dataset.messageTone).toBe('positive')
+    fireEvent.keyDown(window, { key: ' ' }) // はい → home
+    expect(document.documentElement.dataset.messageTone).toBe('neutral')
 
     // home(取り消しあり): 0緊急,1取り消し,2はい,3いいえ,...
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // index3=いいえ
@@ -1668,7 +1706,7 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('取り消し')
     fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 「はい」に戻る
     expect(h1Text(container)).toBe('はい。')
-    expect(document.documentElement.dataset.messageTone).toBe('positive')
+    expect(document.documentElement.dataset.messageTone).toBe('neutral')
   })
 
   it('Issue #5: 介助者メニューに Wake Lock 取得中の状態が表示される', () => {
