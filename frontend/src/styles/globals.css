@@ -20,7 +20,6 @@
   --bg: #eafaf1;
   --surface: #ffffff;
   --surface-calm: #dcf5e6;
-  --surface-positive: #c9f0d9;
   /* Issue #33: 黄枠単体(vs白 1.53)ではWCAG非テキスト3:1を満たさない。アウトラインで補わず、
      スキャン中の面を暗くして黄枠(vs #0f241d 10.63)を一本で見せる */
   --surface-scanning: #0f241d;
@@ -47,7 +46,7 @@
   --caregiver-action-disabled-bg: #e5e7eb;
   --caregiver-action-disabled-text: #6b7280;
   --caregiver-close-bg: #052e2b;
-  /* メッセージ欄の色調(通常/肯定/緊急)ごとに3:1以上を保つため上書きする。
+  /* メッセージ欄の色調(通常/緊急)ごとに3:1以上を保つため上書きする。
      既定(通常の濃い緑背景)は明るいボタン */
   --caregiver-button-bg: #f3fbf7;
   --caregiver-button-text: #052e2b;
@@ -59,7 +58,6 @@
   --bg: #07140f;
   --surface: #17362a;
   --surface-calm: #123a29;
-  --surface-positive: #1a4a32;
   --surface-scanning: #6b5510;
   --text: #eafaf1;
   --text-muted: #9fc4b0;
@@ -92,14 +90,7 @@
    計算済み(scratchpad/contrast.mjs、WCAG relative luminance):
    - 通常(濃緑背景)・緊急(赤背景): 明るいボタン(#f3fbf7地/#052e2b文字)で
      どちらのテーマでも3:1以上(最小4.71:1)
-   - 肯定(淡緑背景、明るいテーマのみ): 明るいボタンは1.18:1で不足するため、
-     この組み合わせだけ濃いボタンに反転する(11.84:1)
-   - 肯定(暗緑背景、暗いテーマ): 明るいボタンのままで9.64:1を満たす */
-:root[data-theme='light'][data-message-tone='positive'] {
-  --caregiver-button-bg: #052e2b;
-  --caregiver-button-text: #f3fbf7;
-}
-
+   - 肯定/穏やかの色調は #77 で廃止(文脈で決まるため)。通常・緊急の2種だけ */
 /* 高コントラスト: 明暗どちらの案にも重ねて効く（介助者設定、既定 OFF）。
    区切り線・スキャン枠を太くし、区切り線/text-muted の彩度も強める */
 :root[data-high-contrast='true'] {
@@ -113,7 +104,6 @@
   --message-text: #ffffff;
   --surface: #ffffff;
   --surface-calm: #d7f4e2;
-  --surface-positive: #b8ecd0;
   --text-muted: #33463e;
   --grid-line: #6b9b83;
 }
@@ -123,7 +113,6 @@
   --text: #ffffff;
   --surface: #000000;
   --surface-calm: #001a10;
-  --surface-positive: #00301c;
   --message-bg: #000000;
   --message-text: #ffffff;
   --text-muted: #c9ecd9;
@@ -336,11 +325,6 @@ button {
 :root[data-message-tone='urgent'] .message-panel {
   color: var(--urgent-text);
   background: var(--urgent-bg);
-}
-
-:root[data-message-tone='positive'] .message-panel {
-  background: var(--surface-positive);
-  color: var(--text);
 }
 
 /* PR#16 3巡目 must-1(should-b を撤回): h1 に --font-scale を効かせる should-b を
@@ -616,16 +600,10 @@ h1[data-fit='single'] {
 }
 
 /* Issue #36: 赤は上部メッセージ欄(.message-panel の urgent 色調と .emergency-status)だけ。
-   タイルは赤くしない(tone: 'urgent' のタイルも、緊急入口も通常面)。緊急入口は色や面で
+   タイルは赤くしない(tone: 'urgent' のタイルも、緊急入口も通常面)。
+   Issue #77: 肯定/穏やかのトーンは廃止。全タイルが同じ通常面(.tile の --surface)。
+   --surface-calm は案内枠など非タイル用途。緊急入口は色や面で
    区別せず、ラベル「緊急」・固定位置(ホーム先頭/下位画面2番目)・上部の緊急状態帯の文言で示す */
-.tile-calm {
-  background: var(--surface-calm);
-}
-
-.tile-positive {
-  background: var(--surface-positive);
-}
-
 /* Issue #3/#33: スキャン対象は遠目でも一目で分かる強調にする。
    隙間なしの格子では拡大(scale)すると隣のセルと重なるため使わない。
    代わりに、そのセルだけ暗い面に反転し(--surface-scanning)、セル内側に収まる
@@ -777,8 +755,8 @@ h1[data-fit='single'] {
   /* kako-jun 追加指示: 画面隅への固定配置(position:fixed)をやめ、案内欄右上の
      .message-panel-controls 内に通常のレイアウトとして置く。
      PR#16 should-1: 色をハードコード(rgb(0 0 0 / 22%))せず、メッセージ欄の色調
-     (通常/肯定/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text、
-     :root[data-message-tone]で上書き)にする */
+     (通常/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text)にする。
+     通常・緊急とも既定の色で、メッセージ欄の色調による上書きはない */
   z-index: 20;
   /* Issue #22: 表記を「介助者用」にしたため幅は内容に合わせる(正方形の固定幅をやめる) */
   width: auto;
