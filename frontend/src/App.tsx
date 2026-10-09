@@ -353,7 +353,6 @@ export default function App() {
   // Issue #58/#79: 画面下の固定案内は緊急中の振動だけ。通常時は空で、帯ごと出さない
   const screenNotes = createMemo(() =>
     buildScreenNotes({
-      screen: screen(),
       emergencyActive: emergencyActive(),
       vibrationAwaitsTouch: awaitingFirstTouch(),
       canVibrate: canVibrate(),
@@ -361,9 +360,7 @@ export default function App() {
       settings: settings(),
     }),
   )
-  const behaviorNotes = createMemo(() =>
-    buildBehaviorNotes({ compact: compactNotes(), settings: settings() }),
-  )
+  const behaviorNotes = createMemo(() => buildBehaviorNotes({ settings: settings() }))
   const currentScreenGuidance = createMemo(() => {
     if (screen() === 'painIntensity' && painChoice()) {
       return `${painChoice()?.label}の痛みの強さを選んでください。`

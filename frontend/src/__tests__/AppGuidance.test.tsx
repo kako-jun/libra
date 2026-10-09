@@ -44,7 +44,7 @@ class MockAudioContext {
 const VIBRATION_FRAGMENT = '3秒ごとに振動'
 const AWAIT_TOUCH = '再起動後は、画面に触れるかキーを押すまで振動しません。'
 const AUDITORY_FRAGMENT = '伝達の読み上げは、直後の1項目分は割り込まれません'
-const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効'
+const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効。モールス入力を除く'
 
 function tileLabels(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('.tile-label')).map((el) => el.textContent ?? '')
@@ -285,7 +285,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       openCaregiverMenu(container)
       selectCaregiverTab(container, '状態')
       expect(behaviorNotes(container)).toEqual([
-        '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止）。',
+        '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
       ])
       const titles = Array.from(container.querySelectorAll('.caregiver-section-title')).map(
         (el) => el.textContent,
@@ -660,13 +660,15 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       delete (window as unknown as { matchMedia?: unknown }).matchMedia
     })
 
-    it('高さ500px以下か幅480px以下なら短縮形で出て、行数と順序は変わらない', () => {
+    it('高さ500px以下か幅480px以下でも、介助者メニューの「いまの動作」は通常文言のまま(本人画面の帯だけ短縮形)', () => {
       mockMatchMedia(true)
       const { container } = render(() => <App />)
       expect(container.querySelector('.screen-notes')).toBeNull() // 通常時は帯なし
       openCaregiverMenu(container)
       selectCaregiverTab(container, '状態')
-      expect(behaviorNotes(container)).toEqual(['0.5秒以内の連打は無視（遷移直後も）。'])
+      expect(behaviorNotes(container)).toEqual([
+        '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
+      ])
       closeCaregiverMenu(container)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
       expect(screenNotes(container)).toEqual(['緊急中は3秒ごとに振動（入力直後は休む）。'])

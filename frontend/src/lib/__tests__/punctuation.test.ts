@@ -307,7 +307,7 @@ describe('Issue #46 文言の規則(静的検査)', () => {
   }
   const allNotes = (): string[] => {
     const out: string[] = []
-    for (const screen of PATIENT_SCREEN_IDS) {
+    {
       for (const compact of [false, true]) {
         for (const emergencyActive of [false, true]) {
           for (const activateOn of ['press', 'release'] as const) {
@@ -315,7 +315,6 @@ describe('Issue #46 文言の規則(静的検査)', () => {
               for (const canVibrate of [true, false]) {
                 out.push(
                   ...buildScreenNotes({
-                    screen,
                     emergencyActive,
                     vibrationAwaitsTouch: true,
                     canVibrate,
@@ -323,7 +322,6 @@ describe('Issue #46 文言の規則(静的検査)', () => {
                     settings: baseSettings,
                   }),
                   ...buildBehaviorNotes({
-                    compact,
                     settings: { ...baseSettings, activateOn, minHoldMs },
                   }),
                 )

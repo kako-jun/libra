@@ -2,7 +2,8 @@
 // 「状態」タブの「いまの動作」の文言。
 // 正本: docs/requirements.md §4.1.2 の「常時案内」表 / Issue #58
 //
-// 方針: 暗黙の操作・自動挙動を1つも作らない。該当する状況・設定のときは必ず出し、
+// 方針: 暗黙の操作は作らない。ただし画面を見れば分かることは書かず、見ても分からない挙動だけを書く
+// (本人画面は緊急中の振動、介助者メニューは「いまの動作」と上部の固定帯)。
 // 本人や介助者が任意に隠せる操作は設けない。副作用なし(テストしやすいよう文字列だけ返す)。
 // compact は低い画面(高さ500px以下)か狭い画面(幅480px以下)用の短縮形。出す・出さないは変えず、
 // 省くのは「理由」の語だけ。操作に関わる事実(何が起きるか・何をしても反応しない条件)は短縮形でも残す
@@ -10,11 +11,9 @@
 
 import { EMERGENCY_REPEAT_MS } from './feedback'
 import { IDLE_LAPS_BEFORE_HOME } from './idleLaps'
-import type { ScreenId } from './menus'
 import type { Settings } from './settings'
 
 export interface ScreenNotesContext {
-  screen: ScreenId
   emergencyActive: boolean
   /** 再起動で復元した緊急で、ブラウザがまだ振動を許していない(画面に一度も触れていない)状態 */
   vibrationAwaitsTouch?: boolean
@@ -27,7 +26,6 @@ export interface ScreenNotesContext {
 
 /** 見ても分からない設定依存の挙動を、介助者メニューの「いまの動作」に出すための文脈 */
 export interface BehaviorNotesContext {
-  compact?: boolean
   settings: Pick<Settings, 'debounceMs' | 'minHoldMs' | 'activateOn' | 'auditoryScan' | 'voiceMode'>
 }
 
@@ -41,7 +39,8 @@ export function formatSeconds(ms: number): string {
   return `${(rounded / 1000).toFixed(rounded % 100 === 0 ? 1 : 2)}秒`
 }
 
-const SCREEN_CHANGE_NOTE_FULL = '押下中に画面や項目の並びが変わると無効'
+// 連打無視・押し方はモールス入力には当てはまらない(モールスの凡例に独自の規則がある)
+const SCREEN_CHANGE_NOTE_FULL = '押下中に画面や項目の並びが変わると無効。モールス入力を除く'
 
 /**
  * 本人画面の下に常時出す案内。緊急中の周期振動まわりだけ(Issue #79)。
@@ -77,51 +76,36 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
 }
 
 /**
- * 介助者メニュー「状態」タブの「いまの動作」。見ても分からない、設定に応じた挙動だけを現在の設定値で出す。
+ * 介助者メニュー「状態」タブの「いまの動作」。見ても分からない、設定に応じた挙動だけを現在の設定値で出す(スクロールできるので短縮形は持たない)。
  * 順序は固定: 連打無視 → 押し方 → 読み上げの割り込み。該当しなければ空配列。
  */
 export function buildBehaviorNotes(context: BehaviorNotesContext): string[] {
   const { settings } = context
-  const compact = context.compact === true
   const notes: string[] = []
 
   if (settings.debounceMs > 0) {
     const s = formatSeconds(settings.debounceMs)
-    notes.push(
-      compact
-        ? `${s}以内の連打は無視（遷移直後も）。`
-        : `${s}以内の連打は数えません（画面遷移直後も。誤作動防止）。`,
-    )
+    notes.push(`${s}以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。`)
   }
   if (settings.minHoldMs > 0) {
     const s = formatSeconds(settings.minHoldMs)
     if (settings.activateOn === 'release') {
       notes.push(
-        compact
-          ? `${s}以上押し続けて離すと決定（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
-          : `${s}以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`,
+        `${s}以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`,
       )
     } else {
       notes.push(
-        compact
-          ? `${s}以上押し続けると決定（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
-          : `${s}以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`,
+        `${s}以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`,
       )
     }
   } else if (settings.activateOn === 'release') {
-    notes.push(
-      compact
-        ? `押して離すと決定（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`
-        : `押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`,
-    )
+    notes.push(`押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`)
   }
   // 伝達の読み上げは、直後の1回だけ次のスキャン読み上げに割り込まれない(App.tsx の messageAnnounceGrace)。
   // 読み上げ自体が出るのは音声モードが「短く/全部」のときだけ
   if (settings.auditoryScan && (settings.voiceMode === 'short' || settings.voiceMode === 'full')) {
     notes.push(
-      compact
-        ? '伝達の読み上げは直後の1項目分は割り込まれません（その後は切れることがあります）。'
-        : '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。',
+      '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。',
     )
   }
   return notes

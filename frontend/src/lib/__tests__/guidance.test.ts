@@ -8,13 +8,14 @@
 //    o   |  ON      | 不可 |   -      | 「この端末は振動できません」(T は出ない)
 //    o   |  OFF     |  -   |   -      | なし
 //    -   |  -       |  -   |   o      | T は出ない(緊急でない)
-//   compact は同じ行を短縮文言で出す(出る/出ないは不変)。画面(morse を含む)によらず同一。
+//   compact は同じ行を短縮文言で出す(出る/出ないは不変)。画面(morse を含む)によらず同一(画面は引数に取らない)。
 //
 // 設定依存の挙動 buildBehaviorNotes(介助者メニュー「状態」タブの「いまの動作」)。順序: D → H → A
 //   連打無視 0 / >0      | D は >0 のときだけ
 //   押下下限 0, press    | H なし
 //   押下下限 0, release  | H=「押して離すと決まります」
-//   押下下限>0, press    | H=「◯秒以上押し続けると」(いずれの H も末尾に「押下中に画面や項目の並びが変わると無効」)
+//   押下下限>0, press    | H=「◯秒以上押し続けると」(いずれの H も末尾に「押下中に画面や項目の並びが変わると無効。モールス入力を除く」。D も末尾に「モールス入力を除く」)
+//   「いまの動作」は介助者メニュー(スクロールできる)に出すので短縮形を持たない
 //   押下下限>0, release  | H=「◯秒以上押し続けて離すと」
 //   聴覚スキャン ON/OFF  | A は ON かつ音声モード short/full のときだけ(off/tone なら出ない)
 //   先頭待機・取り消し・緊急中の取り消しなしは、見れば分かるのでどこにも書かない
@@ -34,29 +35,30 @@ import {
 const NO_VIBRATE = 'この端末は振動できません（緊急中の周期振動なし）。'
 const VIBRATION = '緊急中は3秒ごとに振動（呼び出し継続の合図。本人の入力直後は休む）。'
 const AWAIT_TOUCH = '再起動後は、画面に触れるかキーを押すまで振動しません。'
-const DEBOUNCE_DEFAULT = '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止）。'
+const DEBOUNCE_DEFAULT =
+  '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。'
 const AUDITORY =
   '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。'
-const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効'
+const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効。モールス入力を除く'
 
 type SettingsOverride = Partial<ScreenNotesContext['settings'] & BehaviorNotesContext['settings']>
 type BehaviorOverride = Partial<BehaviorNotesContext['settings']>
 
+// 画面は案内の文言に影響しない(全画面共通)ことを、画面ごとの呼び出しで確かめるための引数
 function notes(
-  screen: ScreenId,
-  state: Partial<Omit<ScreenNotesContext, 'screen' | 'settings'>> = {},
+  _screen: ScreenId,
+  state: Partial<Omit<ScreenNotesContext, 'settings'>> = {},
   settings: SettingsOverride = {},
 ): string[] {
   return buildScreenNotes({
-    screen,
     emergencyActive: false,
     ...state,
     settings: { ...DEFAULT_SETTINGS, ...settings },
   })
 }
 
-function behavior(settings: BehaviorOverride = {}, compact = false): string[] {
-  return buildBehaviorNotes({ compact, settings: { ...DEFAULT_SETTINGS, ...settings } })
+function behavior(settings: BehaviorOverride = {}): string[] {
+  return buildBehaviorNotes({ settings: { ...DEFAULT_SETTINGS, ...settings } })
 }
 
 const SPEAKING = { auditoryScan: true, voiceMode: 'short' as const }
@@ -167,7 +169,7 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
   it('連打無視 0 なら出ず、>0 なら秒数に追従する(0.05 秒刻みも丸めない)', () => {
     expect(behavior({ debounceMs: 0 })).toEqual([])
     expect(behavior({ debounceMs: 1200 })[0]).toBe(
-      '1.2秒以内の連打は数えません（画面遷移直後も。誤作動防止）。',
+      '1.2秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
     )
     expect(behavior({ debounceMs: 1 })[0]).toContain('0.01秒未満以内')
     expect(behavior({ debounceMs: 50 })[0]).toContain('0.05秒以内')
@@ -218,35 +220,23 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
     expect(
       behavior({ debounceMs: 300, minHoldMs: 400, activateOn: 'release', ...SPEAKING }),
     ).toEqual([
-      '0.3秒以内の連打は数えません（画面遷移直後も。誤作動防止）。',
+      '0.3秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
       `0.4秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
       AUDITORY,
     ])
   })
 
-  it('compact でも出る行数と順序は同じで、文言だけが短い', () => {
-    const settings = { minHoldMs: 800, activateOn: 'release' as const, ...SPEAKING }
-    const full = behavior(settings)
-    const compact = behavior(settings, true)
-    expect(compact).toHaveLength(full.length)
-    expect(compact).toHaveLength(3)
-    for (let i = 0; i < full.length; i += 1) expect(compact[i].length).toBeLessThan(full[i].length)
+  it('連打無視・押し方の行にはモールス入力に当てはまらない旨が付き、読み上げの行には付かない', () => {
+    const all = behavior({ minHoldMs: 800, activateOn: 'release', ...SPEAKING })
+    expect(all).toHaveLength(3)
+    expect(all[0]).toContain('モールス入力を除く')
+    expect(all[1]).toContain('モールス入力を除く')
+    expect(all[2]).not.toContain('モールス')
+    expect(behavior({ debounceMs: 0, activateOn: 'release' })[0]).toContain('モールス入力を除く')
   })
 
-  it('compact にも操作・条件の事実が残る', () => {
-    expect(behavior({}, true).join('\n')).toContain('連打は無視（遷移直後も）')
-    const press = behavior({ minHoldMs: 800, activateOn: 'press' }, true).join('\n')
-    expect(press).toContain('0.8秒以上押し続けると決定')
-    expect(press).toContain('短押しは数えません')
-    expect(press).toContain(SCREEN_CHANGE)
-    const release = behavior({ minHoldMs: 800, activateOn: 'release' }, true).join('\n')
-    expect(release).toContain('押し続けて離すと決定')
-    const releaseOnly = behavior({ minHoldMs: 0, activateOn: 'release' }, true).join('\n')
-    expect(releaseOnly).toContain('押して離すと決定')
-    expect(releaseOnly).toContain('押した瞬間は決まりません')
-    const speak = behavior({ ...SPEAKING }, true).join('\n')
-    expect(speak).toContain('直後の1項目分は割り込まれません')
-    expect(speak).toContain('その後は切れることがあります')
+  it('スクロールできる介助者メニュー用なので短縮形を持たない(理由の語も残る)', () => {
+    expect(behavior()[0]).toContain('誤作動防止')
   })
 })
 
