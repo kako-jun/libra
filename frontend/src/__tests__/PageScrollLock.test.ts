@@ -12,24 +12,28 @@ beforeAll(async () => {
   css = fs.readFileSync(`${cwd}/src/styles/globals.css`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
 })
 
-/** @media 内も含め、セレクタ(カンマ区切りの一つ)が完全一致する規則の本体 */
+/**
+ * @media 内も含め、「主語」(最後の複合セレクタの先頭)が selector である規則の本体。
+ * `html body` や `body[data-x]` のような複合セレクタでの上書きも拾う。祖先側に名前があるだけの規則は拾わない。
+ */
 const bodies = (selector: string): string[] => {
   const out: string[] = []
+  const head = new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\#]/g, '\\$&')}(?![\\w-])`)
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const sels = m[1].split(',').map((x) => x.trim())
-    if (sels.includes(selector)) out.push(m[2])
+    if (sels.some((sel) => head.test(sel.split(/[\s>+~]+/).pop() ?? ''))) out.push(m[2])
   }
   return out
 }
 
 describe('Issue #84: ページのスクロール固定', () => {
   it.each(['html', 'body', '#app', '.app-shell'])(
-    '%s に vh 系(vh/svh/lvh/dvh)基準の高さ(height/min-height/max-height)を置かない',
+    '%s に vh 系(vh/svh/lvh/dvh/vmax/vmin)基準の高さ(height/min-height/max-height)を置かない',
     (sel) => {
       const all = bodies(sel)
       expect(all.length, sel).toBeGreaterThan(0)
       for (const b of all) {
-        expect(b, sel).not.toMatch(/(?:^|[;\s])(?:min-|max-)?height:\s*[^;]*\d+[sld]?vh/)
+        expect(b, sel).not.toMatch(/(?:^|[;\s])(?:min-|max-)?height:\s*[^;]*\d+(?:[sld]?vh|vmax|vmin)/)
       }
     },
   )
@@ -43,7 +47,7 @@ describe('Issue #84: ページのスクロール固定', () => {
   it('body は position:fixed; inset:0 で見える領域に固定される', () => {
     const all = bodies('body').join('\n')
     expect(all).toMatch(/position:\s*fixed/)
-    expect(all).toMatch(/inset:\s*0/)
+    expect(all).toMatch(/inset:\s*0\s*(;|$)/)
   })
 
   it('html, body に height/min-height を持たせない(高さは body の inset が確定する)', () => {

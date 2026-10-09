@@ -185,8 +185,7 @@
 }
 
 html,
-body,
-#app {
+body {
   /* Issue #84: min-width は置かない。body が position:fixed; width:100% で幅を画面に合わせるため、
      320px の下限があると 320px 未満の端末(Galaxy Fold 閉状態の 280px 幅など)で右が切れて届かない。
      280px 幅でも格子・文言が収まることを実ブラウザで確認済み */
