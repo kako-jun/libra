@@ -261,6 +261,7 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
       expect(isHome(container)).toBe(true)
     })
 
+
     it('ページが非表示になると押下中の扱いは解除され、数え直す(visibilitychange)', () => {
       setSettings({ activateOn: 'release' })
       const { container } = render(() => <App />)
@@ -269,10 +270,7 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
       fireEvent.keyDown(window, { key: ' ', code: 'Space' })
       advanceSteps(container, n * 3 + 5)
       expect(isHome(container)).toBe(false)
-      Object.defineProperty(document, 'visibilityState', {
-        configurable: true,
-        get: () => 'hidden',
-      })
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
       try {
         document.dispatchEvent(new Event('visibilitychange')) // keyup を取りこぼした
       } finally {
