@@ -18,7 +18,7 @@ import App from '../App'
 import * as offlineReadyModule from '../lib/offlineReady'
 import { EMERGENCY_MESSAGE } from '../lib/phrases'
 
-const HEAD_HOLD_MS = 3000
+const HEAD_HOLD_MS = 2000
 const INTERVAL_MS = 1500
 
 class MockAudioContext {
@@ -52,11 +52,10 @@ function scanningLabel(container: HTMLElement): string | null {
   return container.querySelector('.tile.scanning .tile-label')?.textContent ?? null
 }
 function selectByLabel(container: HTMLElement, label: string) {
-  for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
-    vi.advanceTimersByTime(INTERVAL_MS)
-  }
-  expect(scanningLabel(container)).toBe(label)
+  // 先頭待機が間隔の整数倍でない(既定 2.0 秒 / 間隔 1.5 秒)ので、連打無視を先に過ぎてから 100ms ずつ進めて目的の項目で押す
   vi.advanceTimersByTime(600)
+  for (let i = 0; i < 400 && scanningLabel(container) !== label; i += 1) vi.advanceTimersByTime(100)
+  expect(scanningLabel(container)).toBe(label)
   fireEvent.keyDown(window, { key: ' ' })
 }
 const legendLines = (container: HTMLElement) =>
@@ -153,10 +152,10 @@ describe('Issue #46 句読点(App 結合)', () => {
   it('モールス凡例は全行が「。」で終わる(SOS 行は「）。」・下限ありの行も)', () => {
     window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, minHoldMs: 800 }))
     const { container } = render(() => <App />)
-    for (let i = 0; i < 40 && scanningLabel(container) !== 'モールス'; i += 1) {
-      vi.advanceTimersByTime(INTERVAL_MS)
-    }
+    // 先頭待機が間隔の整数倍でないので、100ms ずつ進めて目的の項目で押す
     vi.advanceTimersByTime(600)
+    for (let i = 0; i < 400 && scanningLabel(container) !== 'モールス'; i += 1)
+      vi.advanceTimersByTime(100)
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(900)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })

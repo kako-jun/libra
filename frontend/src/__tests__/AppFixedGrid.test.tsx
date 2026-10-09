@@ -22,7 +22,7 @@ import App from '../App'
 import { computeGridLayout } from '../lib/gridLayout'
 import * as offlineReadyModule from '../lib/offlineReady'
 
-const HEAD_HOLD_MS = 3000
+const HEAD_HOLD_MS = 2000
 const INTERVAL_MS = 1500
 const EMERGENCY_LABEL = '緊急'
 

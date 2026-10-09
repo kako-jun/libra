@@ -21,7 +21,7 @@ import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import * as offlineReadyModule from '../lib/offlineReady'
 
-const HEAD_HOLD_MS = 3000
+const HEAD_HOLD_MS = 2000
 const INTERVAL_MS = 1500
 
 class MockAudioContext {

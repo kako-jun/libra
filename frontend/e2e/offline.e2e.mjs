@@ -334,8 +334,8 @@ async function checkLettersScrollLayout(chromium, port) {
       await page.goto(base)
       await page.waitForTimeout(300)
 
-      // home: index5 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(3000 + 4 * 1500 + 150)
+      // home: index5 = 文字盤(先頭待機2000ms、以降intervalMs=1500ごとに進む)
+      await page.waitForTimeout(2000 + 4 * 1500 + 150)
       await page.keyboard.press('Space')
       await page.waitForTimeout(200)
 
@@ -346,7 +346,7 @@ async function checkLettersScrollLayout(chromium, port) {
           (tile) => tile.querySelector('.tile-label')?.textContent === '確定',
         ),
       )
-      await page.waitForTimeout(3000 + (commitIndex - 1) * 1500 + 150)
+      await page.waitForTimeout(2000 + (commitIndex - 1) * 1500 + 150)
 
       const info = await page.evaluate(() => {
         // kako-jun 追加指示で app-shell の余白を0にし、グリッドが端から端まで隙間なく
@@ -487,8 +487,8 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       await page.waitForTimeout(700)
       await checkScreen(page, name, 'home')
 
-      // home: index5 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(3000 + 4 * 1500 + 150)
+      // home: index5 = 文字盤(先頭待機2000ms、以降intervalMs=1500ごとに進む)
+      await page.waitForTimeout(2000 + 4 * 1500 + 150)
       await page.keyboard.press('Space')
       await page.waitForTimeout(300)
       await checkScreen(page, name, 'letters')
@@ -674,11 +674,11 @@ async function checkLabelsFitAtXlarge(chromium, port) {
       const page = await context.newPage()
       await page.addInitScript(
         (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
-        { intervalMs: 5000, fontSize: 'xlarge', theme },
+        { intervalMs: 5000, headHoldMultiplier: 2, fontSize: 'xlarge', theme },
       )
       await page.goto(base)
       await page.waitForTimeout(300)
-      // home: index3 = 不快(先頭待機5000ms、以降intervalMs=5000msごとに進む。addInitScriptで
+      // home: index3 = 不快(先頭待機は倍率2で10000ms、以降intervalMs=5000msごとに進む。addInitScriptで
       // intervalMsを伸ばし、タイミングのブレでずれないようにしている)
       await page.waitForTimeout(5000 + 2 * 5000 + 200)
       await page.keyboard.press('Space')

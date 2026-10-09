@@ -7,7 +7,7 @@ vi.mock('../lib/fitHeading', () => ({ applyHeadingFit: vi.fn() }))
 import App from '../App'
 import { applyHeadingFit } from '../lib/fitHeading'
 
-const HEAD_HOLD_MS = 3000
+const HEAD_HOLD_MS = 2000
 const FRAME_MS = 16
 
 describe('App: 見出しの 1 行フィット配線 (Issue #22)', () => {
