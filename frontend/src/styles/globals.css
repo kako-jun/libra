@@ -755,8 +755,8 @@ h1[data-fit='single'] {
   /* kako-jun 追加指示: 画面隅への固定配置(position:fixed)をやめ、案内欄右上の
      .message-panel-controls 内に通常のレイアウトとして置く。
      PR#16 should-1: 色をハードコード(rgb(0 0 0 / 22%))せず、メッセージ欄の色調
-     (通常/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text、
-     :root[data-message-tone]で上書き)にする */
+     (通常/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text)にする。
+     通常・緊急とも既定の色で、メッセージ欄の色調による上書きはない */
   z-index: 20;
   /* Issue #22: 表記を「介助者用」にしたため幅は内容に合わせる(正方形の固定幅をやめる) */
   width: auto;
