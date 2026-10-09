@@ -197,9 +197,9 @@ describe('Issue #33/#36: 4テーマのトークン定義とコントラスト', 
       }
     })
 
-    it(`${name}: スキャン中の面は通常タイル面(--surface/-calm/-positive)のどれとも同色でなく、明確に異なる`, () => {
+    it(`${name}: スキャン中の面は通常タイル面(--surface。全タイル同色, #77)と同色でなく、明確に異なる`, () => {
       const scan = effective(theme, hc, '--surface-scanning') as string
-      for (const s of ['--surface', '--surface-calm', '--surface-positive']) {
+      for (const s of ['--surface']) {
         const face = effective(theme, hc, s) as string
         expect(scan.toLowerCase(), `${name} ${s}`).not.toBe(face.toLowerCase())
         expect(
