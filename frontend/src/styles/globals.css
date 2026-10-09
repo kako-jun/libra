@@ -855,20 +855,49 @@ h1[data-fit='single'] {
   -webkit-touch-callout: default;
 }
 
-/* Issue #31: 見出し・緊急解除・閉じるはカテゴリ切替と独立して常に見える(スクロールしない) */
+/* Issue #31: 見出し・緊急解除・閉じるはカテゴリ切替と独立して常に見える(スクロールしない)
+   Issue #91: 「閉じる」はどの幅でもパネル右上の角(padding の内側)に固定する。flex-wrap の落ち方には頼らず、
+   grid-template-areas で明示する。DOM 順は 見出し → 緊急解除 → 閉じる のまま(Tab 順を変えない)。
+   幅に余裕がある(ヘッダが 28em 以上)ときは 1 行 [見出し | 緊急解除 | 閉じる]、足りないときは
+   1 行目 [見出し | 閉じる]・2 行目 [緊急解除] にする。em なので文字サイズ設定に追従する。 */
 .caregiver-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 12px;
   flex: none;
+  container-type: inline-size;
 }
 
-.caregiver-header-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.caregiver-header-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title close'
+    'emergency emergency';
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.caregiver-header h2 {
+  grid-area: title;
+  min-width: 0;
+}
+
+.caregiver-header .caregiver-emergency-clear {
+  grid-area: emergency;
+  justify-self: start;
+}
+
+.caregiver-header .caregiver-close {
+  grid-area: close;
+}
+
+@container (min-width: 28em) {
+  .caregiver-header-grid {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: 'title emergency close';
+  }
+
+  .caregiver-header .caregiver-emergency-clear {
+    justify-self: auto;
+  }
 }
 
 /* 狭い画面では横スクロール、広い画面では均等配置(同一DOMで切り替える) */

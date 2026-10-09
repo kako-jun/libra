@@ -1397,8 +1397,8 @@ export default function App() {
         <div class="caregiver-overlay" data-caregiver-control>
           <div class="caregiver-panel">
             <div class="caregiver-header">
-              <h2>介助者メニュー</h2>
-              <div class="caregiver-header-actions">
+              <div class="caregiver-header-grid">
+                <h2>介助者メニュー</h2>
                 <button
                   type="button"
                   class="caregiver-action caregiver-emergency-clear"
