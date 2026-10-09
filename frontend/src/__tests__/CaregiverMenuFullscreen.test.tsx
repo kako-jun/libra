@@ -94,13 +94,12 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
     expect(heights).toContain('100dvh')
   })
 
-  it('html, body, #root に height を持たせない(min-height: 100vh のみ。100% 高さの連鎖で本人画面が変わる退行の防止)', () => {
+  it('html, body, #root に height を持たせない(100% 高さの連鎖で本人画面が変わる退行の防止。#84 で min-height: 100vh は撤去: 高さは body の position:fixed; inset:0 が確定する)', () => {
     for (const sel of ['html', 'body', '#root']) {
       const bodies = allRuleBodies(sel)
       expect(bodies.length, sel).toBeGreaterThan(0)
       for (const b of bodies) expect(b, sel).not.toMatch(/(^|[;\s])(max-)?height:/)
     }
-    expect(allRuleBodies('#root').join('\n')).toMatch(/min-height:\s*100vh/)
   })
 
   it('.caregiver-tabpanel の子要素は読みやすい幅(960px)に抑える', () => {

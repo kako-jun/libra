@@ -188,8 +188,25 @@ html,
 body,
 #root {
   min-width: 320px;
-  min-height: 100vh;
   margin: 0;
+}
+
+/* Issue #84: ページ(ドキュメント)を構造上スクロール不可にし、本人画面を常に「見えている画面ぴったりの
+   1画面」にする。以前の min-height:100vh は、スマホで large viewport(アドレスバーが隠れた時の大きな
+   高さ)になり、見える高さより長いドキュメントができてドラッグで動いた(ヘッダ見切れ・フッタ浮き)。
+   100vh 基準の高さはここに置かない。body は position:fixed; inset:0 で見える領域に釘付けにし
+   (高さは inset で確定する。100% の高さ連鎖は .app-shell が潰れた過去があるため作らない)、
+   iOS Safari の「body の overflow:hidden だけではドキュメントが動く」ケースも防ぐ。
+   .app-shell 自身は従来どおり 100dvh(下記) */
+html,
+body {
+  overflow: hidden;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
 }
 
 /* Issue #5: 常設運用での誤作動防止。pull-to-refresh・オーバースクロールのバウンスを止める。
