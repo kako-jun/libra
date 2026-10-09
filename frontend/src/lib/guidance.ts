@@ -8,12 +8,13 @@
 // (本人は画面をスクロールできないため、帯が格子を押し潰さないようにする)。
 
 import { EMERGENCY_REPEAT_MS } from './feedback'
+import { IDLE_LAPS_BEFORE_HOME, UNDO_LAPS } from './idleLaps'
 import type { ScreenId } from './menus'
 import type { Settings } from './settings'
 
 export interface ScreenNotesContext {
   screen: ScreenId
-  /** 伝達直後の1周だけ「取り消し」が出ている状態 */
+  /** 伝達直後の2周だけ「取り消し」が出ている状態 */
   showUndo: boolean
   emergencyActive: boolean
   /** 再起動で復元した緊急で、ブラウザがまだ振動を許していない(画面に一度も触れていない)状態 */
@@ -60,7 +61,7 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
 
   if (screen === 'home') {
     if (showUndo) {
-      notes.push('「取り消し」は伝えた直後の1周だけ出ます。')
+      notes.push(`「取り消し」は伝えた直後の${UNDO_LAPS}周だけ出ます。`)
     }
     if (emergencyActive) {
       notes.push(
@@ -156,5 +157,9 @@ export function buildCaregiverMenuNotes(
     compact
       ? `開く間は${options.morseEnabled ? 'スキャン・モールス時間' : 'スキャン'}停止。`
       : `開いている間は、${stops}が止まります。`,
+    // 自動で起きること(Issue #76)。本人画面の常時案内ではなく、介助者メニューに置く
+    compact
+      ? `${IDLE_LAPS_BEFORE_HOME}周無入力でホームへ（モールス・ホームを除く）。`
+      : `入力がないまま${IDLE_LAPS_BEFORE_HOME}周すると、ホームに戻ります（モールス入力・ホームを除く）。`,
   ]
 }

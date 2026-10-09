@@ -10,6 +10,7 @@ import {
   type ScreenId,
   type Tone,
 } from './lib/menus'
+import { advanceIdleLaps, UNDO_LAPS } from './lib/idleLaps'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
 import { initToneVisibilityResume, resumeToneAudioContext } from './lib/tone'
@@ -270,6 +271,8 @@ export default function App() {
   )
   const [showUndo, setShowUndo] = createSignal(false)
   let undoLapsRemaining = 0
+  // 下位画面での無入力周回数(Issue #76)。画面遷移・本人の入力で 0 に戻す
+  let idleLaps = 0
 
   const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
   const [caregiverTab, setCaregiverTab] = createSignal<CaregiverTabId>('status')
@@ -525,6 +528,7 @@ export default function App() {
       setShowUndo(false)
       undoLapsRemaining = 0
     }
+    idleLaps = 0
     setScreen(next)
     setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
     // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常下位画面では戻る)も読む。
@@ -558,7 +562,7 @@ export default function App() {
     }
     showMessage(text, tone, event)
     setShowUndo(true)
-    undoLapsRemaining = 1
+    undoLapsRemaining = UNDO_LAPS
     goTo('home')
   }
 
@@ -908,6 +912,17 @@ export default function App() {
             undoLapsRemaining -= 1
             if (undoLapsRemaining === 0) setShowUndo(false)
           }
+          // 下位画面で入力がないまま規定の周回数を回ったらホームへ戻す(ホーム・モールスは数えない)
+          if (screen() !== 'home') {
+            const lap = advanceIdleLaps(idleLaps, next.index === 0 && previous.index !== 0)
+            idleLaps = lap.count
+            if (lap.returnHome) {
+              // goTo が先頭項目(ホームの緊急)の読み上げまで行う。古い画面の項目は読まない
+              goTo('home')
+              schedule(scanState().nextAdvanceAt - Date.now())
+              return
+            }
+          }
           if (settings().auditoryScan) {
             const item = items[next.index]
             if (item) announceScanItem(item.label)
@@ -1007,6 +1022,7 @@ export default function App() {
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
+      idleLaps = 0 // キー/シャッターは(連打無視・長押しの繰り返しも)本人の入力
       if (event.repeat) return
       resumeToneAudioContext()
 
@@ -1110,6 +1126,7 @@ export default function App() {
     // 主ボタン(タッチ・左クリック・ペン先)以外(右/中クリック・ペンのバレルボタン)では実行しない
     if (event.button !== 0) return
     if (caregiverMenuOpen()) return
+    idleLaps = 0
     resumeToneAudioContext()
     input.down(`pointer:${event.pointerId}`, {
       index,
@@ -1120,6 +1137,7 @@ export default function App() {
   const onTileClick = (index: number) => {
     if (clickBackedByPointer) return
     if (caregiverMenuOpen()) return
+    idleLaps = 0
     handleSwitchOn(Date.now(), {
       index,
       screen: screen(),
@@ -1147,6 +1165,7 @@ export default function App() {
 
   const openCaregiverMenu = () => {
     if (caregiverMenuOpen()) return
+    idleLaps = 0
     input.cancelAll()
     setCaregiverTab('status')
     setCaregiverMenuOpen(true)
@@ -1192,6 +1211,7 @@ export default function App() {
                           onClick={() => {
                             // 介助者メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
                             if (caregiverMenuOpen()) return
+                            idleLaps = 0
                             // パンくず移動はタイル選択ではないので、どの祖先でも採用確認を消す
                             setAcceptedSelection(null)
                             goTo(target())

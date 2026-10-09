@@ -45,7 +45,7 @@ class MockAudioContext {
   }
 }
 
-const UNDO = '「取り消し」は伝えた直後の1周だけ出ます。'
+const UNDO = '「取り消し」は伝えた直後の2周だけ出ます。'
 const VIBRATION_FRAGMENT = '3秒ごとに振動'
 const AWAIT_TOUCH = '再起動後は、画面に触れるかキーを押すまで振動しません。'
 const AUDITORY_FRAGMENT = '伝達の読み上げは、直後の1項目分は割り込まれません'
@@ -161,6 +161,8 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(tileLabels(container)).toContain('取り消し')
       expect(screenNotes(container)[0]).toBe(UNDO)
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 6) // 7項目を1周
+      expect(tileLabels(container)).toContain('取り消し') // まだ2周目
+      vi.advanceTimersByTime(INTERVAL_MS * 7) // 2周目の終わり
       expect(tileLabels(container)).not.toContain('取り消し')
       expect(notesText(container)).not.toContain(UNDO)
     })
@@ -458,12 +460,12 @@ describe('Issue #58: 常時案内(App 結合)', () => {
   })
 
   describe('介助者メニューの常時案内', () => {
-    it('閉じている間は出ず、開くと所定の3行が出る(60秒は自動閉じ時間に一致)', () => {
+    it('閉じている間は出ず、開くと所定の4行が出る(60秒は自動閉じ時間に一致)', () => {
       const { container } = render(() => <App />)
       expect(container.querySelector('.caregiver-notes')).toBeNull()
       openCaregiverMenu(container)
       const notes = caregiverNotes(container)
-      expect(notes).toHaveLength(3)
+      expect(notes).toHaveLength(4)
       expect(notes[0]).toBe(
         '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
       )
@@ -473,6 +475,9 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(notes[1]).toContain('入力欄・スライダー・チェックボックス操作中')
       // モールス入力が無効(既定)なので、モールスの時間停止は出さずスキャン停止だけ
       expect(notes[2]).toBe('開いている間は、スキャンが止まります。')
+      expect(notes[3]).toBe(
+        '入力がないまま3周すると、ホームに戻ります（モールス入力・ホームを除く）。',
+      )
       expect(container.querySelector('.caregiver-notes')?.getAttribute('aria-label')).toBe(
         '介助者メニューの自動で起きること',
       )
@@ -634,12 +639,12 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(notesText(container)).toContain('画面を開くと先頭に3.0秒とどまります。')
     })
 
-    it('介助者メニューの帯も、短縮形でも3行のまま', () => {
+    it('介助者メニューの帯も、短縮形でも4行のまま', () => {
       mockMatchMedia(true)
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       const notes = caregiverNotes(container)
-      expect(notes).toHaveLength(3)
+      expect(notes).toHaveLength(4)
       expect(notes[0]).toBe('60秒タップなしで閉じてホームへ（打鍵では延びず）。')
     })
   })

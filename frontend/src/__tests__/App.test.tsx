@@ -471,15 +471,18 @@ describe('App', () => {
     expect(tileLabels(container)).not.toContain('取り消し')
   })
 
-  it('伝達直後の1周だけ取り消しが出て、1周後に消え、消えた後もカーソルは正しい項目を指す', () => {
+  it('伝達直後の2周だけ取り消しが出て、2周後に消え、消えた後もカーソルは正しい項目を指す', () => {
     const { container } = render(() => <App />)
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
     fireEvent.keyDown(window, { key: ' ' }) // はい を選択 → home に戻る、取り消し表示
     expect(tileLabels(container)).toContain('取り消し')
     expect(tileLabels(container).length).toBe(7)
 
-    // 1周(7項目)分進めて index が 0 に戻るまで進める
+    // 1周(7項目)分進めて index が 0 に戻っても、まだ2周目なので取り消しは残る
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 6)
+    expect(tileLabels(container)).toContain('取り消し')
+    // 2周目の終わりで消える
+    vi.advanceTimersByTime(INTERVAL_MS * 7)
     expect(tileLabels(container)).not.toContain('取り消し')
     expect(tileLabels(container).length).toBe(6)
     expect(scanningLabel(container)).toBe('緊急')
@@ -876,7 +879,7 @@ describe('App', () => {
     expect(h1Text(container)).toBe('はい。')
 
     // 取り消しを含む7項目の末尾(文字盤)で押し始める。押している間に1周して取り消しが消える
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5 + 500)
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5 + 500 + INTERVAL_MS * 7) // 2周目の末尾
     expect(scanningLabel(container)).toBe('文字盤')
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(1500)
