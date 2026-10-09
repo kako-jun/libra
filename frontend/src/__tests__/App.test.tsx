@@ -403,7 +403,8 @@ describe('App', () => {
     expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
     selectByLabel(container, '取り消し')
     expect(confirmation()).toBeNull() // undo
-    expect(container.querySelector('.message-panel h1')?.textContent).toBe('あ')
+    // Issue #94: 取り消すと直前に伝えたこと自体が消える(1つ前の「あ」には戻らない)
+    expect(container.querySelector('.message-panel h1')?.textContent).toBe('選んだ内容がここに大きく出ます。')
 
     selectByLabel(container, '緊急') // emergency
     expect(confirmation()).toBeNull()
@@ -1683,9 +1684,9 @@ describe('App', () => {
     expect(oscillatorStartCount).toBe(0)
   })
 
-  it('取り消しで戻したメッセージも復元され、トーンは neutral のまま(#77: はいは肯定扱いしない)', () => {
+  it('Issue #94: 取り消すと直前の伝達が空になり、1つ前の「はい」は復元されない。トーンは neutral(#77)', () => {
     const { container } = render(() => <App />)
-    // 「はい」を表示させてから「いいえ」を選び、取り消すと「はい」に戻る(トーンはどちらも neutral)
+    // 「はい」を表示させてから「いいえ」を選び、取り消すと何も伝えていない状態になる
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
     fireEvent.keyDown(window, { key: ' ' }) // はい → home
     expect(document.documentElement.dataset.messageTone).toBe('neutral')
@@ -1698,9 +1699,18 @@ describe('App', () => {
 
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
     expect(scanningLabel(container)).toBe('取り消し')
-    fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 「はい」に戻る
-    expect(h1Text(container)).toBe('はい。')
+    fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 空(「はい」には戻らない)
+    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
     expect(document.documentElement.dataset.messageTone).toBe('neutral')
+    expect(tileLabels(container)).not.toContain('取り消し')
+    expect(scanningLabel(container)).toBe('緊急') // スキャンは先頭から再開
+
+    // 取り消したあとに再び「はい」を伝えると「はい。」が出て、取り消しも再度出る
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
+    expect(scanningLabel(container)).toBe('はい')
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(h1Text(container)).toBe('はい。')
+    expect(tileLabels(container)).toContain('取り消し')
   })
 
   it('Issue #5: 介助者メニューに Wake Lock 取得中の状態が表示される', () => {
@@ -1970,7 +1980,7 @@ describe('App', () => {
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
     })
 
-    it('緊急なしの解除ボタンは無効で、取り消し履歴は消えない(A→解除→B→取り消し→A)', () => {
+    it('緊急なしの解除ボタンは無効で何も起きない(A→解除→B→取り消し→空。Aには戻らない)', () => {
       const { container } = render(() => <App />)
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい (A)
@@ -1982,7 +1992,7 @@ describe('App', () => {
       expect(h1Text(container)).toBe('いいえ。')
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
       fireEvent.keyDown(window, { key: ' ' }) // 取り消し
-      expect(h1Text(container)).toBe('はい。')
+      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
     })
 
     it('介助者メニューの緊急解除で保存が消え、再マウントで通常起動・警告音なし', () => {
