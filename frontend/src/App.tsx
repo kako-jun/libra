@@ -145,7 +145,7 @@ function isTextEditingKey(event: KeyboardEvent): boolean {
   ].includes(event.key)
 }
 
-const LETTER_SCREENS: ScreenId[] = ['letters', 'lettersRow', 'lettersYesNo']
+const LETTER_SCREENS: ScreenId[] = ['letters', 'lettersRow']
 
 const ACTIVATE_ON_LABELS: Record<Settings['activateOn'], string> = {
   press: '押した瞬間',
