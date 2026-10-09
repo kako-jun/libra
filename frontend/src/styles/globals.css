@@ -911,6 +911,16 @@ h1[data-fit='single'] {
   font-size: 1.05rem;
 }
 
+/* Issue #79: 状態タブの「いまの動作」。通常の設定文と同じ体裁(本文サイズ)で1項目ずつ縦に並べる */
+.caregiver-behavior {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-weight: 600;
+}
+
 .caregiver-panel input,
 .caregiver-panel button {
   touch-action: manipulation;

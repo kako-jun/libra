@@ -553,11 +553,11 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(container.querySelector('.emergency-status')).toBeNull()
     })
 
-    it('常時案内(.screen-notes)が空きセルの有無にかかわらず出ている', () => {
+    it('通常時は常時案内(.screen-notes)が出ない(空きセルは影響しない)', () => {
       setViewport(390, 844)
       const { container } = render(() => <App />)
       expect(emptyCells(container).length).toBeGreaterThan(0)
-      expect(container.querySelector('.screen-notes')).not.toBeNull()
+      expect(container.querySelector('.screen-notes')).toBeNull()
     })
   })
 })
