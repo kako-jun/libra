@@ -1,11 +1,12 @@
 // Issue #76: 下位画面で入力がないまま3周するとホームへ自動復帰する(App レベル)。
-// 周回は「カーソルが先頭以外から先頭へ戻った瞬間」で数える。画面ごとに項目数が違うので、
-// 固定の ms ではなくカーソル位置の観測(waitForWrap)で周回を進める。
+// 周回は「無入力の間にカーソルが進んだ項目数が項目数×3に達した」ときに数える。画面ごとに項目数が違うので、
+// 固定の ms ではなくカーソルが進んだ項目数の観測(advanceSteps)で進める。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import * as offlineReadyModule from '../lib/offlineReady'
 import { MORSE_IDLE_EXIT_MS } from '../lib/morse'
+import { IDLE_LAPS_BEFORE_HOME } from '../lib/idleLaps'
 
 const INTERVAL_MS = 1500
 const STEP_MS = 100
@@ -65,17 +66,30 @@ function openDiscomfort(c: HTMLElement): string {
   return head as string
 }
 
-/** カーソルが先頭以外から先頭へ戻る(=1周終わる)まで進める。ホームへ戻ったら true で打ち切る */
-function waitForWrap(c: HTMLElement, head: string): void {
-  let left = false
-  for (let t = 0; t < 120_000; t += STEP_MS) {
+/** 表示中の画面のタイル数(=スキャン項目数) */
+const tileCount = (c: HTMLElement) => c.querySelectorAll('.grid-board .tile').length
+
+/**
+ * カーソルが n 項目進む(=ラベルが n 回変わる)まで時間を進める。ホームへ戻ったら打ち切る。
+ * 画面内のラベルは重複しない前提。
+ */
+function advanceSteps(c: HTMLElement, n: number): void {
+  let done = 0
+  let last = scanningLabel(c)
+  for (let t = 0; t < 600_000 && done < n; t += STEP_MS) {
     vi.advanceTimersByTime(STEP_MS)
     if (isHome(c)) return
     const now = scanningLabel(c)
-    if (now !== head) left = true
-    else if (left) return
+    if (now !== last) {
+      done += 1
+      last = now
+    }
   }
-  throw new Error('wrap not reached')
+}
+
+/** 画面の項目数×laps 周ぶんから extra 歩引いた位置まで進める(戻る直前) */
+function advanceToJustBeforeReturn(c: HTMLElement, n: number): void {
+  advanceSteps(c, n * IDLE_LAPS_BEFORE_HOME - 1)
 }
 
 describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', () => {
@@ -107,28 +121,32 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     window.localStorage.clear()
   })
 
-  it('無入力のまま2周では戻らず、3周目の終わりでホームへ戻る(開いた直後の先頭待機は数えない)', () => {
+  it('無入力のまま項目数×3歩(3周ぶん)の手前では戻らず、ちょうどで戻る(開いた直後の先頭待機は数えない)', () => {
     const { container } = render(() => <App />)
-    const head = openDiscomfort(container)
-    // 開いた直後の先頭待機を十分に過ぎても、まだ1周も終わっていないので戻らない
+    openDiscomfort(container)
+    const n = tileCount(container)
+    // 開いた直後の先頭待機を十分に過ぎても、まだ戻らない
     vi.advanceTimersByTime(2000)
     expect(isHome(container)).toBe(false)
-    waitForWrap(container, head) // 1周
+    advanceSteps(container, n * 2) // 2周ぶん
     expect(isHome(container)).toBe(false)
     expect(screenLabel(container)).toContain('不快')
-    waitForWrap(container, head) // 2周
+    advanceSteps(container, n - 1) // 3周ぶんの1歩手前
     expect(isHome(container)).toBe(false)
     expect(screenLabel(container)).toContain('不快')
-    waitForWrap(container, head) // 3周
+    advanceSteps(container, 1)
     expect(isHome(container)).toBe(true)
     expect(scanningLabel(container)).toBe('緊急') // ホームの先頭から再開する
   })
 
-  describe('周回の途中の入力で数え直しになる(その後も3周で戻る)', () => {
+  describe('入力で数え直しになる(その時点からちょうど3周ぶんで戻る)', () => {
     const cases: Array<[string, (c: HTMLElement) => void, object]> = [
       [
         'キーの長押し繰り返し(event.repeat)',
-        () => fireEvent.keyDown(window, { key: ' ', repeat: true }),
+        () => {
+          fireEvent.keyDown(window, { key: ' ', repeat: true })
+          fireEvent.keyUp(window, { key: ' ' }) // 離した時点から数え直す
+        },
         {},
       ],
       [
@@ -143,18 +161,103 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     it.each(cases)('%s', (_name, act, settings) => {
       setSettings(settings)
       const { container } = render(() => <App />)
-      const head = openDiscomfort(container)
-      waitForWrap(container, head)
-      waitForWrap(container, head) // あと1周で戻る状態
+      openDiscomfort(container)
+      const n = tileCount(container)
+      advanceSteps(container, n * 2 + 1) // あと少しで戻る状態(末尾近く)
       expect(isHome(container)).toBe(false)
       const before = screenLabel(container)
       act(container)
       expect(screenLabel(container)).toBe(before) // 画面遷移はしていない(純粋に数え直しだけ)
-      waitForWrap(container, head)
-      waitForWrap(container, head)
-      expect(isHome(container)).toBe(false) // 入力から数えて2周ではまだ戻らない
-      waitForWrap(container, head)
-      expect(isHome(container)).toBe(true) // 3周で戻る
+      advanceToJustBeforeReturn(container, n) // 入力から 3周ぶん−1歩
+      expect(isHome(container)).toBe(false) // 入力から数えて3周ぶんには足りない
+      advanceSteps(container, 1)
+      expect(isHome(container)).toBe(true)
+    })
+  })
+
+  it('支援技術の合成 click(pointerdown を伴わない onTileClick)でも数え直しになる', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '文字盤')
+    const n = tileCount(container)
+    expect(n).toBe(15)
+    advanceSteps(container, n * 2 + 1)
+    expect(isHome(container)).toBe(false)
+    const target = Array.from(container.querySelectorAll<HTMLElement>('.grid-board .tile')).find(
+      (el) => el.querySelector('.tile-label')?.textContent === '1字消す',
+    ) as HTMLElement
+    expect(target).toBeTruthy()
+    fireEvent.click(target) // 画面遷移しない(文字盤の行段階のまま)
+    expect(screenLabel(container)).toContain('文字盤')
+    advanceToJustBeforeReturn(container, n)
+    expect(isHome(container)).toBe(false)
+    advanceSteps(container, 1)
+    expect(isHome(container)).toBe(true)
+  })
+
+  it('末尾近く(13番目)で入力しても、その入力から3周ぶんかかる(2周ちょっとでは戻らない)', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '文字盤')
+    const n = tileCount(container)
+    // 13番目(index 12)まで進めて「1字消す」相当の入力(タイルの直接タップ)
+    advanceSteps(container, 12)
+    fireEvent.pointerDown(tile(container, '1字消す'), { pointerId: 3 })
+    fireEvent.pointerUp(window, { pointerId: 3 })
+    expect(isHome(container)).toBe(false)
+    advanceSteps(container, n * 2 + 3) // 2周ちょっと(先頭へ戻ってから更に進んだ)
+    expect(isHome(container)).toBe(false)
+    advanceSteps(container, n - 3 - 1)
+    expect(isHome(container)).toBe(false)
+    advanceSteps(container, 1)
+    expect(isHome(container)).toBe(true)
+  })
+
+  describe('押している間は数えない(離したら改めて3周ぶんで戻る)', () => {
+    it('タイルを押したまま(離して決定)3周ぶん超えても戻らない。取り消して離すと、そこから3周ぶんで戻る', () => {
+      setSettings({ activateOn: 'release' })
+      const { container } = render(() => <App />)
+      openDiscomfort(container)
+      const n = tileCount(container)
+      fireEvent.pointerDown(tile(container, scanningLabel(container) as string), { pointerId: 5 })
+      advanceSteps(container, n * 3 + 5) // 押したまま 3周ぶん超過
+      expect(isHome(container)).toBe(false)
+      expect(screenLabel(container)).toContain('不快')
+      fireEvent.pointerCancel(window, { pointerId: 5 })
+      advanceToJustBeforeReturn(container, n)
+      expect(isHome(container)).toBe(false) // 離してから 3周ぶんに足りない
+      advanceSteps(container, 1)
+      expect(isHome(container)).toBe(true)
+    })
+
+    it('「緊急」をキーで押したまま(離して決定)3周ぶん超えても戻らず、離すと緊急が実行される', () => {
+      setSettings({ activateOn: 'release' })
+      const { container } = render(() => <App />)
+      openDiscomfort(container)
+      const n = tileCount(container)
+      advanceSteps(container, 1) // 先頭「戻る」の次=「緊急」
+      expect(scanningLabel(container)).toBe('緊急')
+      fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+      advanceSteps(container, n * 3 + 5)
+      expect(isHome(container)).toBe(false)
+      expect(screenLabel(container)).toContain('不快')
+      fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+      expect(isHome(container)).toBe(false) // ホームでなく緊急(詳細)画面へ
+      expect(screenLabel(container)).not.toContain('不快')
+      expect(container.querySelector('.emergency-status-message')).not.toBeNull()
+    })
+
+    it('ウィンドウがフォーカスを失うと押下中の扱いは解除され、数え直す', () => {
+      setSettings({ activateOn: 'release' })
+      const { container } = render(() => <App />)
+      openDiscomfort(container)
+      const n = tileCount(container)
+      fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+      advanceSteps(container, n * 3 + 5)
+      expect(isHome(container)).toBe(false)
+      fireEvent.blur(window) // keyup を取りこぼした
+      advanceToJustBeforeReturn(container, n)
+      expect(isHome(container)).toBe(false)
+      advanceSteps(container, 1)
+      expect(isHome(container)).toBe(true)
     })
   })
 
@@ -162,10 +265,9 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     const { container } = render(() => <App />)
     selectByLabel(container, '不快')
     selectByLabel(container, '痛い')
-    const head = scanningLabel(container) as string
     expect(screenLabel(container)).toContain('痛い場所')
-    waitForWrap(container, head)
-    waitForWrap(container, head) // あと1周で戻る状態
+    const n1 = tileCount(container)
+    advanceSteps(container, n1 * 2 + 1) // あと少しで戻る状態
     const crumb = Array.from(
       container.querySelectorAll<HTMLButtonElement>('.screen-breadcrumb button.breadcrumb-link'),
     ).find((b) => b.textContent === '不快') as HTMLButtonElement
@@ -173,12 +275,28 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     fireEvent.click(crumb)
     expect(screenLabel(container)).toContain('不快')
     expect(screenLabel(container)).not.toContain('痛い場所')
-    const head2 = scanningLabel(container) as string
-    waitForWrap(container, head2)
-    waitForWrap(container, head2)
-    expect(isHome(container)).toBe(false) // 遷移から数えて2周では戻らない
-    waitForWrap(container, head2)
+    const n2 = tileCount(container)
+    advanceToJustBeforeReturn(container, n2)
+    expect(isHome(container)).toBe(false) // 遷移から数えて3周ぶんに足りない
+    advanceSteps(container, 1)
     expect(isHome(container)).toBe(true)
+  })
+
+  it('介助者メニューを開く操作でも数え直しになる(閉じるとホーム先頭から再開する)', () => {
+    const { container } = render(() => <App />)
+    openDiscomfort(container)
+    const n = tileCount(container)
+    advanceSteps(container, n * 3 - 2) // 戻る直前
+    fireEvent.pointerDown(container.querySelector('.caregiver-button') as HTMLElement, {
+      pointerType: 'mouse',
+      button: 0,
+    })
+    expect(container.querySelector('.caregiver-overlay')).not.toBeNull()
+    fireEvent.keyDown(window, { key: 'x' }) // 閉じる(ホームへ)
+    fireEvent.keyUp(window, { key: 'x' })
+    expect(container.querySelector('.caregiver-overlay')).toBeNull()
+    expect(isHome(container)).toBe(true)
+    expect(scanningLabel(container)).toBe('緊急')
   })
 
   it('介助者メニューを開いている間は数えず、戻らない', () => {
@@ -208,10 +326,7 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
   it('ホームでは何周しても戻る先がなく、ホームのまま(緊急の先頭に戻り続ける)', () => {
     const { container } = render(() => <App />)
     expect(isHome(container)).toBe(true)
-    waitForWrapHome(container)
-    waitForWrapHome(container)
-    waitForWrapHome(container)
-    waitForWrapHome(container)
+    advanceSteps(container, tileCount(container) * 4)
     expect(isHome(container)).toBe(true)
     expect(scanningLabel(container)).toBe('緊急')
   })
@@ -222,10 +337,8 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     fireEvent.keyUp(window, { key: ' ' })
     selectByLabel(container, '苦しい') // 詳細を選んで home
     selectByLabel(container, 'はい') // 緊急中の通常伝達
-    const head = openDiscomfort(container)
-    waitForWrap(container, head)
-    waitForWrap(container, head)
-    waitForWrap(container, head)
+    openDiscomfort(container)
+    advanceSteps(container, tileCount(container) * 3)
     expect(isHome(container)).toBe(true)
     expect(container.querySelector('.emergency-status-message')?.textContent).toBe(
       '緊急です。来てください。',
@@ -234,8 +347,3 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
   })
 })
-
-/** ホームで1周(緊急から出て緊急へ戻る)進める */
-function waitForWrapHome(c: HTMLElement): void {
-  waitForWrap(c, '緊急')
-}

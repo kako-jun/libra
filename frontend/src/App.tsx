@@ -10,7 +10,7 @@ import {
   type ScreenId,
   type Tone,
 } from './lib/menus'
-import { advanceIdleLaps, UNDO_LAPS } from './lib/idleLaps'
+import { advanceIdleSteps, UNDO_LAPS } from './lib/idleLaps'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
 import { initToneVisibilityResume, resumeToneAudioContext } from './lib/tone'
@@ -271,8 +271,10 @@ export default function App() {
   )
   const [showUndo, setShowUndo] = createSignal(false)
   let undoLapsRemaining = 0
-  // 下位画面での無入力周回数(Issue #76)。画面遷移・本人の入力で 0 に戻す
-  let idleLaps = 0
+  // 下位画面での無入力ステップ数(カーソルが進んだ項目数。Issue #76)。画面遷移・本人の入力・押下中で 0 に戻す
+  let idleSteps = 0
+  // 押している最中の入力元(キー・ポインター)。押している間は無入力として数えない(Issue #76)
+  const heldInputs = new Set<string>()
 
   const [caregiverMenuOpen, setCaregiverMenuOpen] = createSignal(false)
   const [caregiverTab, setCaregiverTab] = createSignal<CaregiverTabId>('status')
@@ -469,7 +471,7 @@ export default function App() {
     announce(text)
   }
 
-  // home 以外へ遷移するときは「取り消し」の1周猶予を終わらせる(nit: 積み残した猶予が
+  // home 以外へ遷移するときは「取り消し」の2周猶予を終わらせる(nit: 積み残した猶予が
   // 後で home に戻った際に誤って復活しないように)。home への遷移(伝達完了の帰着点)では
   // 呼び出し元が設定した showUndo/undoLapsRemaining をそのまま尊重する。
   // Issue #14: モールス入力。確定済みの文字列は画面を出入りしても残す(伝達したら消す)
@@ -528,7 +530,7 @@ export default function App() {
       setShowUndo(false)
       undoLapsRemaining = 0
     }
-    idleLaps = 0
+    idleSteps = 0
     setScreen(next)
     setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
     // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常下位画面では戻る)も読む。
@@ -914,8 +916,12 @@ export default function App() {
           }
           // 下位画面で入力がないまま規定の周回数を回ったらホームへ戻す(ホーム・モールスは数えない)
           if (screen() !== 'home') {
-            const lap = advanceIdleLaps(idleLaps, next.index === 0 && previous.index !== 0)
-            idleLaps = lap.count
+            // 押している間は数えない(離して決定・押下時間の下限で押したままの操作を、復帰で捨てない)
+            const lap =
+              heldInputs.size > 0
+                ? { steps: 0, returnHome: false }
+                : advanceIdleSteps(idleSteps, items.length)
+            idleSteps = lap.steps
             if (lap.returnHome) {
               // goTo が先頭項目(ホームの緊急)の読み上げまで行う。古い画面の項目は読まない
               goTo('home')
@@ -952,8 +958,11 @@ export default function App() {
   // 直近の click(capture で判定)が pointerdown に裏付けられていたか。タイルの click が読む
   let clickBackedByPointer = false
   onMount(() => {
-    const onPointerDownCapture = (event: PointerEvent) =>
+    const onPointerDownCapture = (event: PointerEvent) => {
       pointerSeen.set(event.pointerId, { downAt: Date.now(), upAt: null })
+      heldInputs.add(`pointer:${event.pointerId}`)
+      idleSteps = 0
+    }
     const onClickCapture = (event: MouseEvent) => {
       const now = Date.now()
       const pointerId = (event as PointerEvent).pointerId
@@ -1013,16 +1022,21 @@ export default function App() {
     const onPointerUp = (event: PointerEvent) => {
       const rec = pointerSeen.get(event.pointerId)
       if (rec) rec.upAt = Date.now()
+      heldInputs.delete(`pointer:${event.pointerId}`)
+      idleSteps = 0 // 離した時点から数え直す
       input.up(`pointer:${event.pointerId}`)
     }
     // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
     const onPointerCancel = (event: PointerEvent) => {
       pointerSeen.delete(event.pointerId) // 他のポインターの記録は残す
+      heldInputs.delete(`pointer:${event.pointerId}`)
+      idleSteps = 0
       input.cancel(`pointer:${event.pointerId}`)
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      idleLaps = 0 // キー/シャッターは(連打無視・長押しの繰り返しも)本人の入力
+      idleSteps = 0 // キー/シャッターは(連打無視・長押しの繰り返しも)本人の入力
+      heldInputs.add(`key:${event.code || event.key}`)
       if (event.repeat) return
       resumeToneAudioContext()
 
@@ -1069,11 +1083,20 @@ export default function App() {
       input.down(`key:${event.code || event.key}`)
     }
 
-    const onKeyUp = (event: KeyboardEvent) => input.up(`key:${event.code || event.key}`)
+    const onKeyUp = (event: KeyboardEvent) => {
+      heldInputs.delete(`key:${event.code || event.key}`)
+      idleSteps = 0 // 離した時点から数え直す
+      input.up(`key:${event.code || event.key}`)
+    }
     // 画面が見えなくなった・フォーカスを失った押下は、離す動作を取りこぼすので取り消す
-    const onBlur = () => input.cancelAll()
+    const releaseAll = () => {
+      heldInputs.clear()
+      idleSteps = 0
+      input.cancelAll()
+    }
+    const onBlur = () => releaseAll()
     const onVisibilityHidden = () => {
-      if (document.visibilityState === 'hidden') input.cancelAll()
+      if (document.visibilityState === 'hidden') releaseAll()
     }
 
     // M2: タッチ端末では pointerdown だけでは AudioContext の resume が保証されないため、
@@ -1126,7 +1149,7 @@ export default function App() {
     // 主ボタン(タッチ・左クリック・ペン先)以外(右/中クリック・ペンのバレルボタン)では実行しない
     if (event.button !== 0) return
     if (caregiverMenuOpen()) return
-    idleLaps = 0
+    idleSteps = 0
     resumeToneAudioContext()
     input.down(`pointer:${event.pointerId}`, {
       index,
@@ -1137,7 +1160,7 @@ export default function App() {
   const onTileClick = (index: number) => {
     if (clickBackedByPointer) return
     if (caregiverMenuOpen()) return
-    idleLaps = 0
+    idleSteps = 0
     handleSwitchOn(Date.now(), {
       index,
       screen: screen(),
@@ -1165,7 +1188,7 @@ export default function App() {
 
   const openCaregiverMenu = () => {
     if (caregiverMenuOpen()) return
-    idleLaps = 0
+    idleSteps = 0
     input.cancelAll()
     setCaregiverTab('status')
     setCaregiverMenuOpen(true)
@@ -1211,7 +1234,7 @@ export default function App() {
                           onClick={() => {
                             // 介助者メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
                             if (caregiverMenuOpen()) return
-                            idleLaps = 0
+                            idleSteps = 0
                             // パンくず移動はタイル選択ではないので、どの祖先でも採用確認を消す
                             setAcceptedSelection(null)
                             goTo(target())
