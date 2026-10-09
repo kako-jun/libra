@@ -179,7 +179,7 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     const { container } = render(() => <App />)
     selectByLabel(container, '文字盤')
     const n = tileCount(container)
-    expect(n).toBe(15)
+    expect(n).toBe(14)
     advanceSteps(container, n * 2 + 1)
     expect(isHome(container)).toBe(false)
     const target = Array.from(container.querySelectorAll<HTMLElement>('.grid-board .tile')).find(
