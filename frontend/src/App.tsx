@@ -41,7 +41,7 @@ import {
   type MorseState,
   type MorseSymbol,
 } from './lib/morse'
-import { buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
+import { buildBehaviorNotes, buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 /** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
@@ -350,11 +350,9 @@ export default function App() {
     compactQuery.addEventListener?.('change', onChange)
     onCleanup(() => compactQuery.removeEventListener?.('change', onChange))
   })
-  // Issue #58: 画面下の固定案内。該当する状況・設定のときは必ず出す(隠す操作は無い)
+  // Issue #58/#79: 画面下の固定案内は緊急中の振動だけ。通常時は空で、帯ごと出さない
   const screenNotes = createMemo(() =>
     buildScreenNotes({
-      screen: screen(),
-      showUndo: showUndo(),
       emergencyActive: emergencyActive(),
       vibrationAwaitsTouch: awaitingFirstTouch(),
       canVibrate: canVibrate(),
@@ -362,6 +360,7 @@ export default function App() {
       settings: settings(),
     }),
   )
+  const behaviorNotes = createMemo(() => buildBehaviorNotes({ settings: settings() }))
   const currentScreenGuidance = createMemo(() => {
     if (screen() === 'painIntensity' && painChoice()) {
       return `${painChoice()?.label}の痛みの強さを選んでください。`
@@ -1471,6 +1470,14 @@ export default function App() {
                   <button type="button" class="caregiver-action" onClick={enterFullscreen}>
                     全画面にする
                   </button>
+                </Show>
+
+                {/* Issue #79: 見ても分からない設定依存の挙動。現在の設定値で出し分ける */}
+                <Show when={behaviorNotes().length > 0}>
+                  <h3 class="caregiver-section-title">いまの動作</h3>
+                  <ul class="caregiver-behavior" aria-label="いまの動作">
+                    <For each={behaviorNotes()}>{(note) => <li>{note}</li>}</For>
+                  </ul>
                 </Show>
               </div>
             </Show>
