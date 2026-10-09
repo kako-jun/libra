@@ -262,7 +262,6 @@ export default function App() {
       if (headingFitFrame !== undefined) window.cancelAnimationFrame(headingFitFrame)
     })
   })
-  const [messageHistory, setMessageHistory] = createSignal<{ text: string; tone: Tone }[]>([])
   // 緊急中に選ばれた直前の伝達。保存形式の互換性のため emergencyState の sub を使うが、
   // 表示は曖昧な「最新」ではなく、独立した「直前に伝えたこと」領域へ出す。
   const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(
@@ -463,7 +462,6 @@ export default function App() {
   const showMessage = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     setMessage(text)
     setMessageTone(tone)
-    setMessageHistory((items) => [{ text, tone }, ...items].slice(0, 5))
     document.documentElement.dataset.messageTone = tone
     feedback(event ?? (tone === 'urgent' ? 'urgentMessage' : 'message'))
     announce(text)
@@ -605,9 +603,6 @@ export default function App() {
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
-    // 解除後に緊急メッセージが履歴に残ると、解除→伝達→取り消しで赤い緊急文言が戻るため履歴を空にする
-    // 緊急が無いときは解除ボタンが disabled(押せるのは緊急中のみ)なので、ここでは無条件に消してよい
-    setMessageHistory([])
     // S2: 解除後に緊急中分の古い取り消しが復活しないようにする
     setShowUndo(false)
     undoLapsRemaining = 0
@@ -666,12 +661,13 @@ export default function App() {
         // menus.ts の buildHomeMenu が緊急中は取り消しをメニューに含めないが、
         // 数字キー等での直接実行に備えてここでも二重に防ぐ
         if (emergencyActive()) return
-        const previous = messageHistory()[1] ?? { text: DEFAULT_MESSAGE, tone: 'neutral' as Tone }
-        setMessageHistory((items) => items.slice(1))
-        setMessage(previous.text)
-        setMessageTone(previous.tone)
-        document.documentElement.dataset.messageTone = previous.tone
+        // Issue #94: 取り消したら「直前に伝えたこと」自体を消し、何も伝えていない状態に戻す
+        // (1つ前の返事は復元しない。履歴も持たない)
+        setMessage(DEFAULT_MESSAGE)
+        setMessageTone('neutral')
+        document.documentElement.dataset.messageTone = 'neutral'
         setShowUndo(false)
+        undoLapsRemaining = 0
         goTo('home')
         return
       }
