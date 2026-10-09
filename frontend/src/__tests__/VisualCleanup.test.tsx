@@ -260,6 +260,14 @@ describe('Issue #36: 赤(--urgent-bg)の使用箇所は上部メッセージ欄�
     expect(stripComments(css)).not.toMatch(/\.tile-urgent/)
   })
 
+  it('肯定・穏やかのトーンは復活しない(#77: .tile-positive / .tile-calm / data-message-tone=positive / --surface-positive が CSS に無い)', () => {
+    const src = stripComments(css)
+    expect(src).not.toMatch(/\.tile-positive/)
+    expect(src).not.toMatch(/\.tile-calm/)
+    expect(src).not.toMatch(/data-message-tone=['"]?positive/)
+    expect(src).not.toMatch(/--surface-positive/)
+  })
+
   it('緊急入口 .tile-emergency は面・文字色を持たず(通常面のまま)、スキャン面を上書きできる詳細度の取り違えも無い', () => {
     const body = blocksOf('.tile-emergency')
     expect(body).not.toMatch(/background|color:|--urgent|--emergency-tile/)
