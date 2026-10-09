@@ -243,7 +243,7 @@ describe('Issue #91: 「閉じる」は右上の角に固定(静的)', () => {
     expect(wide).toEqual([['title', 'emergency', 'close']])
   })
 
-  it('広い幅への切替は文字サイズに追従する container query(em)で、container は .caregiver-header', () => {
+  it('広い幅への切替は、ブラウザ既定の文字サイズに追従する container query(em。アプリの文字サイズ設定は介助者メニューに影響しない)で、container は .caregiver-header', () => {
     expect(ruleBody('.caregiver-header')).toMatch(/container-type:\s*inline-size/)
     expect(css).toMatch(/@container\s*\(min-width:\s*[\d.]+em\)/)
   })
@@ -256,6 +256,9 @@ describe('Issue #91: 「閉じる」は右上の角に固定(静的)', () => {
     const closeBodies = allRuleBodies('.caregiver-header .caregiver-close')
     expect(closeBodies.join('\n')).toMatch(/grid-area:\s*close/)
     for (const b of closeBodies) expect(b).not.toMatch(/margin|position|transform|justify-self/)
+    // 見出しが折り返して 1 行目が伸びても、閉じるは中央に下がらず 1 行目の上端(右上の角)に固定する
+    expect(closeBodies.join('\n')).toMatch(/align-self:\s*start/)
+    for (const b of closeBodies) expect(b).not.toMatch(/align-self:\s*(?!start)\S/)
   })
 })
 

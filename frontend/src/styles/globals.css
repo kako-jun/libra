@@ -848,7 +848,8 @@ h1[data-fit='single'] {
    Issue #91: 「閉じる」はどの幅でもパネル右上の角(padding の内側)に固定する。flex-wrap の落ち方には頼らず、
    grid-template-areas で明示する。DOM 順は 見出し → 緊急解除 → 閉じる のまま(Tab 順を変えない)。
    幅に余裕がある(ヘッダが 28em 以上)ときは 1 行 [見出し | 緊急解除 | 閉じる]、足りないときは
-   1 行目 [見出し | 閉じる]・2 行目 [緊急解除] にする。em なので文字サイズ設定に追従する。 */
+   1 行目 [見出し | 閉じる]・2 行目 [緊急解除] にする。em はブラウザ既定の文字サイズに追従する(アプリの文字サイズ設定は介助者メニューに影響しないので、標準と特大で切替幅は同じ)。
+   「閉じる」は align-self: start で、見出しが折り返しても 1 行目の上端(パネルの右上の角)に固定する。 */
 .caregiver-header {
   flex: none;
   container-type: inline-size;
@@ -876,6 +877,7 @@ h1[data-fit='single'] {
 
 .caregiver-header .caregiver-close {
   grid-area: close;
+  align-self: start;
 }
 
 @container (min-width: 28em) {
