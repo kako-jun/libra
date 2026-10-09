@@ -201,7 +201,7 @@ describe('編集しても戻る・緊急の位置が固定される(安全の優
       emergencyActive: false,
       phrases,
     })
-    expect(moodRequest.find((i) => i.id === 'requests-nav')?.preview).toBe('テレビ…')
+    expect(moodRequest.find((i) => i.id === 'requests-nav')?.preview).toBe('テレビ')
   })
 })
 

@@ -87,6 +87,13 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(decl(joined, 'white-space')).toBe('normal')
   })
 
+  it('2行モードの予告は word-break: keep-all を持たない(項目の途中で折り返してよい。文字数を詰める方針、#82)', () => {
+    const joined = bodiesOf(previewBlocks()[0].body, '.tile-preview').join('\n')
+    // 「・」でだけ折り返す方式は見える文字数が平均 -1.71 文字減るため採用しない(再導入を検知する)
+    expect(joined).not.toMatch(/word-break/)
+    expect(joined).not.toMatch(/overflow-wrap/)
+  })
+
   it('予告の2行化と、ラベルの避け領域(margin-bottom)拡大が「同じ @container ブロック」にある', () => {
     const block = previewBlocks()[0]
     const labels = bodiesOf(block.body, '.tile-nav .tile-label')
@@ -94,9 +101,10 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     const mb = decl(labels.join('\n'), 'margin-bottom')
     expect(mb).toBeDefined()
     // 予告1行ぶん(行高 1.1 × 予告の font-size)が加算されている。足す項は、ベースの
-    // .tile-preview の font-size の式と(空白を畳んで)同じ文字列であること(1.1 * 0.5rem 等の取り違えを許さない)
+    // .tile-preview の font-size と同じ変数(--tile-preview-font。式は .tile で1か所だけ定義)であること
+    // (1.1 * 0.5rem 等の取り違えを許さない)
     const previewFont = decl(bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n'), 'font-size')
-    expect(previewFont).toBeDefined()
+    expect(previewFont).toBe('var(--tile-preview-font)')
     const squash = (x: string): string => x.replace(/\s+/g, '')
     expect(squash(mb ?? '')).toContain(`1.1*${squash(previewFont ?? '')}`)
     expect(mb).toMatch(/clamp\(22px,\s*20cqb,\s*48px\)/)
@@ -107,15 +115,46 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(others).toEqual([])
   })
 
-  it('@container 内の .tile-preview は、ラベルと同じ山形アイコン避け(右側 clamp(20px, 12cqi, 36px))を持つ', () => {
+  it('@container 内の .tile-preview は右側 padding でアイコンを避けない(全幅で使う。Issue #82)', () => {
     const joined = bodiesOf(previewBlocks()[0].body, '.tile-preview').join('\n')
-    const avoid = 'clamp(20px, 12cqi, 36px)'
-    expect(decl(joined, 'padding-right')).toBe(avoid)
-    // ラベル側(ベース)の避け幅と同じ式であること
-    const label = bodiesOf(withoutContainerBlocks(css), '.tile-nav .tile-label').join('\n')
-    expect(decl(label, 'margin-right')).toBe(avoid)
-    // 予告の位置(right)は変えない
+    // 全行の右側を空けると、アイコンの高さに届かない2行目まで文字2〜3つ分の幅を失う
+    expect(joined).not.toMatch(/padding/)
+    // 予告の位置(right)も変えない
     expect(joined).not.toMatch(/(^|[;\s])right:/)
+    // ラベルの避け幅(ベース)は従来どおり
+    const label = bodiesOf(withoutContainerBlocks(css), '.tile-nav .tile-label').join('\n')
+    expect(decl(label, 'margin-right')).toBe('clamp(20px, 12cqi, 36px)')
+  })
+
+  it('2行モードでは山形アイコンの中心が min(50%, 予告の上端 − アイコン高さの半分) になり、1行目と縦に重ならない(Issue #82)', () => {
+    const chevrons = bodiesOf(previewBlocks()[0].body, '.tile-chevron')
+    expect(chevrons.length).toBe(1)
+    const top = (decl(chevrons[0], 'top') ?? '').replace(/\s+/g, '')
+    expect(top.startsWith('min(50%,')).toBe(true)
+    // 予告2行ぶん(行高1.1 × 2 × 予告の font-size)を、ベースと同じ変数 --tile-preview-font で引く
+    const previewFont = decl(bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n'), 'font-size') ?? ''
+    const squash = (x: string): string => x.replace(/\s+/g, '')
+    expect(squash(previewFont)).toBe('var(--tile-preview-font)')
+    expect(top).toContain(`2.2*${squash(previewFont)}`)
+    expect(top).toContain('100%-var(--scan-ring-inset)')
+    // アイコンと予告の上端の間に 1〜2px の余白を残す(DPR や丸めが違っても行の矩形が交差しない)
+    const gap = top.match(/-(\d+(?:\.\d+)?)px\)\)$/)
+    expect(gap).not.toBeNull()
+    expect(Number(gap?.[1])).toBeGreaterThanOrEqual(1)
+    expect(Number(gap?.[1])).toBeLessThanOrEqual(2)
+    // アイコン高さの半分 = 幅 clamp(14px, 9cqi, 28px) × 0.6(viewBox 24/20 の半分)
+    const base = bodiesOf(withoutContainerBlocks(css), '.tile-chevron').join('\n')
+    expect(decl(base, 'width')).toBe('clamp(14px, 9cqi, 28px)')
+    expect(top).toContain('0.6*clamp(14px,9cqi,28px)')
+    // アイコンの中心の基準 top:50% と translateY(-50%) はベースのまま
+    expect(decl(base, 'top')).toBe('50%')
+    expect(decl(base, 'transform')).toBe('translateY(-50%)')
+  })
+
+  it('.tile-preview は align-self: end で下端を明示する(エンジン差の保険。Issue #82)', () => {
+    const base = bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n')
+    expect(decl(base, 'align-self')).toBe('end')
+    expect(decl(base, 'bottom')).toBe('var(--scan-ring-inset)')
   })
 
   it('ベース(@container の外)の .tile-preview は 1行+省略のまま', () => {
@@ -146,8 +185,14 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
   it('予告の font-size(ラベルの50%の式)と色は @container 内で上書きされない', () => {
     const joined = bodiesOf(previewBlocks()[0].body, '.tile-preview').join('\n')
     expect(joined).not.toMatch(/font-size|(^|[;\s])color:/)
-    // ベース側は式が維持されている
+    // ベース側は変数を参照し、その式(ラベルの50%・最小 0.85rem 相当)は .tile に1か所だけある
     const base = bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n')
-    expect(decl(base, 'font-size')).toMatch(/0\.5\s*\*\s*var\(--tile-label-font\)/)
+    expect(decl(base, 'font-size')).toBe('var(--tile-preview-font)')
+    const def = decl(bodiesOf(css, '.tile').join('\n'), '--tile-preview-font')
+    expect(def).toMatch(/0\.5\s*\*\s*var\(--tile-label-font\)/)
+    expect(def).toMatch(/0\.85rem/)
+    expect(css.match(/--tile-preview-font:/g)?.length).toBe(1)
+    // 式の写し(var を使わず直接書く)が他に残っていない
+    expect(css.match(/0\.5\s*\*\s*var\(--tile-label-font\)/g)?.length).toBe(1)
   })
 })

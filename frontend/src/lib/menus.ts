@@ -177,10 +177,12 @@ function message(id: string, label: string, text: string, tone?: Tone): MenuItem
   return { id, label, tone, action: { type: 'message', text, tone } }
 }
 
-const PREVIEW_ITEM_COUNT = 4
+const PREVIEW_ITEM_COUNT = 6
 
 /** 遷移先メニューの中身の予告テキストを自動生成する。緊急・戻るは除き、
- *  先頭から数項目のラベルを「・」で繋いで末尾に「…」を付ける。ハードコードしない
+ *  項目数が PREVIEW_ITEM_COUNT 以下なら全項目のラベルを「・」で繋ぐ(「…」は付けない)。
+ *  超えるときだけ先頭 PREVIEW_ITEM_COUNT 項目＋末尾に「…」(本当に省略したときだけ付ける。Issue #74)。
+ *  遷移項目(要望・気分など)も名前で並べる(矢印は付けない)。ハードコードしない
  *  ことで menus.ts の項目定義を変更しても自動で追従する。 */
 function buildPreview(screen: ScreenId, phrases?: PhraseSets): string {
   const items = buildMenu(screen, { showUndo: false, emergencyActive: false, phrases })
@@ -188,6 +190,7 @@ function buildPreview(screen: ScreenId, phrases?: PhraseSets): string {
     .filter((item) => item.action.type !== 'emergency' && item.action.type !== 'back')
     .map((item) => item.label)
   if (contentLabels.length === 0) return ''
+  if (contentLabels.length <= PREVIEW_ITEM_COUNT) return contentLabels.join('・')
   return `${contentLabels.slice(0, PREVIEW_ITEM_COUNT).join('・')}…`
 }
 
