@@ -334,3 +334,26 @@ describe('saveSettings', () => {
     })
   })
 })
+
+describe('#77: 旧い tone(positive / calm)を含む設定', () => {
+  const legacy = {
+    moodRequest: [
+      { id: 'a', label: 'あ', text: 'あ。', tone: 'positive' },
+      { id: 'b', label: 'い', text: 'い。', tone: 'calm' },
+    ],
+  }
+
+  it('書き出し JSON の取り込みは失敗せず、tone は neutral(なし)になる', () => {
+    const text = JSON.stringify({ app: 'libra', version: 1, phrases: legacy })
+    const result = parseSettingsJson(text)
+    expect(result).not.toBeNull()
+    expect(result?.phrases.moodRequest?.map((p) => p.tone)).toEqual([undefined, undefined])
+  })
+
+  it('localStorage の旧い保存値も読み込めて neutral になる', () => {
+    localStorage.setItem('libra', JSON.stringify({ phrases: legacy }))
+    const loaded = loadSettings()
+    expect(loaded.phrases.moodRequest).toHaveLength(2)
+    expect(loaded.phrases.moodRequest?.every((p) => p.tone === undefined)).toBe(true)
+  })
+})

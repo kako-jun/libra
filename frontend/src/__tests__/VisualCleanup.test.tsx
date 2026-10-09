@@ -197,9 +197,9 @@ describe('Issue #33/#36: 4テーマのトークン定義とコントラスト', 
       }
     })
 
-    it(`${name}: スキャン中の面は通常タイル面(--surface/-calm/-positive)のどれとも同色でなく、明確に異なる`, () => {
+    it(`${name}: スキャン中の面は通常タイル面(--surface。全タイル同色, #77)と同色でなく、明確に異なる`, () => {
       const scan = effective(theme, hc, '--surface-scanning') as string
-      for (const s of ['--surface', '--surface-calm', '--surface-positive']) {
+      for (const s of ['--surface']) {
         const face = effective(theme, hc, s) as string
         expect(scan.toLowerCase(), `${name} ${s}`).not.toBe(face.toLowerCase())
         expect(
@@ -258,6 +258,14 @@ describe('Issue #36: 赤(--urgent-bg)の使用箇所は上部メッセージ欄�
 
   it('.tile-urgent は CSS にルールを持たない(tone:urgent のタイルは通常面)', () => {
     expect(stripComments(css)).not.toMatch(/\.tile-urgent/)
+  })
+
+  it('肯定・穏やかのトーンは復活しない(#77: .tile-positive / .tile-calm / data-message-tone=positive / --surface-positive が CSS に無い)', () => {
+    const src = stripComments(css)
+    expect(src).not.toMatch(/\.tile-positive/)
+    expect(src).not.toMatch(/\.tile-calm/)
+    expect(src).not.toMatch(/data-message-tone=['"]?positive/)
+    expect(src).not.toMatch(/--surface-positive/)
   })
 
   it('緊急入口 .tile-emergency は面・文字色を持たず(通常面のまま)、スキャン面を上書きできる詳細度の取り違えも無い', () => {

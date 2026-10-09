@@ -1644,13 +1644,12 @@ describe('App', () => {
     expect(oscillatorStartCount).toBe(0)
   })
 
-  it('nit: 取り消しで戻したメッセージのトーン(緊急以外)も復元される', () => {
+  it('取り消しで戻したメッセージも復元され、トーンは neutral のまま(#77: はいは肯定扱いしない)', () => {
     const { container } = render(() => <App />)
-    // 「はい」(positive) を表示させてから「いいえ」(neutral)を選ぶと、取り消しで
-    // 「はい」のトーン(positive)まで復元されるべき
+    // 「はい」を表示させてから「いいえ」を選び、取り消すと「はい」に戻る(トーンはどちらも neutral)
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
-    fireEvent.keyDown(window, { key: ' ' }) // はい(positive) → home
-    expect(document.documentElement.dataset.messageTone).toBe('positive')
+    fireEvent.keyDown(window, { key: ' ' }) // はい → home
+    expect(document.documentElement.dataset.messageTone).toBe('neutral')
 
     // home(取り消しあり): 0緊急,1取り消し,2はい,3いいえ,...
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // index3=いいえ
@@ -1662,7 +1661,7 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('取り消し')
     fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 「はい」に戻る
     expect(h1Text(container)).toBe('はい。')
-    expect(document.documentElement.dataset.messageTone).toBe('positive')
+    expect(document.documentElement.dataset.messageTone).toBe('neutral')
   })
 
   it('Issue #5: 介助者メニューに Wake Lock 取得中の状態が表示される', () => {

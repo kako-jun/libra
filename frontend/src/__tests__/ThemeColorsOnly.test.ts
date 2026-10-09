@@ -77,9 +77,9 @@ const DIMENSION_TOKENS = [
 ]
 
 describe('Issue #65: テーマのブロックは色トークンだけ', () => {
-  it('テーマのブロックが明るい・夜間・明るい×肯定色調・各テーマ×高コントラストの5つあり、解析できている(検査が空振りしない)', () => {
+  it('テーマのブロックが明るい・夜間・各テーマ×高コントラストの4つあり、解析できている(検査が空振りしない)', () => {
     const themeRules = parseRules(css).filter(isThemeRule)
-    expect(themeRules.length).toBe(5)
+    expect(themeRules.length).toBe(4)
     const sels = themeRules.map((r) => r.selector)
     expect(sels).toContain(":root, :root[data-theme='light']")
     expect(sels).toContain(":root[data-theme='dark']")
