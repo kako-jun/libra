@@ -1450,10 +1450,14 @@ async function checkIssue37SmallViewport(chromium, port) {
   return failures
 }
 
-// Issue #81 M1: パンくずの祖先は押して戻るボタン(#69)。16px の文字が狭い画面の深い階層で
-// 「…」に省略されると名前が読めず使えない。収まらないときは折り返し、省略(text-overflow)しない。
-// 深い階層(痛みの強さ・文字盤の行)で、全 li と button が scrollWidth <= clientWidth、
-// 各 li の computed font-size が 16px 以上であることを、320x568 と 360x640 で実描画で測る。
+// Issue #81 M1/S1: パンくずの祖先は押して戻るボタン(#69)。16px の文字が狭い画面の深い階層や、
+// 介助者が付けた長い自作ラベル(最大 20 字)で「…」に省略されたり、介助者ボタンの下へはみ出して
+// 読めなくなってはならない。収まらないときは折り返し、省略(text-overflow)しない。
+// 実描画で次を測る: (i) 列(ul)が scrollWidth <= clientWidth、(ii) 各 li の右端が .screen-guide-copy の右端以内、
+// (iii) li と介助者ボタン、(iv) li と h2 の矩形が重ならない、(v) 各 li の computed font-size が 16px 以上、
+// (vi) 折り返した祖先ボタンを押すと正しい画面へ移動する(#69)、(vii) 縦スクロールが出ない。
+// li 自身は overflow を持たないので li.scrollWidth だけでは「列からのはみ出し」を拾えない。
+const LONG_PAIN_LABEL = '右の脇腹から背中にかけての奥のあたり'
 async function checkBreadcrumbNotTruncated(chromium, port) {
   const server = await startServer(DIST_DIR, 'plain', port)
   const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
@@ -1464,12 +1468,28 @@ async function checkBreadcrumbNotTruncated(chromium, port) {
     for (const [width, height] of [
       [320, 568],
       [360, 640],
+      [390, 844],
     ]) {
       const page = await browser.newPage({ viewport: { width, height } })
-      await page.addInitScript(() => {
-        localStorage.setItem('libra', JSON.stringify({ intervalMs: 600000 }))
-      })
-      await page.goto(`http://localhost:${port}/`)
+      await page.addInitScript((label) => {
+        localStorage.setItem(
+          'libra',
+          JSON.stringify({
+            intervalMs: 600000,
+            phrasesVersion: 1,
+            phrases: {
+              painLocation: [
+                { id: 'long', label, text: '脇腹が痛いです。' },
+                { id: 'chest', label: '胸', text: '胸が痛いです。' },
+              ],
+            },
+          }),
+        )
+      }, LONG_PAIN_LABEL)
+      const home = async () => {
+        await page.goto(`http://localhost:${port}/`)
+        await page.evaluate(() => document.fonts.ready)
+      }
       const open = async (label) => {
         await page
           .locator('.tile', {
@@ -1480,35 +1500,78 @@ async function checkBreadcrumbNotTruncated(chromium, port) {
         await page.waitForTimeout(500)
       }
       const measure = async (caseName, expected) => {
+        await page.evaluate(() => document.fonts.ready)
         const r = await page.evaluate(() => {
-          const lis = [...document.querySelectorAll('.screen-breadcrumb li')]
-          return lis.map((li) => {
-            const button = li.querySelector('button')
-            return {
-              text: li.textContent,
-              liCut: li.scrollWidth > li.clientWidth,
-              buttonCut: button ? button.scrollWidth > button.clientWidth : false,
-              fontSize: parseFloat(getComputedStyle(li).fontSize),
-            }
-          })
+          const ul = document.querySelector('.screen-breadcrumb')
+          const copy = document.querySelector('.screen-guide-copy')
+          const control = document.querySelector('.screen-guide .message-panel-controls button')
+          const h2 = document.querySelector('.screen-guide h2')
+          const copyRight = copy.getBoundingClientRect().right
+          const hit = (a, b) =>
+            a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+          const controlRect = control.getBoundingClientRect()
+          const h2Rect = h2.getBoundingClientRect()
+          return {
+            ulOverflow: ul.scrollWidth - ul.clientWidth,
+            vScroll: document.documentElement.scrollHeight - innerHeight,
+            lis: [...ul.querySelectorAll('li')].map((li) => {
+              const rect = li.getBoundingClientRect()
+              const button = li.querySelector('button')
+              return {
+                text: li.textContent,
+                liCut: li.scrollWidth > li.clientWidth,
+                buttonCut: button ? button.scrollWidth > button.clientWidth : false,
+                outside: rect.right > copyRight + 0.5,
+                overControl: hit(rect, controlRect),
+                overH2: hit(rect, h2Rect),
+                fontSize: parseFloat(getComputedStyle(li).fontSize),
+              }
+            }),
+          }
         })
         const tag = `[breadcrumb ${width}x${height} ${caseName}]`
-        if (JSON.stringify(r.map((x) => x.text)) !== JSON.stringify(expected)) {
-          failures.push(`${tag} unexpected path ${JSON.stringify(r.map((x) => x.text))}`)
+        const texts = r.lis.map((x) => x.text)
+        if (JSON.stringify(texts) !== JSON.stringify(expected)) {
+          failures.push(`${tag} unexpected path ${JSON.stringify(texts)}`)
         }
-        for (const x of r) {
+        if (r.ulOverflow > 0) failures.push(`${tag} list overflows its column by ${r.ulOverflow}px`)
+        if (r.vScroll > 0) failures.push(`${tag} page scrolls vertically by ${r.vScroll}px`)
+        for (const x of r.lis) {
           if (x.liCut || x.buttonCut) failures.push(`${tag} "${x.text}" is truncated`)
+          if (x.outside) failures.push(`${tag} "${x.text}" sticks out of the guide column`)
+          if (x.overControl) failures.push(`${tag} "${x.text}" overlaps the caregiver button`)
+          if (x.overH2) failures.push(`${tag} "${x.text}" overlaps the heading`)
           if (x.fontSize < 16) failures.push(`${tag} "${x.text}" font-size ${x.fontSize}px < 16px`)
         }
       }
+      await home()
       await open('不快')
       await open('痛い')
       await open('胸')
       await measure('painIntensity', ['ホーム', '不快', '胸', '痛みの強さ'])
-      await page.goto(`http://localhost:${port}/`)
+      await home()
       await open('文字盤')
       await open('あ行')
       await measure('lettersRow', ['ホーム', '文字盤', 'あ行', '文字盤・文字'])
+      if (width !== 360) {
+        // 介助者が付けた 18 字の自作ラベル。1 項目だけで列に入りきらないので、その項目の中で折り返す
+        await home()
+        await open('不快')
+        await open('痛い')
+        await open(LONG_PAIN_LABEL)
+        await measure('longLabel', ['ホーム', '不快', LONG_PAIN_LABEL, '痛みの強さ'])
+        // 折り返した祖先もボタンのまま押せて、痛い場所の選択画面へ戻る(#69)
+        await page.locator('.screen-breadcrumb .breadcrumb-link', { hasText: '右の脇腹' }).click()
+        await page.waitForTimeout(500)
+        const crumbs = await page.evaluate(() =>
+          [...document.querySelectorAll('.screen-breadcrumb li')].map((li) => li.textContent),
+        )
+        if (JSON.stringify(crumbs) !== JSON.stringify(['ホーム', '不快', '痛い場所'])) {
+          failures.push(
+            `[breadcrumb ${width}x${height} longLabel click] unexpected path ${JSON.stringify(crumbs)}`,
+          )
+        }
+      }
       await page.close()
     }
   } catch (error) {
