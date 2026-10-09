@@ -334,8 +334,8 @@ async function checkLettersScrollLayout(chromium, port) {
       await page.goto(base)
       await page.waitForTimeout(300)
 
-      // home: index5 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(3000 + 4 * 1500 + 150)
+      // home: index6 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
+      await page.waitForTimeout(3000 + 5 * 1500 + 150)
       await page.keyboard.press('Space')
       await page.waitForTimeout(200)
 
@@ -487,8 +487,8 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       await page.waitForTimeout(700)
       await checkScreen(page, name, 'home')
 
-      // home: index5 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(3000 + 4 * 1500 + 150)
+      // home: index6 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
+      await page.waitForTimeout(3000 + 5 * 1500 + 150)
       await page.keyboard.press('Space')
       await page.waitForTimeout(300)
       await checkScreen(page, name, 'letters')
@@ -678,9 +678,9 @@ async function checkLabelsFitAtXlarge(chromium, port) {
       )
       await page.goto(base)
       await page.waitForTimeout(300)
-      // home: index3 = 不快(先頭待機5000ms、以降intervalMs=5000msごとに進む。addInitScriptで
+      // home: index4 = 不快(先頭待機5000ms、以降intervalMs=5000msごとに進む。addInitScriptで
       // intervalMsを伸ばし、タイミングのブレでずれないようにしている)
-      await page.waitForTimeout(5000 + 2 * 5000 + 200)
+      await page.waitForTimeout(5000 + 3 * 5000 + 200)
       await page.keyboard.press('Space')
       await page.waitForTimeout(300)
 
@@ -1079,9 +1079,9 @@ async function checkBackNavigationAndEmergencyRetention(chromium, port) {
       ['discomfortOther', ['不快', 'その他']],
       ['painLocation', ['不快', '痛い']],
       ['painIntensity', ['不快', '痛い', '頭']],
-      ['moodRequest', ['快・要望']],
-      ['requests', ['快・要望', '要望']],
-      ['feelings', ['快・要望', '気分']],
+      ['comfort', ['快']],
+      ['requests', ['要望']],
+      ['feelings', ['快', '気分']],
       ['letters', ['文字盤']],
       ['lettersRow', ['文字盤', 'あ行']],
       ['lettersYesNo', ['文字盤', 'はい・いいえ']],
@@ -1163,7 +1163,7 @@ async function checkFontSizeMonotonicity(chromium, port) {
   const browser = await chromium.launch(executablePath ? { executablePath } : undefined)
   const failures = []
 
-  // ホーム(緊急/はい/いいえ/不快/快要望/文字盤)から数字キーで各画面へ直接ジャンプする。
+  // ホーム(緊急/はい/いいえ/快/不快/要望/文字盤)から数字キーで各画面へ直接ジャンプする。
   // インデックスは menus.ts の並び(先頭は常に緊急)に対応する
   const VPS = [
     [320, 568],
@@ -1180,17 +1180,17 @@ async function checkFontSizeMonotonicity(chromium, port) {
   const SCREENS = [
     ['home', []],
     ['home+undo', ['3']],
-    ['discomfort', ['4']],
-    ['discomfortOther', ['4', '8']],
-    ['moodRequest', ['5']],
-    ['requests', ['5', '7']],
-    ['feelings', ['5', '8']],
-    ['pain', ['4', '3']],
-    ['painIntensity', ['4', '3', '4']],
+    ['discomfort', ['5']],
+    ['discomfortOther', ['5', '8']],
+    ['comfort', ['4']],
+    ['requests', ['6']],
+    ['feelings', ['4', '6']],
+    ['pain', ['5', '3']],
+    ['painIntensity', ['5', '3', '4']],
     ['urgentDetail', ['1']],
     ['emerg5(緊急中ホーム)', ['1', '3', '1', '4', '1', '5', '1', '6', '1', '7']],
-    ['letters', ['6']],
-    ['letters-a', ['6', '2']],
+    ['letters', ['7']],
+    ['letters-a', ['7', '2']],
   ]
   // PR#16 4巡目 must-F: --tile-label-font の絶対下限(clamp() の最小値、1.05rem)。
   // セルが小さすぎて label-ratio を上げても既にこの下限に張り付いている場合、

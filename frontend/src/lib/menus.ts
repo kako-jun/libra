@@ -20,7 +20,7 @@ export type ScreenId =
   | 'discomfortOther'
   | 'painLocation'
   | 'painIntensity'
-  | 'moodRequest'
+  | 'comfort'
   | 'requests'
   | 'feelings'
   | 'letters'
@@ -36,7 +36,7 @@ export const PATIENT_SCREEN_IDS: readonly ScreenId[] = [
   'discomfortOther',
   'painLocation',
   'painIntensity',
-  'moodRequest',
+  'comfort',
   'requests',
   'feelings',
   'letters',
@@ -76,9 +76,10 @@ export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   discomfortOther: 'discomfort',
   painLocation: 'discomfort',
   painIntensity: 'painLocation',
-  moodRequest: 'home',
-  requests: 'moodRequest',
-  feelings: 'moodRequest',
+  comfort: 'home',
+  // 要望はホームから直接開く(Issue #93)。気分は快の下
+  requests: 'home',
+  feelings: 'comfort',
   letters: 'home',
   lettersRow: 'letters',
   lettersYesNo: 'letters',
@@ -92,7 +93,7 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   discomfortOther: '不快・その他',
   painLocation: '痛い場所',
   painIntensity: '痛みの強さ',
-  moodRequest: '快・要望',
+  comfort: '快',
   requests: '要望',
   feelings: '気分',
   letters: '文字盤',
@@ -142,7 +143,7 @@ export const SCREEN_GUIDANCE: Record<ScreenId, string> = {
   discomfortOther: 'つらいことを選んでください。',
   painLocation: '痛い場所を選んでください。',
   painIntensity: '痛みの強さを選んでください。',
-  moodRequest: '今していることへの希望を選んでください。',
+  comfort: '今していることへの希望を選んでください。',
   requests: 'してほしいことを選んでください。',
   feelings: '今の気持ちを選んでください。',
   letters: '文字の行を選んでください。',
@@ -249,8 +250,11 @@ export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
     ...(showUndo ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem] : []),
     message('yes', 'はい', 'はい。'),
     message('no', 'いいえ', 'いいえ。'),
+    // 並びは 快 → 不快 → 要望(Issue #93)。続けて・やめて・変えて(質問への受動の答え)を
+    // 先に、要望(会話寄り)を後ろに置く
+    navigate('comfort-nav', '快', 'comfort', options.phrases),
     navigate('discomfort-nav', '不快', 'discomfort', options.phrases),
-    navigate('mood-nav', '快・要望', 'moodRequest', options.phrases),
+    navigate('requests-nav', '要望', 'requests', options.phrases),
     navigate('letters-nav', '文字盤', 'letters'),
     // 上級者向けの逃げ道。文字盤より後ろ(優先度は最下位)
     ...(options.morseEnabled ? [navigate('morse-nav', 'モールス', 'morse')] : []),
@@ -328,26 +332,29 @@ export function buildPainIntensityMenu(pain?: PainChoice): MenuItem[] {
 }
 
 /**
- * 快・要望(Issue #12): 二値の入口「続けて・やめて・変えて」を最上位に置き(「もっと」は「続けて」と意味が同じため置かない。Issue #78)、
- * これまでの要望は「要望 →」、気分(不安・さみしい・落ち着かない)は「気分 →」に2段階化する。
+ * 快(Issue #12 で「快・要望」として導入、Issue #93 で「快」と「要望」に分離): 二値の入口「続けて・やめて・変えて」を
+ * 最上位に置き(「もっと」は「続けて」と意味が同じため置かない。Issue #78)、気分(不安・さみしい・落ち着かない)は
+ * 「気分 →」に置く。要望はホーム直下の別画面(buildRequestsMenu)で、ここには入口を置かない。
  * 続けて/やめて/変えて は、はい・いいえと同じく編集できない固定項目。
  */
-export function buildMoodRequestMenu(phrases?: PhraseSets): MenuItem[] {
+export function buildComfortMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen([
     message('continue', '続けて', '続けてください。'),
     message('stop', 'やめて', 'やめてください。'),
     message('change', '変えて', '変えてください。'),
-    navigate('requests-nav', '要望', 'requests', phrases),
     navigate('feelings-nav', '気分', 'feelings', phrases),
   ])
 }
 
-/** 快・要望 → 要望(大丈夫・ありがとう・眠りたい…)。介助者が編集できる */
+/**
+ * 要望(大丈夫・ありがとう・眠りたい…)。ホーム直下(Issue #93)。介助者が編集できる。
+ * 保存キー名 `moodRequest` は、この「要望」のフレーズグループ(画面ID `requests`)。画面ID `comfort`(快)ではない。
+ */
 export function buildRequestsMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen(phraseItems('moodRequest', phrases))
 }
 
-/** 快・要望 → 気分(不安・さみしい・落ち着かない)。介助者が編集できる */
+/** 快 → 気分(不安・さみしい・落ち着かない)。介助者が編集できる */
 export function buildFeelingsMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen(phraseItems('feelings', phrases))
 }
@@ -420,8 +427,8 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
       return buildPainLocationMenu(homeOptions.phrases)
     case 'painIntensity':
       return buildPainIntensityMenu(homeOptions.pain)
-    case 'moodRequest':
-      return buildMoodRequestMenu(homeOptions.phrases)
+    case 'comfort':
+      return buildComfortMenu(homeOptions.phrases)
     case 'requests':
       return buildRequestsMenu(homeOptions.phrases)
     case 'feelings':

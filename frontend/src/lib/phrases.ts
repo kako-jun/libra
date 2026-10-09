@@ -1,4 +1,4 @@
-// 定型フレーズ(不快・快/要望・痛い場所)の既定値と、介助者による編集内容の検証。
+// 定型フレーズ(不快・快・要望・痛い場所)の既定値と、介助者による編集内容の検証。
 // 正本: docs/requirements.md §4.4, §4.5, §6 / Issue #8
 //
 // ここで編集できるのは「伝達メッセージ」の項目だけ。緊急・戻る・はい・いいえ・下位画面への
@@ -38,7 +38,8 @@ export const PHRASE_GROUP_LABELS: Record<PhraseGroup, string> = {
   discomfort: '不快',
   discomfortOther: '不快・その他',
   painLocation: '痛い場所',
-  // 快・要望の中の「要望 →」。快・要望の最上位(続けて/やめて/変えて)は編集できない固定項目
+  // 保存キー名 `moodRequest` は「要望」のフレーズグループ(画面ID `requests`)。保存済み設定を壊さないため
+  // キー名は変えない(Issue #93 で画面ID `moodRequest` は `comfort`(快)へ改名した)。快の続けて/やめて/変えては編集できない固定項目
   moodRequest: '要望',
   feelings: '気分',
 }

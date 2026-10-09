@@ -27,9 +27,9 @@ describe('buildMenu の共通規則', () => {
       discomfortOther: ['ホーム', '不快', '不快・その他'],
       painLocation: ['ホーム', '不快', '痛い場所'],
       painIntensity: ['ホーム', '不快', '痛い場所', '痛みの強さ'],
-      moodRequest: ['ホーム', '快・要望'],
-      requests: ['ホーム', '快・要望', '要望'],
-      feelings: ['ホーム', '快・要望', '気分'],
+      comfort: ['ホーム', '快'],
+      requests: ['ホーム', '要望'],
+      feelings: ['ホーム', '快', '気分'],
       letters: ['ホーム', '文字盤'],
       lettersRow: ['ホーム', '文字盤', '文字盤・文字'],
       lettersYesNo: ['ホーム', '文字盤', '文字盤・はい/いいえ'],
@@ -110,7 +110,7 @@ describe('本人画面の階層構造', () => {
     'discomfortOther',
     'painLocation',
     'painIntensity',
-    'moodRequest',
+    'comfort',
     'requests',
     'feelings',
     'letters',
@@ -125,9 +125,9 @@ describe('本人画面の階層構造', () => {
     discomfortOther: 'discomfort',
     painLocation: 'discomfort',
     painIntensity: 'painLocation',
-    moodRequest: 'home',
-    requests: 'moodRequest',
-    feelings: 'moodRequest',
+    comfort: 'home',
+    requests: 'home',
+    feelings: 'comfort',
     letters: 'home',
     lettersRow: 'letters',
     lettersYesNo: 'letters',
@@ -227,7 +227,7 @@ describe('戻る先(PARENT_SCREEN)', () => {
     expect(PARENT_SCREEN.discomfortOther).toBe('discomfort')
   })
 
-  it.each(['urgentDetail', 'moodRequest', 'letters'] as const)('%s の戻る先は home', (screen) => {
+  it.each(['urgentDetail', 'comfort', 'requests', 'letters'] as const)('%s の戻る先は home', (screen) => {
     expect(PARENT_SCREEN[screen]).toBe('home')
   })
 
@@ -237,29 +237,41 @@ describe('戻る先(PARENT_SCREEN)', () => {
 })
 
 describe('ホームの並び順(安全の優先順位 §2 の回帰テスト)', () => {
-  it('緊急→取り消し→はい→いいえ→不快→快・要望→文字盤の順になる', () => {
+  it('緊急→取り消し→はい→いいえ→快→不快→要望→文字盤の順になる(Issue #93)', () => {
     const items = buildHomeMenu({ showUndo: true, emergencyActive: false })
     expect(items.map((item) => item.label)).toEqual([
       '緊急',
       '取り消し',
       'はい',
       'いいえ',
+      '快',
       '不快',
-      '快・要望',
+      '要望',
       '文字盤',
     ])
   })
 
-  it('取り消しなしのときは緊急→はい→いいえ→不快→快・要望→文字盤の順になる', () => {
+  it('取り消しなしのときは緊急→はい→いいえ→快→不快→要望→文字盤の順になる(Issue #93)', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
     expect(items.map((item) => item.label)).toEqual([
       '緊急',
       'はい',
       'いいえ',
+      '快',
       '不快',
-      '快・要望',
+      '要望',
       '文字盤',
     ])
+  })
+
+  it('要望はホームから直接開く(階層を増やさない)。快の中に要望の入口はない(Issue #93)', () => {
+    const home = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    expect(home.find((i) => i.id === 'requests-nav')?.action).toEqual({
+      type: 'navigate',
+      screen: 'requests',
+    })
+    const comfort = buildMenu('comfort', { showUndo: false, emergencyActive: false })
+    expect(comfort.some((i) => i.label === '要望')).toBe(false)
   })
 })
 
@@ -271,11 +283,17 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
     expect(discomfortTile?.preview).toBe('痛い・苦しい・痰を取ってほしい・体の向きを変えたい・トイレ・その他')
   })
 
-  it('快・要望タイルの予告は遷移先(moodRequest)から自動生成される', () => {
+  it('快タイルの予告は遷移先(comfort)から自動生成される', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
-    const moodTile = items.find((item) => item.id === 'mood-nav')
-    // 項目は5件(上限6以下)なので全項目を名前で並べ、「…」は付けない(Issue #74)
-    expect(moodTile?.preview).toBe('続けて・やめて・変えて・要望・気分')
+    const comfortTile = items.find((item) => item.id === 'comfort-nav')
+    // 項目は4件(上限6以下)なので全項目を名前で並べ、「…」は付けない(Issue #74)
+    expect(comfortTile?.preview).toBe('続けて・やめて・変えて・気分')
+  })
+
+  it('要望タイルの予告は遷移先(requests)の既定フレーズから自動生成される(Issue #93)', () => {
+    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const tile = items.find((item) => item.id === 'requests-nav')
+    expect(tile?.preview).toBe('大丈夫・ありがとう・眠りたい・静かにしてほしい・家族に会いたい・話したい')
   })
 
   it('文字盤タイルの予告は遷移先(letters)から自動生成される', () => {
@@ -285,25 +303,25 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
   })
 
   it('項目数が上限(6)以下なら全項目を並べ「…」を付けない。遷移項目も名前で並べ矢印は付けない(Issue #74)', () => {
-    const items = buildMenu('moodRequest', { showUndo: false, emergencyActive: false })
+    const items = buildMenu('comfort', { showUndo: false, emergencyActive: false })
     const sixOrLess = items.filter((i) => i.action.type !== 'emergency' && i.action.type !== 'back').length
     expect(sixOrLess).toBeLessThanOrEqual(6)
     const home = buildHomeMenu({ showUndo: false, emergencyActive: false })
-    const preview = home.find((i) => i.id === 'mood-nav')?.preview ?? ''
+    const preview = home.find((i) => i.id === 'comfort-nav')?.preview ?? ''
     expect(preview.endsWith('…')).toBe(false)
     expect(preview).not.toMatch(/→/)
   })
 
   it('ちょうど上限(6項目)は「…」なし、7項目になると先頭6項目＋「…」(Issue #74)', () => {
     const six = ['a', 'b', 'c', 'd', 'e', 'f'].map((x) => ({ id: x, label: x, text: x }))
-    const exact = buildMenu('moodRequest', {
+    const exact = buildMenu('home', {
       showUndo: false,
       emergencyActive: false,
       phrases: { moodRequest: six },
     }).find((i) => i.id === 'requests-nav')
     expect(exact?.preview).toBe('a・b・c・d・e・f')
     const seven = [...six, { id: 'g', label: 'g', text: 'g' }]
-    const over = buildMenu('moodRequest', {
+    const over = buildMenu('home', {
       showUndo: false,
       emergencyActive: false,
       phrases: { moodRequest: seven },
@@ -393,16 +411,19 @@ describe('モールス入力(Issue #14)', () => {
       '緊急',
       'はい',
       'いいえ',
+      '快',
       '不快',
-      '快・要望',
+      '要望',
       '文字盤',
       'モールス',
     ])
   })
 
-  it('取り消しが出ているときもホームは8項目以内', () => {
+  it('取り消し表示中にモールスも有効だと、ホームは9項目になる(Issue #93。2周だけの状態。格子は8セルのままスクロール)', () => {
     const items = buildMenu('home', { showUndo: true, emergencyActive: false, morseEnabled: true })
-    expect(items.length).toBeLessThanOrEqual(8)
+    expect(items).toHaveLength(9)
+    const noUndo = buildMenu('home', { showUndo: false, emergencyActive: false, morseEnabled: true })
+    expect(noUndo).toHaveLength(8)
   })
 
   it('モールス画面は戻る・緊急だけを構造として持ち、戻る先はホーム', () => {
@@ -495,15 +516,14 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     expect(PARENT_SCREEN.painIntensity).toBe('painLocation')
   })
 
-  it('快・要望: 戻る→緊急→続けて→やめて→変えて→要望→気分(7項目。余りの1セルは空きセル)', () => {
-    const items = buildMenu('moodRequest', homeOptions)
+  it('快: 戻る→緊急→続けて→やめて→変えて→気分(6項目。余りの2セルは空きセル。要望の入口は置かない)', () => {
+    const items = buildMenu('comfort', homeOptions)
     expect(items.map((i) => i.label)).toEqual([
       '戻る',
       '緊急',
       '続けて',
       'やめて',
       '変えて',
-      '要望',
       '気分',
     ])
     expect(items.length).toBeLessThanOrEqual(8)
@@ -511,7 +531,7 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
 
   it('続けて・やめて・変えて は、はい・いいえと同じく編集できない固定項目(編集内容の影響を受けない)', () => {
     const phrases = { moodRequest: [], feelings: [] }
-    const items = buildMenu('moodRequest', { ...homeOptions, phrases })
+    const items = buildMenu('comfort', { ...homeOptions, phrases })
     expect(items.slice(2, 5).map((i) => i.label)).toEqual(['続けて', 'やめて', '変えて'])
     const texts = items.slice(2, 5).map((i) => (i.action.type === 'message' ? i.action.text : null))
     expect(texts).toEqual([
@@ -521,9 +541,9 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
     ])
   })
 
-  it('要望(これまでの大丈夫・ありがとう…)と気分(不安・さみしい・落ち着かない)は快・要望の下位画面', () => {
-    expect(PARENT_SCREEN.requests).toBe('moodRequest')
-    expect(PARENT_SCREEN.feelings).toBe('moodRequest')
+  it('要望(これまでの大丈夫・ありがとう…)と気分(不安・さみしい・落ち着かない)は、要望がホーム直下・気分が快の下位画面(Issue #93)', () => {
+    expect(PARENT_SCREEN.requests).toBe('home')
+    expect(PARENT_SCREEN.feelings).toBe('comfort')
     expect(buildMenu('requests', homeOptions).map((i) => i.label)).toEqual([
       '戻る',
       '緊急',
