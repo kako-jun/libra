@@ -50,9 +50,10 @@ const tile = (c: HTMLElement, label: string) => {
 const setSettings = (value: object) => window.localStorage.setItem('libra', JSON.stringify(value))
 
 function selectByLabel(c: HTMLElement, label: string) {
-  for (let i = 0; i < 40 && scanningLabel(c) !== label; i += 1) vi.advanceTimersByTime(INTERVAL_MS)
-  expect(scanningLabel(c)).toBe(label)
+  // 先頭待機が間隔の整数倍でない(既定 2.0 秒 / 間隔 1.5 秒)ので、連打無視を先に過ぎてから 100ms ずつ進めて目的の項目で押す
   vi.advanceTimersByTime(600)
+  for (let i = 0; i < 400 && scanningLabel(c) !== label; i += 1) vi.advanceTimersByTime(100)
+  expect(scanningLabel(c)).toBe(label)
   fireEvent.keyDown(window, { key: ' ' })
   fireEvent.keyUp(window, { key: ' ' })
 }
@@ -125,8 +126,8 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     const { container } = render(() => <App />)
     openDiscomfort(container)
     const n = tileCount(container)
-    // 開いた直後の先頭待機を十分に過ぎても、まだ戻らない
-    vi.advanceTimersByTime(2000)
+    // 開いた直後の先頭待機中(既定 2.0 秒)に時間が経っても、まだ戻らない
+    vi.advanceTimersByTime(1000)
     expect(isHome(container)).toBe(false)
     advanceSteps(container, n * 2) // 2周ぶん
     expect(isHome(container)).toBe(false)

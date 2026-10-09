@@ -334,8 +334,8 @@ async function checkLettersScrollLayout(chromium, port) {
       await page.goto(base)
       await page.waitForTimeout(300)
 
-      // home: index6 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(3000 + 5 * 1500 + 150)
+      // home: index6 = 文字盤(先頭待機2000ms、以降intervalMs=1500ごとに進む)
+      await page.waitForTimeout(2000 + 5 * 1500 + 150)
       await page.keyboard.press('Space')
       await page.waitForTimeout(200)
 
@@ -346,7 +346,7 @@ async function checkLettersScrollLayout(chromium, port) {
           (tile) => tile.querySelector('.tile-label')?.textContent === '確定',
         ),
       )
-      await page.waitForTimeout(3000 + (commitIndex - 1) * 1500 + 150)
+      await page.waitForTimeout(2000 + (commitIndex - 1) * 1500 + 150)
 
       const info = await page.evaluate(() => {
         // kako-jun 追加指示で app-shell の余白を0にし、グリッドが端から端まで隙間なく
@@ -487,8 +487,8 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
       await page.waitForTimeout(700)
       await checkScreen(page, name, 'home')
 
-      // home: index6 = 文字盤(先頭待機3000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(3000 + 5 * 1500 + 150)
+      // home: index6 = 文字盤(先頭待機2000ms、以降intervalMs=1500ごとに進む)
+      await page.waitForTimeout(2000 + 5 * 1500 + 150)
       await page.keyboard.press('Space')
       await page.waitForTimeout(300)
       await checkScreen(page, name, 'letters')
@@ -674,15 +674,23 @@ async function checkLabelsFitAtXlarge(chromium, port) {
       const page = await context.newPage()
       await page.addInitScript(
         (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
-        { intervalMs: 5000, fontSize: 'xlarge', theme },
+        { intervalMs: 5000, headHoldMultiplier: 1, fontSize: 'xlarge', theme },
       )
       await page.goto(base)
       await page.waitForTimeout(300)
-      // home: index4 = 不快(先頭待機5000ms、以降intervalMs=5000msごとに進む。addInitScriptで
-      // intervalMsを伸ばし、タイミングのブレでずれないようにしている)
+      // home: index4 = 不快(先頭待機は倍率1×intervalMs=5000ms、以降intervalMs=5000msごとに進む。
+      // addInitScriptで intervalMs を伸ばし、タイミングのブレでずれないようにしている。
+      // 先頭待機は倍率の既定に依存させないため倍率1を明示する。Issue #92)
       await page.waitForTimeout(5000 + 3 * 5000 + 200)
       await page.keyboard.press('Space')
       await page.waitForTimeout(300)
+      // 押した項目が実際に不快で、不快画面を検査していること(別の画面を見ていないこと)
+      const crumbText = await page.evaluate(
+        () => document.querySelector('.screen-breadcrumb')?.textContent ?? '',
+      )
+      if (!crumbText.includes('不快')) {
+        failures.push(`[xlarge-fit 390x844 ${theme} discomfort] 不快画面を開けていない(パンくず="${crumbText}")`)
+      }
 
       const { tiles: info, board: boardInfo } = await page.evaluate(() => {
         const rectOf = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
@@ -706,7 +714,7 @@ async function checkLabelsFitAtXlarge(chromium, port) {
           }),
         }
       })
-      // PR#16 再レビュー must-A/B: 8項目以下(この画面=不快、6項目)の画面は、文字サイズが
+      // PR#16 再レビュー must-A/B: 8項目以下(この画面=不快、8項目)の画面は、文字サイズが
       // 特大でも常に全面充填(fill)されスクロールが発生しないことを確認する。
       // これが崩れると、巡回中に先頭(緊急)タイルが画面外へ出る恐れがある
       if (!boardInfo.isFill) {
