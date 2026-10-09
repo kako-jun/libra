@@ -168,7 +168,7 @@ describe('編集しても戻る・緊急の位置が固定される(安全の優
     'discomfort',
     'discomfortOther',
     'painLocation',
-    'moodRequest',
+    'comfort',
     'requests',
     'feelings',
   ] as const)('%s: 空・予約ラベル・上限いっぱいでも items[0]=戻る, items[1]=緊急', (screen) => {
@@ -196,12 +196,12 @@ describe('編集しても戻る・緊急の位置が固定される(安全の優
 
   it('下位画面へ進むタイルの予告に、編集後のフレーズが反映される', () => {
     const phrases = { moodRequest: [{ id: 'a', label: 'テレビ', text: 'テレビを見たいです' }] }
-    const moodRequest = buildMenu('moodRequest', {
+    const home = buildMenu('home', {
       showUndo: false,
       emergencyActive: false,
       phrases,
     })
-    expect(moodRequest.find((i) => i.id === 'requests-nav')?.preview).toBe('テレビ')
+    expect(home.find((i) => i.id === 'requests-nav')?.preview).toBe('テレビ')
   })
 })
 

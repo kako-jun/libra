@@ -136,8 +136,8 @@ describe('App', () => {
 
   it('連打無視区間内の2回目の押下では二重に遷移しない', () => {
     const { container } = render(() => <App />)
-    // 文字盤ナビへ進める(index5)
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 4)
+    // 文字盤ナビへ進める(index6)
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5)
     expect(scanningLabel(container)).toBe('文字盤')
     fireEvent.keyDown(window, { key: ' ' }) // letters 画面へ遷移
     expect(container.querySelector('.letter-strip')).not.toBeNull()
@@ -320,7 +320,7 @@ describe('App', () => {
     window.history.replaceState({}, '', '/?dev')
     const { container } = render(() => <App />)
     window.history.replaceState({}, '', '/')
-    fireEvent.keyDown(window, { key: '4' }) // home の4番目=不快
+    fireEvent.keyDown(window, { key: '5' }) // home の5番目=不快(快 → 不快 → 要望 の順。Issue #93)
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
   })
 
@@ -514,15 +514,15 @@ describe('App', () => {
     vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
     fireEvent.keyDown(window, { key: ' ' }) // はい を選択 → home に戻る、取り消し表示
     expect(tileLabels(container)).toContain('取り消し')
-    expect(tileLabels(container).length).toBe(7)
+    expect(tileLabels(container).length).toBe(8)
 
-    // 1周(7項目)分進めて index が 0 に戻っても、まだ2周目なので取り消しは残る
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 6)
+    // 1周(8項目)分進めて index が 0 に戻っても、まだ2周目なので取り消しは残る
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 7)
     expect(tileLabels(container)).toContain('取り消し')
     // 2周目の終わりで消える
-    vi.advanceTimersByTime(INTERVAL_MS * 7)
+    vi.advanceTimersByTime(INTERVAL_MS * 8)
     expect(tileLabels(container)).not.toContain('取り消し')
-    expect(tileLabels(container).length).toBe(6)
+    expect(tileLabels(container).length).toBe(7)
     expect(scanningLabel(container)).toBe('緊急')
 
     // ずれ回帰: 取り消しが消えた後も次の項目は正しく「はい」を指す
@@ -740,7 +740,6 @@ describe('App', () => {
     cleanup()
 
     const second = render(() => <App />)
-    selectByLabel(second.container, '快・要望')
     selectByLabel(second.container, '要望')
     selectByLabel(second.container, 'テレビ')
     expect(h1Text(second.container)).toBe('テレビを見たいです')
@@ -825,7 +824,6 @@ describe('App', () => {
       JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'テレビ', text: 'テレビ' }] } }),
     )
     const { container } = render(() => <App />)
-    selectByLabel(container, '快・要望')
     selectByLabel(container, '要望')
     expect(scanningLabel(container)).toBe('戻る')
     expect(tileLabels(container).slice(0, 3)).toEqual(['戻る', '緊急', 'テレビ'])
@@ -843,7 +841,6 @@ describe('App', () => {
     clickButton(editor, '要望')
     clickButton(editor, 'この画面を既定に戻す')
     clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
-    selectByLabel(container, '快・要望')
     selectByLabel(container, '要望')
     expect(tileLabels(container)).toContain('大丈夫')
     expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').phrases).toEqual({})
@@ -916,8 +913,8 @@ describe('App', () => {
     fireEvent.keyUp(window, { key: ' ', code: 'Space' }) // はい → home(取り消しが2周だけ出る)
     expect(h1Text(container)).toBe('はい。')
 
-    // 取り消しを含む7項目の末尾(文字盤)で押し始める。押している間に2周が終わって取り消しが消える
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5 + 500 + INTERVAL_MS * 7) // 2周目の末尾
+    // 取り消しを含む8項目の末尾(文字盤)で押し始める。押している間に2周が終わって取り消しが消える
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 6 + 500 + INTERVAL_MS * 8) // 2周目の末尾
     expect(scanningLabel(container)).toBe('文字盤')
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(1500)
@@ -992,16 +989,15 @@ describe('App', () => {
     expect(tileLabels(container)).toContain('おなか') // 痛い場所の一覧
   })
 
-  it('Issue #12: 快・要望の「続けて」を選ぶと伝わる', () => {
+  it('Issue #12/#93: 快の「続けて」を選ぶと伝わる', () => {
     const { container } = render(() => <App />)
-    selectByLabel(container, '快・要望')
+    selectByLabel(container, '快')
     selectByLabel(container, '続けて')
     expect(h1Text(container)).toBe('続けてください。')
   })
 
-  it('Issue #12: 快・要望 → 要望 → 大丈夫、快・要望 → 気分 → 不安 の2段階で伝わる', () => {
+  it('Issue #12/#93: 要望 → 大丈夫(ホーム直下)、快 → 気分 → 不安 の順で伝わる', () => {
     const first = render(() => <App />)
-    selectByLabel(first.container, '快・要望')
     selectByLabel(first.container, '要望')
     selectByLabel(first.container, '大丈夫')
     expect(h1Text(first.container)).toBe('大丈夫です。')
@@ -1009,7 +1005,7 @@ describe('App', () => {
     cleanup()
 
     const second = render(() => <App />)
-    selectByLabel(second.container, '快・要望')
+    selectByLabel(second.container, '快')
     selectByLabel(second.container, '気分')
     selectByLabel(second.container, '不安')
     expect(h1Text(second.container)).toBe('不安です。')
@@ -1468,8 +1464,8 @@ describe('App', () => {
       .speechSynthesis.speak as ReturnType<typeof vi.fn>
     speak.mockClear()
 
-    // home: 0緊急,1はい,2いいえ,3不快→,... index3まで進めて不快へ遷移する
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2)
+    // home: 0緊急,1はい,2いいえ,3快→,4不快→,... index4まで進めて不快へ遷移する
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 3)
     expect(scanningLabel(container)).toBe('不快')
     fireEvent.keyDown(window, { key: ' ' }) // discomfort へ遷移(goTo)
 
@@ -1495,8 +1491,8 @@ describe('App', () => {
       .speechSynthesis.speak as ReturnType<typeof vi.fn>
     speak.mockClear()
 
-    // home: 0緊急,1はい,2いいえ,3不快(navigate) までカーソルを進める
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2)
+    // home: 0緊急,1はい,2いいえ,3快,4不快(navigate) までカーソルを進める
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 3)
     expect(scanningLabel(container)).toBe('不快')
 
     expect(speak).toHaveBeenCalled()
@@ -2231,12 +2227,15 @@ describe('App', () => {
       window.dispatchEvent(new Event('resize'))
     }
 
-    it('Issue #47: 横長で7項目(ホーム+取り消し)なら固定の 4列×2行、タイルは引き延ばさず空きセルが1つ残る', () => {
+    it('Issue #47/#93: 横長でホーム7項目なら固定の 4列×2行、タイルは引き延ばさず空きセルが1つ残る(取り消しが出て8項目なら0)', () => {
       const { container } = render(() => <App />)
-      // 「はい」を選んで home+取り消しの7項目状態にする(緊急,取り消し,はい,いいえ,不快,快要望,文字盤)
+      expect(tileLabels(container)).toHaveLength(7)
+      setViewport(1000, 500)
+      expect(container.querySelectorAll('.tile-empty')).toHaveLength(1)
+      // 「はい」を選んで home+取り消しの8項目状態にする(緊急,取り消し,はい,いいえ,快,不快,要望,文字盤)
       vi.advanceTimersByTime(HEAD_HOLD_MS)
       fireEvent.keyDown(window, { key: ' ' }) // はい選択 → home(取り消し表示)
-      expect(tileLabels(container)).toHaveLength(7)
+      expect(tileLabels(container)).toHaveLength(8)
 
       setViewport(1000, 500)
 
@@ -2247,8 +2246,14 @@ describe('App', () => {
 
       const tiles = Array.from(container.querySelectorAll('.tile'))
       expect(tiles.every((tile) => (tile as HTMLElement).style.gridColumn === '')).toBe(true)
-      expect(container.querySelectorAll('.tile-empty')).toHaveLength(1)
-      expect(container.querySelector('.tile-empty')?.getAttribute('aria-hidden')).toBe('true')
+      expect(container.querySelectorAll('.tile-empty')).toHaveLength(0)
+    })
+
+    it('Issue #47/#93: 横長ホーム7項目の空きセルは aria-hidden', () => {
+      const { container } = render(() => <App />)
+      setViewport(1000, 500)
+      const empty = container.querySelector('.tile-empty')
+      expect(empty?.getAttribute('aria-hidden')).toBe('true')
     })
 
     it('向きが変わると固定格子が切り替わる(横長 4列×2行 / 縦長 2列×4行)', () => {

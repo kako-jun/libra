@@ -142,16 +142,16 @@ describe('Issue #47: App の固定格子・空きセル', () => {
   })
 
   describe('向き切替と空きセル数', () => {
-    it('ホーム(6項目)は縦長で 2x4・空き2、横長で 4x2・空き2、切替に追従する', () => {
+    it('ホーム(7項目)は縦長で 2x4・空き1、横長で 4x2・空き1、切替に追従する', () => {
       setViewport(390, 844)
       const { container } = render(() => <App />)
-      expect(labels(container)).toHaveLength(6)
+      expect(labels(container)).toHaveLength(7)
       expect(gridOf(container)).toEqual(PORTRAIT)
-      expect(emptyCells(container)).toHaveLength(2)
+      expect(emptyCells(container)).toHaveLength(1)
 
       setViewport(844, 390)
       expect(gridOf(container)).toEqual(LANDSCAPE)
-      expect(emptyCells(container)).toHaveLength(2)
+      expect(emptyCells(container)).toHaveLength(1)
 
       setViewport(390, 844)
       expect(gridOf(container)).toEqual(PORTRAIT)
@@ -180,14 +180,14 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(tiles(container).length + emptyCells(container).length).toBe(8)
     })
 
-    it('取り消しが出て7項目になると、格子は同じまま空きセルが1つに減る', () => {
+    it('取り消しが出て8項目になると、格子は同じまま空きセルが0になる(Issue #93)', () => {
       setViewport(390, 844)
       const { container } = render(() => <App />)
       const before = gridOf(container)
       press(container, 'はい')
-      expect(labels(container)).toHaveLength(7)
+      expect(labels(container)).toHaveLength(8)
       expect(gridOf(container)).toEqual(before)
-      expect(emptyCells(container)).toHaveLength(1)
+      expect(emptyCells(container)).toHaveLength(0)
     })
 
     it('画面を移動しても(不快など下位画面)格子は同じで、タイル数+空き=8', () => {
@@ -240,7 +240,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         setSettings({ fontSize: 'xlarge', highContrast: true })
         const big = render(() => <App />)
         expect(gridOf(big.container)).toEqual(grid)
-        expect(emptyCells(big.container)).toHaveLength(2)
+        expect(emptyCells(big.container)).toHaveLength(1)
         big.unmount()
       })
     }
@@ -357,21 +357,21 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     })
   })
 
-  describe('快・要望(7項目)の余り1セルは操作の対象外(Issue #78)', () => {
+  describe('快(6項目)の余り2セルは操作の対象外(Issue #78/#93)', () => {
     for (const [name, w, h] of [
       ['縦長', 390, 844],
       ['横長', 844, 390],
     ] as const) {
-      it(`${name}: 空きセルは1つで、フォーカス・スキャン・クリックの対象にならない`, () => {
+      it(`${name}: 空きセルは2つで、フォーカス・スキャン・クリックの対象にならない`, () => {
         setViewport(w, h)
         setSettings({ intervalMs: INTERVAL_MS })
         const { container } = render(() => <App />)
-        press(container, '快・要望')
-        // 「もっと」を除いた 続けて・やめて・変えて・要望・気分 + 戻る・緊急 = 7項目、8セル中の余り1
-        expect(labels(container)).toHaveLength(7)
+        press(container, '快')
+        // 「もっと」を除いた 続けて・やめて・変えて・気分 + 戻る・緊急 = 6項目、8セル中の余り2
+        expect(labels(container)).toHaveLength(6)
         expect(labels(container)).not.toContain('もっと')
         const empties = emptyCells(container)
-        expect(empties).toHaveLength(1)
+        expect(empties).toHaveLength(2)
         const cell = empties[0] as HTMLElement
         expect(cell.getAttribute('aria-hidden')).toBe('true')
         // キー操作で到達できない(tabindex 無し=非フォーカス、または -1)
@@ -382,7 +382,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         const hBefore = container.querySelector('h1')?.textContent
         const labelsBefore = labels(container)
         vi.advanceTimersByTime(HEAD_HOLD_MS)
-        for (let i = 0; i < 7 * 3 + 2; i += 1) {
+        for (let i = 0; i < 6 * 3 + 2; i += 1) {
           expect(container.querySelectorAll('.grid-board .scanning').length, `step ${i}`).toBe(1)
           expect(container.querySelector('.tile-empty.scanning')).toBeNull()
           vi.advanceTimersByTime(INTERVAL_MS)
@@ -508,6 +508,30 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(block).toMatch(/background:\s*var\(--bg\)/)
       expect(block).not.toMatch(/box-shadow|border|--surface/)
     })
+  })
+
+  describe('取り消し表示中にモールスが有効でも、ホームは8項目で格子に収まる(Issue #93)', () => {
+    for (const [w, h] of [
+      [390, 844],
+      [844, 390],
+    ] as const) {
+      it(`${w}x${h}: grid-fill のまま・空きセルなし・モールスの入口は取り消し中だけ畳まれる`, () => {
+        setViewport(w, h)
+        setSettings({ intervalMs: INTERVAL_MS, morseEnabled: true })
+        const { container } = render(() => <App />)
+        expect(labels(container)).toContain('モールス')
+        press(container, 'はい')
+        expect(labels(container)).toContain('取り消し')
+        expect(labels(container)).not.toContain('モールス')
+        expect(labels(container)).toHaveLength(8)
+        expect(board(container).classList.contains('grid-fill')).toBe(true)
+        expect(emptyCells(container)).toHaveLength(0)
+        // 取り消しが消える(2周後)とモールスが戻る
+        vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 8 * 2 + INTERVAL_MS)
+        expect(labels(container)).not.toContain('取り消し')
+        expect(labels(container)).toContain('モールス')
+      })
+    }
   })
 
   describe('文字盤の行段階(14項目): スクロール・sticky 緊急は従来どおり', () => {
