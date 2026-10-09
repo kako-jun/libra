@@ -734,6 +734,9 @@ h1[data-fit='single'] {
   right: var(--scan-ring-inset);
   bottom: var(--scan-ring-inset);
   left: var(--scan-ring-inset);
+  /* Issue #82: .tile の place-items:center の影響を受けず、1行でも2行でも要素の下端を
+     --scan-ring-inset に付ける(Chromium では差0のまま。他エンジンの保険) */
+  align-self: end;
   overflow: hidden;
   color: var(--text-muted);
   /* kako-jun 追加指示: ラベルの45〜55%程度(ここでは50%)、最小でも0.85rem相当にする。
@@ -761,9 +764,24 @@ h1[data-fit='single'] {
     -webkit-line-clamp: 2;
     line-clamp: 2;
     white-space: normal;
-    /* 2行目が出ると予告が上へ伸び、1行目が右端の山形アイコン(top:50%)の列へ届く。
-       ラベルと同じアイコン避け幅を右側に足して、文字がアイコンと縦に重ならないようにする */
-    padding-right: clamp(20px, 12cqi, 36px);
+  }
+
+  /* 2行目が出ると予告が上へ伸び、1行目が右端の山形アイコン(top:50%)の列へ届く。
+     予告の幅を削る(右側 padding でアイコンを避ける)と、アイコンの高さに届かない2行目まで
+     文字2〜3つ分の幅を失う(Issue #82)。幅は全幅で使い、代わりに山形アイコンの方を、
+     予告の1行目の上端より上へ寄せる。アイコンの中心 = min(50%, 予告の2行ぶんの上端 −
+     アイコン高さの半分)。アイコン高さ = 幅 clamp(14px, 9cqi, 28px) × viewBox 比 24/20(=1.2)。
+     予告が上へ伸びて重なるときだけ上へ動き、そうでなければ従来どおり縦中央(50%)のまま。
+     予告の行高 1.1 と font-size の式は .tile-preview のものと同じ(ラベルの margin-bottom と同様) */
+  .tile-chevron {
+    top: min(
+      50%,
+      calc(
+        100% - var(--scan-ring-inset) - 2.2 *
+          max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font)) - 0.6 *
+          clamp(14px, 9cqi, 28px)
+      )
+    );
   }
 
   .tile-nav .tile-label {

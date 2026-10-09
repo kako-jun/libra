@@ -107,15 +107,40 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(others).toEqual([])
   })
 
-  it('@container 内の .tile-preview は、ラベルと同じ山形アイコン避け(右側 clamp(20px, 12cqi, 36px))を持つ', () => {
+  it('@container 内の .tile-preview は右側 padding でアイコンを避けない(全幅で使う。Issue #82)', () => {
     const joined = bodiesOf(previewBlocks()[0].body, '.tile-preview').join('\n')
-    const avoid = 'clamp(20px, 12cqi, 36px)'
-    expect(decl(joined, 'padding-right')).toBe(avoid)
-    // ラベル側(ベース)の避け幅と同じ式であること
-    const label = bodiesOf(withoutContainerBlocks(css), '.tile-nav .tile-label').join('\n')
-    expect(decl(label, 'margin-right')).toBe(avoid)
-    // 予告の位置(right)は変えない
+    // 全行の右側を空けると、アイコンの高さに届かない2行目まで文字2〜3つ分の幅を失う
+    expect(joined).not.toMatch(/padding/)
+    // 予告の位置(right)も変えない
     expect(joined).not.toMatch(/(^|[;\s])right:/)
+    // ラベルの避け幅(ベース)は従来どおり
+    const label = bodiesOf(withoutContainerBlocks(css), '.tile-nav .tile-label').join('\n')
+    expect(decl(label, 'margin-right')).toBe('clamp(20px, 12cqi, 36px)')
+  })
+
+  it('2行モードでは山形アイコンの中心が min(50%, 予告の上端 − アイコン高さの半分) になり、1行目と縦に重ならない(Issue #82)', () => {
+    const chevrons = bodiesOf(previewBlocks()[0].body, '.tile-chevron')
+    expect(chevrons.length).toBe(1)
+    const top = (decl(chevrons[0], 'top') ?? '').replace(/\s+/g, '')
+    expect(top.startsWith('min(50%,')).toBe(true)
+    // 予告2行ぶん(行高1.1 × 2 × 予告の font-size)をベースの式と同じ文字列で引く
+    const previewFont = decl(bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n'), 'font-size') ?? ''
+    const squash = (x: string): string => x.replace(/\s+/g, '')
+    expect(top).toContain(`2.2*${squash(previewFont)}`)
+    expect(top).toContain('100%-var(--scan-ring-inset)')
+    // アイコン高さの半分 = 幅 clamp(14px, 9cqi, 28px) × 0.6(viewBox 24/20 の半分)
+    const base = bodiesOf(withoutContainerBlocks(css), '.tile-chevron').join('\n')
+    expect(decl(base, 'width')).toBe('clamp(14px, 9cqi, 28px)')
+    expect(top).toContain('0.6*clamp(14px,9cqi,28px)')
+    // アイコンの中心の基準 top:50% と translateY(-50%) はベースのまま
+    expect(decl(base, 'top')).toBe('50%')
+    expect(decl(base, 'transform')).toBe('translateY(-50%)')
+  })
+
+  it('.tile-preview は align-self: end で下端を明示し、place-items:center の影響を受けない(Issue #82)', () => {
+    const base = bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n')
+    expect(decl(base, 'align-self')).toBe('end')
+    expect(decl(base, 'bottom')).toBe('var(--scan-ring-inset)')
   })
 
   it('ベース(@container の外)の .tile-preview は 1行+省略のまま', () => {
