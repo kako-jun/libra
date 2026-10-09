@@ -81,26 +81,25 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
     }
   })
 
-  it('本人画面 .app-shell の height は 100vh(フォールバック)と 100dvh だけで、メディアクエリ内でも他の値で上書きしない', () => {
+  it('本人画面 .app-shell の height は 100% だけで、メディアクエリ内でも他の値で上書きしない(#84: 100vh/100dvh は dvh 非対応環境で body より高くなり下端が切れるため撤去)', () => {
     const bodies = subjectRuleBodies('.app-shell')
     expect(bodies.length).toBeGreaterThan(0)
     const heights = bodies.flatMap((b) =>
       [...b.matchAll(/(?:^|[;\s])height:\s*([^;}]+)/g)].map((m) => m[1].trim()),
     )
-    // overlay 用の height:100% などが混ざらない(全ての height 宣言が 100vh/100dvh)
-    for (const h of heights) expect(['100vh', '100dvh'], `height: ${h}`).toContain(h)
-    // dvh 非対応環境向けの 100vh フォールバックと、100dvh の両方がある
-    expect(heights).toContain('100vh')
-    expect(heights).toContain('100dvh')
+    expect(heights.length).toBeGreaterThan(0)
+    for (const h of heights) expect(h, `height: ${h}`).toBe('100%')
   })
 
-  it('html, body, #root に height を持たせない(min-height: 100vh のみ。100% 高さの連鎖で本人画面が変わる退行の防止)', () => {
-    for (const sel of ['html', 'body', '#root']) {
+  it('html, body に height を持たせず、#app は height:100%(#84: 高さは body の position:fixed; inset:0 が確定し、#app → .app-shell の 100% 連鎖で受ける)', () => {
+    for (const sel of ['html', 'body']) {
       const bodies = allRuleBodies(sel)
       expect(bodies.length, sel).toBeGreaterThan(0)
-      for (const b of bodies) expect(b, sel).not.toMatch(/(^|[;\s])(max-)?height:/)
+      for (const b of bodies) expect(b, sel).not.toMatch(/(^|[;\s])(min-|max-)?height:/)
     }
-    expect(allRuleBodies('#root').join('\n')).toMatch(/min-height:\s*100vh/)
+    const app = allRuleBodies('#app')
+    expect(app.length).toBeGreaterThan(0)
+    expect(app.join('\n')).toMatch(/(^|[;\s])height:\s*100%/)
   })
 
   it('.caregiver-tabpanel の子要素は読みやすい幅(960px)に抑える', () => {
