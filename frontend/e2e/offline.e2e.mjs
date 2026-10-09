@@ -1350,7 +1350,7 @@ async function checkFontSizeMonotonicity(chromium, port) {
   return failures
 }
 
-/** Issue #37: 小画面で深いパンくずと採用確認がグリッド領域を押しつぶさず、重ならない。 */
+/** Issue #37: 小画面で深いパンくずがグリッド領域を押しつぶさず、重ならない。 */
 async function checkIssue37SmallViewport(chromium, port) {
   const server = await startServer(DIST_DIR, 'plain', port)
   const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
