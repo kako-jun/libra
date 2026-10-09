@@ -598,6 +598,11 @@ h1[data-fit='single'] {
     ),
     min(calc(var(--font-scale) * 4.8vh), 3.4rem)
   );
+  /* Issue #82: 遷移タイルの予告(.tile-preview)の文字サイズ。ラベルの約50%、最小でも
+     0.85rem 相当(--label-ratio で文字サイズ設定に追従)。予告の font-size・2行モードの
+     ラベルの避け領域(margin-bottom)・山形アイコンの上端(top)が同じ値を使うので、
+     式はここ1か所だけに置く */
+  --tile-preview-font: max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font));
   container-type: size;
   position: relative;
   display: grid;
@@ -734,15 +739,18 @@ h1[data-fit='single'] {
   right: var(--scan-ring-inset);
   bottom: var(--scan-ring-inset);
   left: var(--scan-ring-inset);
+  /* Issue #82: 1行でも2行でも要素の下端を --scan-ring-inset に付ける。下端揃えを明示
+     しておく(エンジン差の保険。Chromium では明示しなくても差0) */
+  align-self: end;
   overflow: hidden;
   color: var(--text-muted);
   /* kako-jun 追加指示: ラベルの45〜55%程度(ここでは50%)、最小でも0.85rem相当にする。
-     --tile-label-font(.tile で定義)を参照するので、画面幅が変わってもラベルとの
-     比率を保ったまま追従する。
+     --tile-preview-font(.tile で定義。--tile-label-font を参照する)を使うので、画面幅が
+     変わってもラベルとの比率を保ったまま追従する。
      PR#16 4巡目 must-F: --tile-label-font 自身が --label-ratio を内包しているため
      比率(0.5倍)側には掛けない。最小値の0.85rem側は --label-ratio を掛けて、予告も
      ラベルと同じ比率設定に追従させる(「予告行も同じ比率に追従する」) */
-  font-size: max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font));
+  font-size: var(--tile-preview-font);
   font-weight: 700;
   line-height: 1.1;
   text-align: center;
@@ -753,7 +761,8 @@ h1[data-fit='single'] {
 /* Issue #71: セルの高さに余裕があるときだけ、予告を最大2行(2行目の終わりを省略)にする。
    足りないセルは従来どおり1行+省略。しきい値は .tile(container-type:size)の content-box の
    高さ。ラベルの避け領域(margin-bottom)は予告が1行ぶん増える分だけ、必ず同じ条件で広げる。
-   文字サイズ・色・山形アイコンの位置・読み上げ対象(ラベルのみ)は変えない */
+   文字サイズ・色・読み上げ対象(ラベルのみ)は変えない。山形アイコンは2行モードのときだけ、
+   必要なら上へ寄せる(Issue #82。下の .tile-chevron) */
 @container (min-height: 72px) {
   .tile-preview {
     display: -webkit-box;
@@ -761,15 +770,30 @@ h1[data-fit='single'] {
     -webkit-line-clamp: 2;
     line-clamp: 2;
     white-space: normal;
-    /* 2行目が出ると予告が上へ伸び、1行目が右端の山形アイコン(top:50%)の列へ届く。
-       ラベルと同じアイコン避け幅を右側に足して、文字がアイコンと縦に重ならないようにする */
-    padding-right: clamp(20px, 12cqi, 36px);
+  }
+
+  /* 2行目が出ると予告が上へ伸び、1行目が右端の山形アイコン(top:50%)の列へ届く。
+     予告の幅を削る(右側 padding でアイコンを避ける)と、アイコンの高さに届かない2行目まで
+     文字2〜3つ分の幅を失う(Issue #82)。幅は全幅で使い、代わりに山形アイコンの方を、
+     予告の1行目の上端より上へ寄せる。アイコンの中心 = min(50%, 予告の2行ぶんの上端 −
+     アイコン高さの半分)。アイコン高さ = 幅 clamp(14px, 9cqi, 28px) × viewBox 比 24/20(=1.2)。
+     予告が上へ伸びて重なるときだけ上へ動き、そうでなければ従来どおり縦中央(50%)のまま。
+     予告の行高 1.1 と font-size(--tile-preview-font)は .tile-preview のものと同じ
+     (ラベルの margin-bottom と同様)。末尾の 1.5px は、アイコンと予告の上端の間に残す余白
+     (DPR や丸めの違いで行の矩形が交差しないための安全マージン) */
+  .tile-chevron {
+    top: min(
+      50%,
+      calc(
+        100% - var(--scan-ring-inset) - 2.2 * var(--tile-preview-font) - 0.6 *
+          clamp(14px, 9cqi, 28px) - 1.5px
+      )
+    );
   }
 
   .tile-nav .tile-label {
     margin-bottom: calc(
-      var(--font-scale) * clamp(22px, 20cqb, 48px) + 1.1 *
-        max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font))
+      var(--font-scale) * clamp(22px, 20cqb, 48px) + 1.1 * var(--tile-preview-font)
     );
   }
 }

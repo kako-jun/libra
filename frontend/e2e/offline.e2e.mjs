@@ -913,8 +913,9 @@ async function checkTightScreenLabelsAndRing(chromium, port) {
 /**
  * Issue #71: 予告(.tile-preview)が2行モードのセルで、遷移タイルの「ラベルの行矩形」「予告の行矩形」
  * 「山形アイコン(.tile-chevron)の矩形」が互いに交差しないことを検査する(Range.getClientRects() の
- * 文字の行矩形で測る。要素矩形ではない)。予告の右側のアイコン避け(padding-right)を外すと、
- * 2行目が出た予告の1行目が右端のアイコンの列へ届いて落ちる。
+ * 文字の行矩形で測る。要素矩形ではない)。予告は全幅を使い、2行モードでは山形アイコンの方を
+ * 予告の上端より上へ寄せる(Issue #82)。その寄せを外すと、2行目が出た予告の1行目が右端の
+ * アイコンの列へ届いて落ちる。
  * 検査した状態に2行モードの遷移タイルが1つも無いと、検査が空振りなので失敗にする。
  */
 async function checkTilePreviewTwoLineOverlap(chromium, port) {
