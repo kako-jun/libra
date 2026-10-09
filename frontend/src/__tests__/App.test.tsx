@@ -5,8 +5,8 @@ import * as wakeLockModule from '../lib/wakeLock'
 import * as offlineReadyModule from '../lib/offlineReady'
 import { HAPTIC_PATTERNS, feedbackPattern } from '../lib/feedback'
 
-// requirements.md 既定値: intervalMs=1500, headHoldMultiplier=2(=headHoldMs 3000), debounceMs=500
-const HEAD_HOLD_MS = 3000
+// requirements.md 既定値: intervalMs=1500, headHoldMultiplier=4/3(=headHoldMs 2000), debounceMs=500
+const HEAD_HOLD_MS = 2000
 const INTERVAL_MS = 1500
 
 // createOscillator が呼ばれる = 実際に音を鳴らそうとした回数(緊急中に鳴らないことの確認用)
@@ -155,11 +155,11 @@ describe('App', () => {
 
   // 文字盤(#4): Space キー1種だけで「めかね」を入力・確定できる
   function selectByScan(container: HTMLElement, label: string) {
-    for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
-      vi.advanceTimersByTime(INTERVAL_MS)
-    }
+    // 先頭待機が間隔の整数倍でない(既定 2.0 秒 / 間隔 1.5 秒)ので、連打無視を先に過ぎてから 100ms ずつ進めて目的の項目で押す
+    vi.advanceTimersByTime(600)
+    for (let i = 0; i < 400 && scanningLabel(container) !== label; i += 1)
+      vi.advanceTimersByTime(100)
     expect(scanningLabel(container)).toBe(label)
-    vi.advanceTimersByTime(600) // 連打無視(0.5秒)を過ぎる
     fireEvent.keyDown(window, { key: ' ' })
   }
 
@@ -182,16 +182,14 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('緊急') // ホームの先頭から再開する
   })
 
-  it('Issue #4: はい・いいえで答えて戻っても入力途中の文字列が保持される', () => {
+  it('Issue #4: ホームではいで答えて文字盤に戻っても入力途中の文字列が保持される', () => {
     const { container } = render(() => <App />)
     selectByScan(container, '文字盤')
     selectByScan(container, 'あ行')
     selectByScan(container, 'あ')
-    selectByScan(container, 'はい・いいえ')
-    selectByScan(container, '戻る')
     expect(container.querySelector('.letter-strip output')?.textContent).toBe('あ')
 
-    selectByScan(container, 'はい・いいえ')
+    selectByScan(container, '戻る')
     selectByScan(container, 'はい')
     expect(h1Text(container)).toBe('はい。')
     selectByScan(container, '文字盤')
@@ -694,11 +692,11 @@ describe('App', () => {
 
   // Issue #8: スキャンで目的の項目まで進めて選ぶ(連打無視を過ぎてから押す)
   function selectByLabel(container: HTMLElement, label: string) {
-    for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
-      vi.advanceTimersByTime(INTERVAL_MS)
-    }
-    expect(scanningLabel(container)).toBe(label)
+    // 先頭待機が間隔の整数倍でない(既定 2.0 秒 / 間隔 1.5 秒)ので、連打無視を先に過ぎてから 100ms ずつ進めて目的の項目で押す
     vi.advanceTimersByTime(600)
+    for (let i = 0; i < 400 && scanningLabel(container) !== label; i += 1)
+      vi.advanceTimersByTime(100)
+    expect(scanningLabel(container)).toBe(label)
     fireEvent.keyDown(window, { key: ' ' })
   }
 
@@ -1351,10 +1349,10 @@ describe('App', () => {
     // 下限 1 秒では、スキャンの選択も 1 秒以上押す必要がある
     window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, minHoldMs: 1000 }))
     const { container } = render(() => <App />)
-    for (let i = 0; i < 40 && scanningLabel(container) !== 'モールス'; i += 1) {
-      vi.advanceTimersByTime(1500)
-    }
+    // 先頭待機が間隔の整数倍でないので、100ms ずつ進めて目的の項目で押す
     vi.advanceTimersByTime(600)
+    for (let i = 0; i < 400 && scanningLabel(container) !== 'モールス'; i += 1)
+      vi.advanceTimersByTime(100)
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(1100)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
@@ -1367,10 +1365,10 @@ describe('App', () => {
   it('Issue #57: 押下時間の下限(#6)があるときだけ「◯秒未満の押下は数えない」が出て、設定に追従する', () => {
     window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, minHoldMs: 800 }))
     const { container } = render(() => <App />)
-    for (let i = 0; i < 40 && scanningLabel(container) !== 'モールス'; i += 1) {
-      vi.advanceTimersByTime(1500)
-    }
+    // 先頭待機が間隔の整数倍でないので、100ms ずつ進めて目的の項目で押す
     vi.advanceTimersByTime(600)
+    for (let i = 0; i < 400 && scanningLabel(container) !== 'モールス'; i += 1)
+      vi.advanceTimersByTime(100)
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(900)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
@@ -2727,7 +2725,7 @@ describe('App', () => {
       clickButton(backup, ARMED)
       const s = saved()
       expect(s.intervalMs).toBe(1500)
-      expect(s.headHoldMultiplier).toBe(2)
+      expect(s.headHoldMultiplier).toBe(4 / 3)
       expect(s.activateOn).toBe('press')
       expect(backup.textContent).toContain('既定に戻しました')
       expect(btn(backup, RESET)).toBeTruthy() // 確認状態は解除される

@@ -19,7 +19,7 @@ libra/
 
 画面状態は `frontend/src/App.tsx` に集約し、画面ごとの項目は `frontend/src/lib/menus.ts` のビルダーが組み立てる。
 
-- 画面: 本人画面の全 `ScreenId`（home / urgentDetail / discomfort / discomfortOther / painLocation / painIntensity / moodRequest / requests / feelings / letters / lettersRow / lettersYesNo / morse）。親子関係・戻り先の正本は `requirements.md` §4.1.1 と `menus.ts` の `PARENT_SCREEN`。介助者メニューは本人画面の階層に含めない
+- 画面: 本人画面の全 `ScreenId`（home / urgentDetail / discomfort / discomfortOther / painLocation / painIntensity / moodRequest / requests / feelings / letters / lettersRow / morse）。親子関係・戻り先の正本は `requirements.md` §4.1.1 と `menus.ts` の `PARENT_SCREEN`。介助者メニューは本人画面の階層に含めない
 - 状態: 画面・直前に伝えたこと(履歴は持たない)・緊急状態（`libra:emergency`）・スキャン位置・文字盤の入力中文字列・介助者設定（`libra`）
 - 入力: キー（任意のキー・Bluetooth シャッター）と、タイルの直接タップ/クリック。背景のタップは何も実行しない。数字キー（1-9）は URL に `?dev` を付けたときだけ有効な開発補助
 - 主な `lib/`: `scan.ts`（自動スキャン・先頭待機・連打無視）/ `switchInput.ts`（押下時間の下限・離して決定）/ `morse.ts`・`morseInput.ts`（モールス）/ `feedback.ts`・`tone.ts`（振動・効果音）/ `guidance.ts`（常時案内の文言。本人画面の緊急中の振動 `buildScreenNotes` / 介助者メニュー上部 `buildCaregiverMenuNotes` / 「いまの動作」`buildBehaviorNotes`）/ `gridLayout.ts`（固定格子）/ `phrases.ts`・`settings.ts`（フレーズ・設定）/ `emergencyState.ts`・`wakeLock.ts`・`offlineReady.ts`・`fitHeading.ts`

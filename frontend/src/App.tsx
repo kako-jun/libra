@@ -145,7 +145,7 @@ function isTextEditingKey(event: KeyboardEvent): boolean {
   ].includes(event.key)
 }
 
-const LETTER_SCREENS: ScreenId[] = ['letters', 'lettersRow', 'lettersYesNo']
+const LETTER_SCREENS: ScreenId[] = ['letters', 'lettersRow']
 
 const ACTIVATE_ON_LABELS: Record<Settings['activateOn'], string> = {
   press: '押した瞬間',
@@ -198,7 +198,8 @@ export default function App() {
   })
   const scanConfig = createMemo<ScanConfig>(() => ({
     intervalMs: settings().intervalMs,
-    headHoldMs: settings().intervalMs * settings().headHoldMultiplier,
+    // 倍率が 4/3 などのとき浮動小数の端数(2000.0000000000002)でタイマーが1拍ずれないよう、ms に丸める
+    headHoldMs: Math.round(settings().intervalMs * settings().headHoldMultiplier),
     debounceMs: settings().debounceMs,
   }))
 
@@ -666,6 +667,7 @@ export default function App() {
         setMessageTone('neutral')
         document.documentElement.dataset.messageTone = 'neutral'
         setShowUndo(false)
+        undoLapsRemaining = 0
         goTo('home')
         return
       }
@@ -1392,8 +1394,8 @@ export default function App() {
         <div class="caregiver-overlay" data-caregiver-control>
           <div class="caregiver-panel">
             <div class="caregiver-header">
-              <h2>介助者メニュー</h2>
-              <div class="caregiver-header-actions">
+              <div class="caregiver-header-grid">
+                <h2>介助者メニュー</h2>
                 <button
                   type="button"
                   class="caregiver-action caregiver-emergency-clear"
@@ -1501,15 +1503,20 @@ export default function App() {
                 </label>
 
                 <label class="caregiver-field">
-                  <span>先頭待機倍率: 間隔 × {settings().headHoldMultiplier}</span>
+                  <span>
+                    先頭待機倍率: 間隔 × {Number(settings().headHoldMultiplier.toFixed(1))}（約
+                    {((settings().intervalMs * settings().headHoldMultiplier) / 1000).toFixed(1)}
+                    秒）
+                  </span>
+                  {/* 倍率は 1/3 刻み（既定 4/3 を丸めずに選べる）。値は整数（3倍した値）で扱う */}
                   <input
                     type="range"
-                    min="1"
-                    max="5"
-                    step="0.5"
-                    value={settings().headHoldMultiplier}
+                    min="3"
+                    max="15"
+                    step="1"
+                    value={Math.round(settings().headHoldMultiplier * 3)}
                     onInput={(event) =>
-                      updateSettings({ headHoldMultiplier: Number(event.currentTarget.value) })
+                      updateSettings({ headHoldMultiplier: Number(event.currentTarget.value) / 3 })
                     }
                   />
                 </label>

@@ -16,7 +16,7 @@ import App from '../App'
 import * as offlineReadyModule from '../lib/offlineReady'
 import { DEFAULT_SETTINGS } from '../lib/settings'
 
-const HEAD_HOLD_MS = 3000
+const HEAD_HOLD_MS = 2000
 const INTERVAL_MS = 1500
 
 class MockAudioContext {
@@ -53,11 +53,10 @@ function scanningLabel(container: HTMLElement): string | null {
   return container.querySelector('.tile.scanning .tile-label')?.textContent ?? null
 }
 function selectByLabel(container: HTMLElement, label: string) {
-  for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
-    vi.advanceTimersByTime(INTERVAL_MS)
-  }
-  expect(scanningLabel(container)).toBe(label)
+  // 先頭待機が間隔の整数倍でない(既定 2.0 秒 / 間隔 1.5 秒)ので、連打無視を先に過ぎてから 100ms ずつ進めて目的の項目で押す
   vi.advanceTimersByTime(600)
+  for (let i = 0; i < 400 && scanningLabel(container) !== label; i += 1) vi.advanceTimersByTime(100)
+  expect(scanningLabel(container)).toBe(label)
   fireEvent.keyDown(window, { key: ' ' })
 }
 function screenNotes(container: HTMLElement): string[] {
@@ -339,12 +338,30 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       )
     })
 
+    it('先頭待機の設定は実際の秒数を併記し、既定 2.0 秒でスライダーが既定位置(丸めでずれない)・倍率と間隔の変更に追従する(Issue #92)', () => {
+      const { container } = render(() => <App />)
+      openCaregiverMenu(container)
+      selectCaregiverTab(container, 'スキャン')
+      const field = () =>
+        Array.from(container.querySelectorAll('label.caregiver-field')).find((l) =>
+          l.textContent?.startsWith('先頭待機倍率'),
+        ) as HTMLElement
+      const slider = () => field().querySelector('input[type="range"]') as HTMLInputElement
+      expect(field().textContent).toContain('間隔 × 1.3（約2.0秒）')
+      expect(slider().value).toBe('4')
+      setSlider(container, '先頭待機倍率', 6) // 6/3 = 2
+      expect(field().textContent).toContain('間隔 × 2（約3.0秒）')
+      expect(slider().value).toBe('6')
+      setSlider(container, 'スキャン間隔', 2000)
+      expect(field().textContent).toContain('間隔 × 2（約4.0秒）')
+    })
+
     it('スキャン間隔と先頭待機倍率を変えても先頭待機の文言はどこにも出ない', () => {
       const { container } = render(() => <App />)
       changeSettingsViaMenu(container, () => {
         selectCaregiverTab(container, 'スキャン')
         setSlider(container, 'スキャン間隔', 2000)
-        setSlider(container, '先頭待機倍率', 2.5)
+        setSlider(container, '先頭待機倍率', 8)
       })
       expect(readBehavior(container)).not.toContain('先頭')
       expect(container.querySelector('.screen-notes')).toBeNull()
