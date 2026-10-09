@@ -875,10 +875,10 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('はい')
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(1500)
-    fireEvent.keyUp(window, { key: ' ', code: 'Space' }) // はい → home(取り消しが1周だけ出る)
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' }) // はい → home(取り消しが2周だけ出る)
     expect(h1Text(container)).toBe('はい。')
 
-    // 取り消しを含む7項目の末尾(文字盤)で押し始める。押している間に1周して取り消しが消える
+    // 取り消しを含む7項目の末尾(文字盤)で押し始める。押している間に2周が終わって取り消しが消える
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 5 + 500 + INTERVAL_MS * 7) // 2周目の末尾
     expect(scanningLabel(container)).toBe('文字盤')
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
