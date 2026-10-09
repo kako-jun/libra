@@ -339,7 +339,7 @@ async function checkLettersScrollLayout(chromium, port) {
       await page.keyboard.press('Space')
       await page.waitForTimeout(200)
 
-      // letters screen(2 段階文字盤の行段階): 戻る,緊急,あ〜わ行,確定,1字消す,はい・いいえ。
+      // letters screen(2 段階文字盤の行段階): 戻る,緊急,あ〜わ行,確定,1字消す(Issue #95 で はい・いいえ を削除)。
       // 確定は末尾ではないので、ラベルから位置を引く
       const commitIndex = await page.evaluate(() =>
         [...document.querySelectorAll('.grid-board .tile')].findIndex(
@@ -1084,7 +1084,6 @@ async function checkBackNavigationAndEmergencyRetention(chromium, port) {
       ['feelings', ['快・要望', '気分']],
       ['letters', ['文字盤']],
       ['lettersRow', ['文字盤', 'あ行']],
-      ['lettersYesNo', ['文字盤', 'はい・いいえ']],
       ['morse', ['モールス']],
     ]
     for (const [screen, path] of routes) {

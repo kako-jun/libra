@@ -25,7 +25,6 @@ export type ScreenId =
   | 'feelings'
   | 'letters'
   | 'lettersRow'
-  | 'lettersYesNo'
   | 'morse'
 
 /** 本人画面の全 ScreenId。画面ツリーの追加時に、案内・親子関係・テストを追従させる正本。 */
@@ -41,7 +40,6 @@ export const PATIENT_SCREEN_IDS: readonly ScreenId[] = [
   'feelings',
   'letters',
   'lettersRow',
-  'lettersYesNo',
   'morse',
 ]
 
@@ -81,7 +79,6 @@ export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   feelings: 'moodRequest',
   letters: 'home',
   lettersRow: 'letters',
-  lettersYesNo: 'letters',
   morse: 'home',
 }
 
@@ -97,7 +94,6 @@ export const SCREEN_TITLES: Record<ScreenId, string> = {
   feelings: '気分',
   letters: '文字盤',
   lettersRow: '文字盤・文字',
-  lettersYesNo: '文字盤・はい/いいえ',
   morse: 'モールス入力',
 }
 
@@ -147,7 +143,6 @@ export const SCREEN_GUIDANCE: Record<ScreenId, string> = {
   feelings: '今の気持ちを選んでください。',
   letters: '文字の行を選んでください。',
   lettersRow: '入力する文字を選んでください。',
-  lettersYesNo: '質問への答えを選んでください。',
   morse: '短押し・長押しで文字を入力します。',
 }
 
@@ -366,7 +361,7 @@ export const LETTER_ROWS: { name: string; chars: string[] }[] = [
   { name: 'わ行', chars: ['わ', 'を', 'ん', 'ー'] },
 ]
 
-/** 文字盤の行段階: 戻る / 緊急 / あ〜わ行 / 確定 / 1字消す / はい・いいえ → */
+/** 文字盤の行段階: 戻る / 緊急 / あ〜わ行 / 確定 / 1字消す */
 export function buildLettersMenu(): MenuItem[] {
   const rowItems: MenuItem[] = LETTER_ROWS.map((row, index) => ({
     id: `letter-row-${index}`,
@@ -377,7 +372,6 @@ export function buildLettersMenu(): MenuItem[] {
     ...rowItems,
     { id: 'commit', label: '確定', action: { type: 'letterCommit' } },
     { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
-    navigate('letters-yesno-nav', 'はい・いいえ', 'lettersYesNo'),
   ])
 }
 
@@ -391,14 +385,6 @@ export function buildLettersRowMenu(row = 0): MenuItem[] {
       action: { type: 'letterAppend', char } as ActionId,
     })),
   )
-}
-
-/** 入力途中の文字列への先読み(「○○？」)に即答する。戻ると入力途中の文字列は保持される */
-export function buildLettersYesNoMenu(): MenuItem[] {
-  return subScreen([
-    message('yes', 'はい', 'はい。'),
-    message('no', 'いいえ', 'いいえ。'),
-  ])
 }
 
 /** モールス入力画面。符号の入力に使うので項目は選ばない。戻る・緊急だけを構造として持つ */
@@ -430,8 +416,6 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
       return buildLettersMenu()
     case 'lettersRow':
       return buildLettersRowMenu(homeOptions.letterRow)
-    case 'lettersYesNo':
-      return buildLettersYesNoMenu()
     case 'morse':
       return buildMorseMenu()
   }

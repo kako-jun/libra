@@ -182,16 +182,14 @@ describe('App', () => {
     expect(scanningLabel(container)).toBe('緊急') // ホームの先頭から再開する
   })
 
-  it('Issue #4: はい・いいえで答えて戻っても入力途中の文字列が保持される', () => {
+  it('Issue #4: ホームではいで答えて文字盤に戻っても入力途中の文字列が保持される', () => {
     const { container } = render(() => <App />)
     selectByScan(container, '文字盤')
     selectByScan(container, 'あ行')
     selectByScan(container, 'あ')
-    selectByScan(container, 'はい・いいえ')
-    selectByScan(container, '戻る')
     expect(container.querySelector('.letter-strip output')?.textContent).toBe('あ')
 
-    selectByScan(container, 'はい・いいえ')
+    selectByScan(container, '戻る')
     selectByScan(container, 'はい')
     expect(h1Text(container)).toBe('はい。')
     selectByScan(container, '文字盤')
