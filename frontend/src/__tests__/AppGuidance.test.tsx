@@ -661,12 +661,12 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       return matches.map((m) => m[1]).join('\n')
     }
 
-    it('.screen-notes は .app-shell の最終行(grid-row: 7)に固定され、行定義は7トラック', () => {
-      expect(ruleBody('.screen-notes')).toMatch(/grid-row:\s*7\b/)
+    it('.screen-notes は .app-shell の最終行(grid-row: 6)に固定され、行定義は6トラック', () => {
+      expect(ruleBody('.screen-notes')).toMatch(/grid-row:\s*6\b/)
       const templates = [
         ...css.matchAll(/\.app-shell\s*\{[^}]*grid-template-rows:\s*([^;]+);/g),
       ].map((m) => m[1].trim())
-      expect(templates.at(-1)?.split(/\s+/)).toHaveLength(7)
+      expect(templates.at(-1)?.split(/\s+/)).toHaveLength(6)
       expect(templates.at(-1)?.split(/\s+/).at(-1)).toBe('auto')
     })
 
@@ -674,7 +674,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const body = ruleBody('.screen-notes')
       expect(body).not.toMatch(/display:\s*none|visibility:\s*hidden|position:\s*(fixed|absolute)/)
       expect(css).not.toMatch(/\.(is-morse|screen-[a-z]+)\s+\.screen-notes/)
-      expect(css).not.toMatch(/\.screen-notes[^{]*\{[^}]*grid-row:\s*(?!7\b)\d/)
+      expect(css).not.toMatch(/\.screen-notes[^{]*\{[^}]*grid-row:\s*(?!6\b)\d/)
     })
 
     it('.caregiver-notes はタブ列の前の固定帯(flex: none)', () => {
