@@ -38,7 +38,7 @@ export const PHRASE_GROUP_LABELS: Record<PhraseGroup, string> = {
   discomfort: '不快',
   discomfortOther: '不快・その他',
   painLocation: '痛い場所',
-  // 快・要望の中の「要望 →」。快・要望の最上位(続けて/やめて/もっと/変えて)は編集できない固定項目
+  // 快・要望の中の「要望 →」。快・要望の最上位(続けて/やめて/変えて)は編集できない固定項目
   moodRequest: '要望',
   feelings: '気分',
 }
