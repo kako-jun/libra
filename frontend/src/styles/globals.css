@@ -65,7 +65,8 @@
   --message-text: #eafaf1;
   --urgent-bg: #d7263d;
   --urgent-text: #ffffff;
-  --urgent-text-muted: #ffd9d6;
+  /* Issue #81: 夜間の赤地(#d7263d)で #ffd9d6 は 3.81:1 だった。4.5:1 以上に明るくする */
+  --urgent-text-muted: #fff5f4;
   --scan-ring: #facc15;
   --scan-text: #eafaf1;
   --scan-text-muted: #c9ecd9;
@@ -1353,7 +1354,8 @@ h1[data-fit='single'] {
 }
 
 .emergency-detail-label {
-  font-size: clamp(0.9rem, 2.4vh, 1.3rem);
+  /* Issue #81: 本人が読む補助文字。標準で 16px(1rem)未満にしない */
+  font-size: clamp(1rem, 2.4vh, 1.3rem);
   font-weight: 700;
 }
 
@@ -1383,8 +1385,15 @@ h1[data-fit='single'] {
 .message-panel-label {
   margin: 0 0 2px;
   color: var(--text-muted);
-  font-size: clamp(0.75rem, 1.8vh, 1rem);
+  /* Issue #81: 本人が読む補助文字は 16px(1rem)未満にしない(短い画面でも) */
+  font-size: 1rem;
   font-weight: 700;
+}
+
+/* Issue #81: 「直前に伝えたこと」は濃緑/赤のメッセージ枠の中に置かれる。--text-muted は薄い地用で
+   枠の上ではライト 1.44:1 だった。枠の文字色(通常=--message-text/緊急=--urgent-text)をそのまま継ぐ */
+.message-panel-label {
+  color: inherit;
 }
 
 .screen-breadcrumb {
@@ -1397,7 +1406,8 @@ h1[data-fit='single'] {
   overflow: hidden;
   list-style: none;
   color: var(--text-muted);
-  font-size: clamp(0.75rem, 1.8vh, 1rem);
+  /* Issue #81: パンくずも 16px(1rem)未満にしない */
+  font-size: 1rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -1506,7 +1516,7 @@ h1[data-fit='single'] {
   }
 
   .screen-guide h2 {
-    font-size: clamp(0.95rem, 3.8vh, 1.35rem);
+    font-size: clamp(1rem, 3.8vh, 1.35rem);
   }
 }
 
@@ -1579,7 +1589,6 @@ h1[data-fit='single'] {
 
   .message-panel-label {
     margin: 0;
-    font-size: 0.7rem;
     line-height: 1.1;
   }
 
