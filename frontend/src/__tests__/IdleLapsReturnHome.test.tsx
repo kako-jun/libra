@@ -180,7 +180,7 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     const { container } = render(() => <App />)
     selectByLabel(container, '文字盤')
     const n = tileCount(container)
-    expect(n).toBe(15)
+    expect(n).toBe(14)
     advanceSteps(container, n * 2 + 1)
     expect(isHome(container)).toBe(false)
     const target = Array.from(container.querySelectorAll<HTMLElement>('.grid-board .tile')).find(
@@ -195,11 +195,11 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     expect(isHome(container)).toBe(true)
   })
 
-  it('末尾近く(13番目)で入力しても、その入力から3周ぶんかかる(2周ちょっとでは戻らない)', () => {
+  it('末尾の1つ手前(13番目)で入力しても、その入力から3周ぶんかかる(2周ちょっとでは戻らない)', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, '文字盤')
     const n = tileCount(container)
-    // 13番目(index 12)まで進めて「1字消す」相当の入力(タイルの直接タップ)
+    // 13番目(index 12)まで進めて入力(タイルの直接タップ。「1字消す」は#95以降 末尾の14番目だが、位置と無関係に押せる)(タイルの直接タップ)
     advanceSteps(container, 12)
     fireEvent.pointerDown(tile(container, '1字消す'), { pointerId: 3 })
     fireEvent.pointerUp(window, { pointerId: 3 })

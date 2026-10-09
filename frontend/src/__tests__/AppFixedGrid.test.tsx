@@ -510,7 +510,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     })
   })
 
-  describe('文字盤の行段階(15項目): スクロール・sticky 緊急は従来どおり', () => {
+  describe('文字盤の行段階(14項目): スクロール・sticky 緊急は従来どおり', () => {
     it('9項目以上は fill しない(grid-fill なし)・空きセルなし・緊急タイルが sticky', () => {
       for (const [w, h] of [
         [390, 844],
