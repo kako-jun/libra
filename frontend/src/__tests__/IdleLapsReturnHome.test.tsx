@@ -259,6 +259,46 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
       advanceSteps(container, 1)
       expect(isHome(container)).toBe(true)
     })
+
+
+    it('ページが非表示になると押下中の扱いは解除され、数え直す(visibilitychange)', () => {
+      setSettings({ activateOn: 'release' })
+      const { container } = render(() => <App />)
+      openDiscomfort(container)
+      const n = tileCount(container)
+      fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+      advanceSteps(container, n * 3 + 5)
+      expect(isHome(container)).toBe(false)
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+      try {
+        document.dispatchEvent(new Event('visibilitychange')) // keyup を取りこぼした
+      } finally {
+        delete (document as unknown as Record<string, unknown>).visibilityState
+      }
+      advanceToJustBeforeReturn(container, n)
+      expect(isHome(container)).toBe(false)
+      advanceSteps(container, 1)
+      expect(isHome(container)).toBe(true)
+    })
+
+    it('背景(タイルの外)に触れても数え直しになり、触れている間は戻らない', () => {
+      const { container } = render(() => <App />)
+      openDiscomfort(container)
+      const n = tileCount(container)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      advanceSteps(container, n * 2 + 1) // あと少しで戻る状態
+      expect(isHome(container)).toBe(false)
+      fireEvent.pointerDown(board, { pointerId: 7 })
+      advanceSteps(container, n * 3 + 5) // 触れたまま 3周ぶん超過
+      expect(isHome(container)).toBe(false)
+      expect(screenLabel(container)).toContain('不快')
+      fireEvent.pointerUp(window, { pointerId: 7 })
+      expect(screenLabel(container)).toContain('不快') // 背景は何も実行しない
+      advanceToJustBeforeReturn(container, n)
+      expect(isHome(container)).toBe(false) // 離してから 3周ぶんに足りない
+      advanceSteps(container, 1)
+      expect(isHome(container)).toBe(true)
+    })
   })
 
   it('パンくずで祖先へ移動すると数え直しになる', () => {
@@ -282,7 +322,7 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
     expect(isHome(container)).toBe(true)
   })
 
-  it('介助者メニューを開く操作でも数え直しになる(閉じるとホーム先頭から再開する)', () => {
+  it('介助者メニューを開いて閉じると、ホーム先頭から再開する', () => {
     const { container } = render(() => <App />)
     openDiscomfort(container)
     const n = tileCount(container)
