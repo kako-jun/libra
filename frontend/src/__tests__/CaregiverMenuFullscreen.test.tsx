@@ -199,3 +199,78 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
     }
   })
 })
+
+// Issue #91: 「閉じる」はどの幅でもパネル右上の角に固定する。jsdom は寸法を測れないため、
+// CSS の grid-template-areas を静的に縛り(@container 内も)、DOM 順(Tab 順)が 見出し → 緊急解除 → 閉じる のままであることを確認する。
+// 実寸(閉じるの右端 = パネル右端 − padding、上端 = パネル上端 + padding)は実ブラウザで確認する。
+describe('Issue #91: 「閉じる」は右上の角に固定(静的)', () => {
+  /** grid-template-areas の各行を area 名の配列にして返す(クオート行を抽出) */
+  const areaRows = (body: string): string[][] => {
+    const m = body.match(/grid-template-areas:\s*([^;}]+)/)
+    if (!m) return []
+    return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1].trim().split(/\s+/))
+  }
+  const headerGridBodies = () => allRuleBodies('.caregiver-header-grid')
+
+  it('.caregiver-header-grid は grid で、flex-wrap の落ち方に頼らない', () => {
+    const bodies = headerGridBodies()
+    expect(bodies.join('\n')).toMatch(/display:\s*grid/)
+    for (const sel of ['.caregiver-header', '.caregiver-header-grid']) {
+      for (const b of allRuleBodies(sel)) expect(b, sel).not.toMatch(/flex-wrap|display:\s*flex/)
+    }
+  })
+
+  it('どの grid-template-areas でも「閉じる」は 1 行目の右端の列にある', () => {
+    const all = headerGridBodies().map(areaRows).filter((r) => r.length > 0)
+    expect(all.length).toBeGreaterThanOrEqual(2) // 狭い幅(基本)と広い幅(@container)
+    for (const rows of all) {
+      const first = rows[0]
+      expect(first[first.length - 1]).toBe('close')
+      // 「閉じる」は 1 行目だけに 1 回だけ現れる
+      expect(rows.flat().filter((a) => a === 'close')).toHaveLength(1)
+    }
+  })
+
+  it('広い幅は 1 行 [title emergency close]、狭い幅は 2 行目へ緊急解除だけを落とす', () => {
+    const [narrow, wide] = [
+      areaRows(ruleBody('.caregiver-header-grid')),
+      headerGridBodies().map(areaRows).find((r) => r.length === 1) ?? [],
+    ]
+    expect(narrow).toEqual([
+      ['title', 'close'],
+      ['emergency', 'emergency'],
+    ])
+    expect(wide).toEqual([['title', 'emergency', 'close']])
+  })
+
+  it('広い幅への切替は文字サイズに追従する container query(em)で、container は .caregiver-header', () => {
+    expect(ruleBody('.caregiver-header')).toMatch(/container-type:\s*inline-size/)
+    expect(css).toMatch(/@container\s*\(min-width:\s*[\d.]+em\)/)
+  })
+
+  it('見出し・緊急解除・閉じるは grid-area を持ち、閉じるに margin 等の位置ずらしがない', () => {
+    expect(allRuleBodies('.caregiver-header h2').join('\n')).toMatch(/grid-area:\s*title/)
+    expect(allRuleBodies('.caregiver-header .caregiver-emergency-clear').join('\n')).toMatch(
+      /grid-area:\s*emergency/,
+    )
+    const closeBodies = allRuleBodies('.caregiver-header .caregiver-close')
+    expect(closeBodies.join('\n')).toMatch(/grid-area:\s*close/)
+    for (const b of closeBodies) expect(b).not.toMatch(/margin|position|transform|justify-self/)
+  })
+})
+
+describe('Issue #91: ヘッダの DOM 順(Tab 順)は 見出し → 緊急解除 → 閉じる', () => {
+  afterEach(() => cleanup())
+
+  it('見出しの後に、緊急解除、閉じるの順で並ぶ', () => {
+    const { container } = render(() => <App />)
+    fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
+    const grid = container.querySelector('.caregiver-header > .caregiver-header-grid') as HTMLElement
+    expect(grid).not.toBeNull()
+    const children = Array.from(grid.children)
+    expect(children.map((e) => e.tagName)).toEqual(['H2', 'BUTTON', 'BUTTON'])
+    expect(children[1].className).toContain('caregiver-emergency-clear')
+    expect(children[2].className).toContain('caregiver-close')
+    expect(children[2].textContent).toBe('閉じる')
+  })
+})
