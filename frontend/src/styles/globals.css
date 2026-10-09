@@ -770,11 +770,6 @@ h1[data-fit='single'] {
     -webkit-line-clamp: 2;
     line-clamp: 2;
     white-space: normal;
-    /* Issue #82: 折り返しは項目の区切り「・」でだけ起こす(「変え|て」のように項目名の途中で
-       切らない)。keep-all で日本語の文字間の改行を止めると、「・」の後ろだけが改行位置になる。
-       1項目が行幅より長いとき(長いフレーズ等)だけ、anywhere で従来どおり途中で切る */
-    word-break: keep-all;
-    overflow-wrap: anywhere;
   }
 
   /* 2行目が出ると予告が上へ伸び、1行目が右端の山形アイコン(top:50%)の列へ届く。

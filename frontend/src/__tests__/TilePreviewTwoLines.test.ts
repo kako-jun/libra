@@ -87,12 +87,11 @@ describe('Issue #71: 予告の2行化は、セルに余裕があるときだけ(
     expect(decl(joined, 'white-space')).toBe('normal')
   })
 
-  it('2行モードの予告は「・」でだけ折り返し(keep-all)、1項目が行幅を超えるときだけ途中で切る(overflow-wrap: anywhere)。1行モード(ベース)には付けない(Issue #82)', () => {
+  it('2行モードの予告は word-break: keep-all を持たない(項目の途中で折り返してよい。文字数を詰める方針、#82)', () => {
     const joined = bodiesOf(previewBlocks()[0].body, '.tile-preview').join('\n')
-    expect(decl(joined, 'word-break')).toBe('keep-all')
-    expect(decl(joined, 'overflow-wrap')).toBe('anywhere')
-    const base = bodiesOf(withoutContainerBlocks(css), '.tile-preview').join('\n')
-    expect(base).not.toMatch(/word-break|overflow-wrap/)
+    // 「・」でだけ折り返す方式は見える文字数が平均 -1.71 文字減るため採用しない(再導入を検知する)
+    expect(joined).not.toMatch(/word-break/)
+    expect(joined).not.toMatch(/overflow-wrap/)
   })
 
   it('予告の2行化と、ラベルの避け領域(margin-bottom)拡大が「同じ @container ブロック」にある', () => {
