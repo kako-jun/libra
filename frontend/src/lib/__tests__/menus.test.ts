@@ -32,7 +32,6 @@ describe('buildMenu の共通規則', () => {
       feelings: ['ホーム', '快', '気分'],
       letters: ['ホーム', '文字盤'],
       lettersRow: ['ホーム', '文字盤', '文字盤・文字'],
-      lettersYesNo: ['ホーム', '文字盤', '文字盤・はい/いいえ'],
       morse: ['ホーム', 'モールス入力'],
     }
 
@@ -95,7 +94,7 @@ describe('buildMenu の共通規則', () => {
     }
   })
 
-  // 文字盤の行段階(letters)は あ〜わ行 + 確定/1字消す/はい・いいえ で8項目を超える(§4.6)。
+  // 文字盤の行段階(letters)は あ〜わ行 + 確定/1字消す で8項目を超える(§4.6)。
   it.each(ALL_SCREENS.filter((s) => s !== 'letters'))('%s: 項目数は8以内である', (screen) => {
     const items = buildMenu(screen, { showUndo: true, emergencyActive: false })
     expect(items.length).toBeLessThanOrEqual(8)
@@ -115,7 +114,6 @@ describe('本人画面の階層構造', () => {
     'feelings',
     'letters',
     'lettersRow',
-    'lettersYesNo',
     'morse',
   ]
 
@@ -130,7 +128,6 @@ describe('本人画面の階層構造', () => {
     feelings: 'comfort',
     letters: 'home',
     lettersRow: 'letters',
-    lettersYesNo: 'letters',
     morse: 'home',
   }
 
@@ -231,7 +228,7 @@ describe('戻る先(PARENT_SCREEN)', () => {
     expect(PARENT_SCREEN[screen]).toBe('home')
   })
 
-  it.each(['lettersRow', 'lettersYesNo'] as const)('%s の戻る先は letters(行段階)', (screen) => {
+  it.each(['lettersRow'] as const)('%s の戻る先は letters(行段階)', (screen) => {
     expect(PARENT_SCREEN[screen]).toBe('letters')
   })
 })
@@ -354,7 +351,7 @@ describe('文字盤(§4.6)', () => {
     expect(LETTER_ROWS[9].chars).toEqual(['わ', 'を', 'ん', 'ー'])
   })
 
-  it('行段階: 戻る→緊急→あ〜わ行→確定→1字消す→はい・いいえ', () => {
+  it('行段階: 戻る→緊急→あ〜わ行→確定→1字消す', () => {
     const labels = buildMenu('letters', homeOptions).map((item) => item.label)
     expect(labels).toEqual([
       '戻る',
@@ -362,7 +359,6 @@ describe('文字盤(§4.6)', () => {
       ...LETTER_ROWS.map((row) => row.name),
       '確定',
       '1字消す',
-      'はい・いいえ',
     ])
   })
 
@@ -393,9 +389,17 @@ describe('文字盤(§4.6)', () => {
     ).toEqual(LETTER_ROWS[0].chars)
   })
 
-  it('はい・いいえ画面: 戻る→緊急→はい→いいえ', () => {
-    const labels = buildMenu('lettersYesNo', homeOptions).map((item) => item.label)
-    expect(labels).toEqual(['戻る', '緊急', 'はい', 'いいえ'])
+  it('行段階は14項目で、はい・いいえへの入口と lettersYesNo 画面を持たない(Issue #95)', () => {
+    const items = buildMenu('letters', homeOptions)
+    expect(items).toHaveLength(14)
+    expect(items.some((item) => item.label === 'はい・いいえ')).toBe(false)
+    expect(
+      items.some(
+        (item) => item.action.type === 'navigate' && String(item.action.screen) === 'lettersYesNo',
+      ),
+    ).toBe(false)
+    expect(PATIENT_SCREEN_IDS as readonly string[]).not.toContain('lettersYesNo')
+    expect(Object.keys(PARENT_SCREEN)).not.toContain('lettersYesNo')
   })
 })
 
