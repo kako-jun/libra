@@ -11,12 +11,20 @@ beforeAll(async () => {
   css = fs.readFileSync(`${cwd}/src/styles/globals.css`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
 })
 
-/** @media 内も含め、セレクタ(カンマ区切りの一つ)が完全一致する全規則の本体 */
+/**
+ * @media 内も含め、対象セレクタの全パーツ(空白区切り。クラスまたはタグ)をセレクタ内に含む全規則の本体。
+ * 完全一致ではないので、`.app-shell .message-panel-label { … }`(祖先側に別名が付いた規則)や
+ * `.screen-breadcrumb li { … }`(子孫への指定)の縮小も拾う。
+ * 括弧内にカンマを含むセレクタは正しく分解できない(現行 CSS に該当は無い)。
+ */
 const bodies = (selector: string): string[] => {
+  const parts = selector.trim().split(/\s+/)
+  const has = (sel: string, part: string): boolean =>
+    new RegExp(`(?<![\\w-])${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`).test(sel)
   const out: string[] = []
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const sels = m[1].split(',').map((x) => x.trim())
-    if (sels.includes(selector)) out.push(m[2])
+    if (sels.some((sel) => parts.every((p) => has(sel, p)))) out.push(m[2])
   }
   return out
 }
@@ -43,6 +51,7 @@ const SUPPORT_SELECTORS = [
   '.message-panel-label',
   '.emergency-detail-label',
   '.screen-breadcrumb',
+  '.breadcrumb-link',
   '.screen-guide h2',
   '.emergency-status .emergency-detail-label',
 ]
@@ -54,6 +63,8 @@ describe('Issue #81: 本人向け補助文字は標準で 16px 以上(@media 内
       expect(all.length, `${sel} の規則が見つからない`).toBeGreaterThan(0)
       for (const body of all) {
         const m = body.match(/(?:^|[;\s])font-size:\s*([^;]+)/)
+        // font ショートハンド で数値のサイズを与えて縮める抜け道も塞ぐ(font: inherit は可)
+        expect(body, `${sel} の font ショートハンド`).not.toMatch(/(?:^|[;\s])font:\s*[^;]*\d/)
         if (!m) continue
         const px = lowerBoundPx(m[1])
         expect(px, `${sel} の font-size: ${m[1]}`).toBeGreaterThanOrEqual(MIN_PX)
@@ -143,6 +154,25 @@ describe('Issue #81: 本人向け補助文字の色は全テーマで 4.5:1 以�
       ).toBeGreaterThanOrEqual(4.5)
     })
   }
+
+  for (const [i, name] of names.entries()) {
+    it(`${name}: パンくず(--text-muted)と h2(--text)は案内枠の地(--surface-calm)の上で 4.5:1 以上`, () => {
+      const t = themeTokens()[i][1]
+      expect(ratio(t['--text-muted'], t['--surface-calm']), 'パンくず').toBeGreaterThanOrEqual(4.5)
+      expect(ratio(t['--text'], t['--surface-calm']), 'h2').toBeGreaterThanOrEqual(4.5)
+    })
+  }
+
+  it('パンくずと h2 の色は、案内枠(--surface-calm)の上で使うトークン(--text-muted / --text)のまま', () => {
+    expect(bodies('.screen-breadcrumb').join('\n')).toMatch(/color:\s*var\(--text-muted\)/)
+    expect(bodies('.screen-guide').join('\n')).toMatch(/background:\s*var\(--surface-calm\)/)
+  })
+
+  it('パンくずは折り返し(flex-wrap: wrap)で祖先を省略しない(text-overflow / overflow:hidden を持たない)', () => {
+    const all = bodies('.screen-breadcrumb').join('\n') + bodies('.breadcrumb-link').join('\n')
+    expect(all).toMatch(/flex-wrap:\s*wrap/)
+    expect(all).not.toMatch(/text-overflow|overflow:\s*hidden/)
+  })
 
   it('緊急詳細(.emergency-detail-status / .emergency-details)は --urgent-text-muted(赤地の上で 4.5:1 以上のトークン)', () => {
     for (const sel of ['.emergency-detail-status', '.emergency-details']) {
