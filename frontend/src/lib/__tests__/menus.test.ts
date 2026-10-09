@@ -267,19 +267,48 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
   it('不快タイルの予告は遷移先(discomfort)の戻る・緊急を除いた先頭項目から自動生成される', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
     const discomfortTile = items.find((item) => item.id === 'discomfort-nav')
-    expect(discomfortTile?.preview).toBe('痛い・苦しい・痰を取ってほしい・体の向きを変えたい…')
+    // 戻る・緊急を除いてちょうど6項目(痛い・苦しい・痰・体の向き・トイレ・その他)なので「…」なし(Issue #74)
+    expect(discomfortTile?.preview).toBe('痛い・苦しい・痰を取ってほしい・体の向きを変えたい・トイレ・その他')
   })
 
   it('快・要望タイルの予告は遷移先(moodRequest)から自動生成される', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
     const moodTile = items.find((item) => item.id === 'mood-nav')
-    expect(moodTile?.preview).toBe('続けて・やめて・変えて・要望…')
+    // 項目は5件(上限6以下)なので全項目を名前で並べ、「…」は付けない(Issue #74)
+    expect(moodTile?.preview).toBe('続けて・やめて・変えて・要望・気分')
   })
 
   it('文字盤タイルの予告は遷移先(letters)から自動生成される', () => {
     const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
     const lettersTile = items.find((item) => item.id === 'letters-nav')
-    expect(lettersTile?.preview).toBe('あ行・か行・さ行・た行…')
+    expect(lettersTile?.preview).toBe('あ行・か行・さ行・た行・な行・は行…')
+  })
+
+  it('項目数が上限(6)以下なら全項目を並べ「…」を付けない。遷移項目も名前で並べ矢印は付けない(Issue #74)', () => {
+    const items = buildMenu('moodRequest', { showUndo: false, emergencyActive: false })
+    const sixOrLess = items.filter((i) => i.action.type !== 'emergency' && i.action.type !== 'back').length
+    expect(sixOrLess).toBeLessThanOrEqual(6)
+    const home = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const preview = home.find((i) => i.id === 'mood-nav')?.preview ?? ''
+    expect(preview.endsWith('…')).toBe(false)
+    expect(preview).not.toMatch(/→/)
+  })
+
+  it('ちょうど上限(6項目)は「…」なし、7項目になると先頭6項目＋「…」(Issue #74)', () => {
+    const six = ['a', 'b', 'c', 'd', 'e', 'f'].map((x) => ({ id: x, label: x, text: x }))
+    const exact = buildMenu('moodRequest', {
+      showUndo: false,
+      emergencyActive: false,
+      phrases: { moodRequest: six },
+    }).find((i) => i.id === 'requests-nav')
+    expect(exact?.preview).toBe('a・b・c・d・e・f')
+    const seven = [...six, { id: 'g', label: 'g', text: 'g' }]
+    const over = buildMenu('moodRequest', {
+      showUndo: false,
+      emergencyActive: false,
+      phrases: { moodRequest: seven },
+    }).find((i) => i.id === 'requests-nav')
+    expect(over?.preview).toBe('a・b・c・d・e・f…')
   })
 
   it('message/emergency/back/undo などの navigate 以外のアイテムは preview を持たない', () => {
