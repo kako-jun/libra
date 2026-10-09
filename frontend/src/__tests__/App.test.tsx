@@ -300,7 +300,7 @@ describe('App', () => {
     expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
   })
 
-  it('Issue #37: 選択後の現在地と採用内容を表示し、戻ると親画面へ追従する', () => {
+  it('Issue #37: 選択後の現在地をパンくずに表示し、戻ると親画面へ追従する', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, '不快')
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('ホーム')
@@ -318,7 +318,7 @@ describe('App', () => {
     expect(container.querySelector('.screen-breadcrumb')?.textContent).not.toContain('痛みの強さ')
   })
 
-  it('Issue #37: 開発用の直接番号入力でも採用内容と現在地が更新される', () => {
+  it('Issue #37: 開発用の直接番号入力でも現在地が更新される', () => {
     window.history.replaceState({}, '', '/?dev')
     const { container } = render(() => <App />)
     window.history.replaceState({}, '', '/')
@@ -326,7 +326,7 @@ describe('App', () => {
     expect(container.querySelector('.screen-breadcrumb')?.textContent).toContain('不快')
   })
 
-  it('Issue #37: 通常伝達・緊急詳細は採用確認を重複表示せず、専用領域だけを使う', () => {
+  it('Issue #37: 通常伝達・緊急詳細は専用領域だけを使う', () => {
     const { container } = render(() => <App />)
     selectByLabel(container, 'はい')
     expect(container.querySelector('.selection-confirmation')).toBeNull()
@@ -376,24 +376,24 @@ describe('App', () => {
     const { container } = render(() => <App />)
     const confirmation = () =>
       container.querySelector('.selection-confirmation')?.textContent ?? null
-    const expectAccepted = (_label: string) => expect(confirmation()).toBeNull()
+    const expectNoStrip = () => expect(confirmation()).toBeNull()
 
     selectByLabel(container, '不快')
-    expectAccepted('不快') // navigate
+    expectNoStrip() // navigate
     selectByLabel(container, '痛い')
-    expectAccepted('痛い') // painLocation
+    expectNoStrip() // painLocation
     selectByLabel(container, '胸')
-    expectAccepted('胸') // pain location selected; intensity is not yet transmitted
+    expectNoStrip() // pain location selected; intensity is not yet transmitted
     selectByLabel(container, '戻る')
-    expectAccepted('戻る') // back
+    expectNoStrip() // back
     selectByLabel(container, '戻る')
     selectByLabel(container, '戻る')
     selectByLabel(container, '文字盤')
-    expectAccepted('文字盤') // navigate
+    expectNoStrip() // navigate
     selectByLabel(container, 'あ行')
-    expectAccepted('あ行') // letterRow
+    expectNoStrip() // letterRow
     selectByLabel(container, 'あ')
-    expectAccepted('あ') // letterAppend
+    expectNoStrip() // letterAppend
     // 選んだ文字は文字盤の入力欄に出る(帯の代わり)
     expect(container.querySelector('.letter-strip')?.textContent).toContain('あ')
 
@@ -415,6 +415,48 @@ describe('App', () => {
     selectByLabel(container, '苦しい') // emergency detail
     expect(confirmation()).toBeNull()
     expect(container.querySelector('.emergency-status')?.textContent).toContain('苦しい')
+  })
+
+  it('Issue #75: .app-shell の直下には許可された領域しかなく、帯が別名で再導入されない', () => {
+    // 新しい領域を足すときはここへ追記する(帯の再導入を別のクラス名で許さないための許可リスト)
+    const ALLOWED = new Set([
+      'emergency-status',
+      'screen-guide',
+      'message-panel',
+      'hold-progress',
+      'letter-strip',
+      'morse-panel',
+      'grid-board',
+      'screen-notes',
+      'caregiver-overlay',
+    ])
+    const { container } = render(() => <App />)
+    const seen = new Set<string>()
+    const collect = () => {
+      const shell = container.querySelector('.app-shell')
+      for (const child of Array.from(shell?.children ?? [])) {
+        seen.add(child.className.split(/\s+/)[0] ?? '')
+      }
+    }
+    collect()
+    selectByLabel(container, '不快')
+    selectByLabel(container, '痛い')
+    selectByLabel(container, '胸')
+    collect()
+    selectByLabel(container, '戻る')
+    selectByLabel(container, '戻る')
+    selectByLabel(container, '戻る')
+    selectByLabel(container, '文字盤')
+    selectByLabel(container, 'あ行')
+    selectByLabel(container, 'あ')
+    collect()
+    selectByLabel(container, '確定')
+    selectByLabel(container, '緊急')
+    selectByLabel(container, '苦しい')
+    collect()
+    expect(seen.size).toBeGreaterThan(3)
+    const unexpected = [...seen].filter((c) => !ALLOWED.has(c))
+    expect(unexpected).toEqual([])
   })
 
   it('Issue #37: 選んだ場所・文字行を再選択すると案内とパンくずの動的値も切り替わる', () => {
