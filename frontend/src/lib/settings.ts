@@ -16,7 +16,7 @@ export type Theme = 'light' | 'dark' | 'auto'
 export interface Settings {
   /** スキャン間隔(ms)。既定 1500、範囲 500〜5000 */
   intervalMs: number
-  /** 先頭待機の倍率（先頭待機 = intervalMs * headHoldMultiplier）。既定 2、範囲 1〜5 */
+  /** 先頭待機の倍率（先頭待機 = intervalMs * headHoldMultiplier）。既定 4/3(間隔 1.5 秒で 2.0 秒。Issue #92)、範囲 1〜5 */
   headHoldMultiplier: number
   /** 連打無視(ms)。既定 500、範囲 0〜3000 */
   debounceMs: number
@@ -61,7 +61,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   intervalMs: 1500,
-  headHoldMultiplier: 2,
+  headHoldMultiplier: 4 / 3,
   debounceMs: 500,
   minHoldMs: 0,
   activateOn: 'press',
