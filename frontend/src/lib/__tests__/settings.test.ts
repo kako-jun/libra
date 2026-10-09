@@ -51,6 +51,19 @@ describe('normalizeSettings', () => {
   })
 
   describe('headHoldMultiplier の範囲(1〜5)', () => {
+    it('既定は 4/3(間隔 1.5 秒で 2.0 秒。Issue #92)。保存済みの 2 はそのまま尊重する', () => {
+      expect(DEFAULT_SETTINGS.headHoldMultiplier).toBe(4 / 3)
+      expect(Math.round(DEFAULT_SETTINGS.intervalMs * DEFAULT_SETTINGS.headHoldMultiplier)).toBe(
+        2000,
+      )
+      expect(normalizeSettings({ headHoldMultiplier: 2 }).headHoldMultiplier).toBe(2)
+    })
+    it('書き出し JSON の往復で 4/3 が変わらない', () => {
+      const json = exportSettingsJson(DEFAULT_SETTINGS)
+      const parsed = parseSettingsJson(json, DEFAULT_SETTINGS)
+      expect(parsed?.headHoldMultiplier).toBe(4 / 3)
+      expect(exportSettingsJson(parsed as typeof DEFAULT_SETTINGS)).toBe(json)
+    })
     it('下限-1(0)は既定値にフォールバックする', () => {
       expect(normalizeSettings({ headHoldMultiplier: 0 }).headHoldMultiplier).toBe(
         DEFAULT_SETTINGS.headHoldMultiplier,

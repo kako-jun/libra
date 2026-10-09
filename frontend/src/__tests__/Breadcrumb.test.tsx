@@ -23,11 +23,12 @@ function scanningLabel(container: HTMLElement): string | null {
 }
 
 function selectByLabel(container: HTMLElement, label: string) {
-  for (let i = 0; i < 40 && scanningLabel(container) !== label; i += 1) {
-    vi.advanceTimersByTime(INTERVAL_MS)
+  // 先頭待機が間隔の整数倍でない(既定 2.0 秒 / 間隔 1.5 秒)ので、連打無視を先に過ぎてから 100ms ずつ進めて目的の項目で押す
+  vi.advanceTimersByTime(600)
+  for (let i = 0; i < 400 && scanningLabel(container) !== label; i += 1) {
+    vi.advanceTimersByTime(100)
   }
   expect(scanningLabel(container)).toBe(label)
-  vi.advanceTimersByTime(600)
   fireEvent.keyDown(window, { key: ' ' })
 }
 
