@@ -325,15 +325,14 @@ export function buildPainIntensityMenu(pain?: PainChoice): MenuItem[] {
 }
 
 /**
- * 快・要望(Issue #12): 二値の入口「続けて・やめて」「もっと・変えて」を最上位に置き、
+ * 快・要望(Issue #12): 二値の入口「続けて・やめて・変えて」を最上位に置き(「もっと」は「続けて」と意味が同じため置かない。Issue #78)、
  * これまでの要望は「要望 →」、気分(不安・さみしい・落ち着かない)は「気分 →」に2段階化する。
- * 続けて/やめて/もっと/変えて は、はい・いいえと同じく編集できない固定項目。
+ * 続けて/やめて/変えて は、はい・いいえと同じく編集できない固定項目。
  */
 export function buildMoodRequestMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen([
     message('continue', '続けて', '続けてください。'),
     message('stop', 'やめて', 'やめてください。'),
-    message('more', 'もっと', 'もっとお願いします。'),
     message('change', '変えて', '変えてください。'),
     navigate('requests-nav', '要望', 'requests', phrases),
     navigate('feelings-nav', '気分', 'feelings', phrases),
