@@ -141,7 +141,7 @@ function startInstallFailureServer(port) {
 /**
  * 更新チェックを起こし、新しい SW の install の結末を返す。固定待ちだと遅い環境(CI・負荷時)で
  * install の途中を測ってしまうため、worker の状態遷移を待つ。
- * 戻り値: 'redundant'(install 失敗) | 'installed' | 'activated' | 'no-updatefound'(SW に差分が無く
+ * 戻り値: 'redundant'(install 失敗) | 'installed' | 'no-installing'(updatefound 時に installing が無い) | 'activated' | 'no-updatefound'(SW に差分が無く
  * 更新自体が起きなかった) | 'timeout'(15 秒たっても決着しない)。各検査は期待する結末かを必ず確認する
  * (確認しないと、更新が起きないまま「キャッシュが残っている」だけを見て素通りしてしまう)。
  */
@@ -160,7 +160,7 @@ async function updateAndWaitForInstall(page) {
         () => {
           found = true
           const worker = registration.installing
-          if (!worker) return done('redundant')
+          if (!worker) return done(registration.waiting ? 'installed' : 'no-installing')
           if (worker.state === 'redundant') return done('redundant')
           worker.addEventListener('statechange', () => {
             if (['redundant', 'installed', 'activated'].includes(worker.state)) done(worker.state)
