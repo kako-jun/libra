@@ -63,7 +63,7 @@ export function launchBrowser(chromium) {
 /**
  * 検査を順に実行する。各検査は (chromium, port) => 失敗メッセージの配列 を返す。
  * 検査名を CI ログに出し、失敗があれば exit code 1 にする。
- * E2E_ONLY=name1,name2 を指定すると、その名前の検査だけを実行する。
+ * E2E_ONLY=name1,name2 を指定すると、その名前の検査だけを実行する(未知の名前は失敗。種類ごとの e2e:<suite> と併用する)。
  */
 export async function runChecks(checks, { basePort }) {
   if (!fs.existsSync(DIST_DIR)) {
@@ -71,7 +71,22 @@ export async function runChecks(checks, { basePort }) {
     process.exitCode = 1
     return
   }
-  const only = process.env.E2E_ONLY ? process.env.E2E_ONLY.split(',') : null
+  const only = process.env.E2E_ONLY
+    ? process.env.E2E_ONLY.split(',')
+        .map((name) => name.trim())
+        .filter(Boolean)
+    : null
+  if (only) {
+    const known = checks.map((check) => check.name)
+    const unknown = only.filter((name) => !known.includes(name))
+    if (unknown.length > 0) {
+      console.error(
+        `E2E_ONLY に未知の検査名: ${unknown.join(', ')}(このファイルの検査: ${known.join(', ')})`,
+      )
+      process.exitCode = 1
+      return
+    }
+  }
   const { chromium } = await import('playwright')
   const allFailures = []
   let port = basePort

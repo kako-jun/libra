@@ -120,10 +120,10 @@ function startInstallFailureServer(port) {
     if (pathname === '/sw.js' && state.phase !== 'v1') {
       const newName = state.phase === 'v3-collision' ? state.collisionName : 'libra-e2e-v2-broken'
       const source = fs.readFileSync(filePath, 'utf-8')
-      const rewritten = source.replace(
-        /const CACHE_NAME = '[^']*'/,
-        `const CACHE_NAME = '${newName}'`,
-      )
+      // 同名 CACHE_NAME のままでもバイト列を変えて、ブラウザに更新(updatefound)を検知させる
+      const rewritten =
+        source.replace(/const CACHE_NAME = '[^']*'/, `const CACHE_NAME = '${newName}'`) +
+        `\n// e2e-${state.phase}\n`
       res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-cache' })
       res.end(rewritten)
       return
@@ -139,35 +139,58 @@ function startInstallFailureServer(port) {
 }
 
 /**
- * 更新チェックを起こし、新しい SW の install が終わる(失敗なら redundant になる)まで待つ。
- * 固定待ちだと遅い環境(CI・負荷時)で install の途中を測ってしまうため、worker の状態遷移を待つ。
- * 15 秒たっても終わらなければ待ちを打ち切り、その時点の状態で各検査が判定する。
+ * 更新チェックを起こし、新しい SW の install の結末を返す。固定待ちだと遅い環境(CI・負荷時)で
+ * install の途中を測ってしまうため、worker の状態遷移を待つ。
+ * 戻り値: 'redundant'(install 失敗) | 'installed' | 'activated' | 'no-updatefound'(SW に差分が無く
+ * 更新自体が起きなかった) | 'timeout'(15 秒たっても決着しない)。各検査は期待する結末かを必ず確認する
+ * (確認しないと、更新が起きないまま「キャッシュが残っている」だけを見て素通りしてしまう)。
  */
 async function updateAndWaitForInstall(page) {
-  await page.evaluate(async () => {
+  const outcome = await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready
-    await new Promise((resolve) => {
-      const timer = setTimeout(resolve, 15000)
-      const done = () => {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), 15000)
+      const done = (value) => {
         clearTimeout(timer)
-        resolve()
+        resolve(value)
       }
+      let found = false
       registration.addEventListener(
         'updatefound',
         () => {
+          found = true
           const worker = registration.installing
-          if (!worker || worker.state === 'redundant') return done()
+          if (!worker) return done('redundant')
+          if (worker.state === 'redundant') return done('redundant')
           worker.addEventListener('statechange', () => {
-            if (['redundant', 'installed', 'activated'].includes(worker.state)) done()
+            if (['redundant', 'installed', 'activated'].includes(worker.state)) done(worker.state)
           })
         },
         { once: true },
       )
-      registration.update().catch(done)
+      registration
+        .update()
+        .then(() => {
+          // update() 完了後も updatefound が来ないなら差分なし。少し待って来なければ no-updatefound
+          setTimeout(() => {
+            if (!found) done('no-updatefound')
+          }, 3000)
+        })
+        .catch(() => done('timeout'))
     })
   })
   // 失敗後の一時キャッシュ削除などの後始末が終わるのを少し待つ
   await page.waitForTimeout(500)
+  return outcome
+}
+
+async function expectRedundantInstall(page, failures, label, phase) {
+  const outcome = await updateAndWaitForInstall(page)
+  if (outcome !== 'redundant') {
+    failures.push(
+      `[${label}] ${phase}: 新しい SW の install が失敗(redundant)するはずが ${outcome} だった(更新が起きていない可能性)`,
+    )
+  }
 }
 
 async function checkInstallFailureKeepsOldVersion(chromium, port) {
@@ -197,7 +220,7 @@ async function checkInstallFailureKeepsOldVersion(chromium, port) {
     // v2: sw.js のバイト内容を変えて更新チェックを誘発し、precache対象の1件(manifest)を
     // 500にする。install が失敗し、v1 の SW・キャッシュがそのまま残ることを期待する
     state.phase = 'v2'
-    await updateAndWaitForInstall(page)
+    await expectRedundantInstall(page, failures, label, 'v2')
 
     const cacheNamesAfter = await page.evaluate(() => caches.keys())
     if (!cacheNamesAfter.includes(v1CacheName)) {
@@ -233,7 +256,7 @@ async function checkInstallFailureKeepsOldVersion(chromium, port) {
     // caches.delete()するのは一時名だけであり、同名であっても本名を巻き込まない)
     state.phase = 'v3-collision'
     state.collisionName = v1CacheName
-    await updateAndWaitForInstall(page)
+    await expectRedundantInstall(page, failures, label, 'v3-collision')
 
     const cacheNamesAfterCollision = await page.evaluate(() => caches.keys())
     if (!cacheNamesAfterCollision.includes(v1CacheName)) {
