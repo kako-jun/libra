@@ -47,7 +47,7 @@ Hono on Cloudflare Workers。現時点では薄い API に留める。
 - 同一オリジンの GET は stale-while-revalidate（キャッシュがあれば即返し、裏でネットワークから更新）。ナビゲーション（リロード・URL直入力等）は、precache キャッシュに `/` があれば 3 秒タイムアウト付き network-first（失敗・非 2xx 時はキャッシュ済みの `/` へフォールバック）。キャッシュに `/` が無い場合（初回アクセス等）は諦めてエラーを返すのではなく、タイムアウト無しでネットワークの応答を待ち続ける（非 ok 応答であってもそのまま返す）
 - `/api/` 配下は SW で握らず常にネットワークのみ（将来バックエンド通信を追加した場合の指針）
 - ページ側（`frontend/src/lib/offlineReady.ts`）が「オフライン準備ができているか」を確認する際は、SW に `postMessage({type:'GET_CACHE_NAME'})` で問い合わせて現在の `CACHE_NAME` を教えてもらい、そのキャッシュに `/` と実際に参照中の JS/CSS が揃っているかで判定する（キャッシュ名のプレフィックス一致等の推測はしない。一時名 `-installing` と取り違える恐れがあるため）。未完了のあいだは、既存の `registration` が無ければ `navigator.serviceWorker.register()` を呼び直し(初回 install 失敗時は registration 自体が残らないため)、あれば `registration.update()` を呼ぶ。再試行の間隔は5分から始まり失敗するたびに倍にして60分で打ち止め、成功したら5分にリセットする(指数バックオフ)。`navigator.onLine===false` のあいだは試みない
-- `frontend/e2e/offline.e2e.mjs` が、素の静的配信・Cloudflare Pages 相当（`/index.html` 308 リダイレクト）・ドットファイル 404 環境の3パターンでオフライン起動（reload・ディープリンク直接アクセス）を Playwright で検証する。加えて、install 時の 5xx で旧 SW が生き残ること（新旧 CACHE_NAME が衝突する場合を含む）、横向き小画面でのレイアウト崩れが無いこと、案内領域・「介助者用」ボタンがタイルと重ならないことも検証する
+- `frontend/e2e/offline.e2e.mjs`(他の e2e は `navigation` / `layout` / `theme`。CI で全件実行する)が、素の静的配信・Cloudflare Pages 相当（`/index.html` 308 リダイレクト）・ドットファイル 404 環境の3パターンでオフライン起動（reload・ディープリンク直接アクセス）を Playwright で検証する。加えて、install 時の 5xx で旧 SW が生き残ること（新旧 CACHE_NAME が衝突する場合を含む）も検証する。レイアウトの崩れ・重なりは `layout.e2e.mjs` が検証する
 
 ## Storage
 

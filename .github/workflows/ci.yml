@@ -26,6 +26,31 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [offline, navigation, layout, theme]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      # Service Worker のマニフェスト生成を含むため、vite build ではなく npm run build を使う
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e:${{ matrix.suite }}
+
   backend:
     runs-on: ubuntu-latest
     defaults:

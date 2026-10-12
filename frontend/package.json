@@ -8,7 +8,11 @@
     "build": "vite build && node scripts/generate-precache-manifest.mjs dist",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "node e2e/offline.e2e.mjs"
+    "e2e": "npm run e2e:offline && npm run e2e:navigation && npm run e2e:layout && npm run e2e:theme",
+    "e2e:offline": "node e2e/offline.e2e.mjs",
+    "e2e:navigation": "node e2e/navigation.e2e.mjs",
+    "e2e:layout": "node e2e/layout.e2e.mjs",
+    "e2e:theme": "node e2e/theme.e2e.mjs"
   },
   "dependencies": {
     "@fontsource/biz-udpgothic": "^5.3.0",
