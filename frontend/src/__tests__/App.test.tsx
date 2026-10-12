@@ -1540,10 +1540,10 @@ describe('App', () => {
     expect(calls[yesIndex + 1]).toBe('speak:緊急')
 
     // nit: 素通しは1回だけ。その次の通常のカーソル移動の読み上げは従来どおり cancel される
-    // (この時点の home は伝達直後の1周なので index1=取り消し)
+    // (この時点の home は伝達直後の1周なので index1=はい)
     vi.advanceTimersByTime(HEAD_HOLD_MS)
     expect(calls[calls.length - 2]).toBe('cancel')
-    expect(calls[calls.length - 1]).toBe('speak:取り消し')
+    expect(calls[calls.length - 1]).toBe('speak:はい')
   })
 
   // 聴覚スキャンON + 音声モード全部読む にして介助者メニューを閉じるところまでの共通セットアップ
@@ -1691,13 +1691,13 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // はい → home
     expect(document.documentElement.dataset.messageTone).toBe('neutral')
 
-    // home(取り消しあり): 0緊急,1取り消し,2はい,3いいえ,...
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // index3=いいえ
+    // home(取り消しあり): 0緊急,1はい,2いいえ,3取り消し,...
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index2=いいえ
     expect(scanningLabel(container)).toBe('いいえ')
     fireEvent.keyDown(window, { key: ' ' }) // いいえ(neutral) → home
     expect(document.documentElement.dataset.messageTone).toBe('neutral')
 
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // home index3=取り消し
     expect(scanningLabel(container)).toBe('取り消し')
     fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 空(「はい」には戻らない)
     expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
@@ -1974,7 +1974,7 @@ describe('App', () => {
       vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい
       expect(h1Text(container)).toBe('はい。')
-      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // home index3=取り消し
       fireEvent.keyDown(window, { key: ' ' }) // 取り消し
       expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
@@ -1987,10 +1987,10 @@ describe('App', () => {
       expect(h1Text(container)).toBe('はい。')
       clearEmergencyViaMenu(container) // 緊急なしの解除ボタン(disabled で何も起きない)
       closeCaregiverMenu(container)
-      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // 緊急→取り消し→はい→いいえ
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // 緊急→はい→いいえ
       fireEvent.keyDown(window, { key: ' ' }) // いいえ (B)
       expect(h1Text(container)).toBe('いいえ。')
-      vi.advanceTimersByTime(HEAD_HOLD_MS) // home index1=取り消し
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // home index3=取り消し
       fireEvent.keyDown(window, { key: ' ' }) // 取り消し
       expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
     })
@@ -2232,7 +2232,7 @@ describe('App', () => {
       expect(tileLabels(container)).toHaveLength(7)
       setViewport(1000, 500)
       expect(container.querySelectorAll('.tile-empty')).toHaveLength(1)
-      // 「はい」を選んで home+取り消しの8項目状態にする(緊急,取り消し,はい,いいえ,快,不快,要望,文字盤)
+      // 「はい」を選んで home+取り消しの8項目状態にする(緊急,はい,いいえ,取り消し,快,不快,要望,文字盤)
       vi.advanceTimersByTime(HEAD_HOLD_MS)
       fireEvent.keyDown(window, { key: ' ' }) // はい選択 → home(取り消し表示)
       expect(tileLabels(container)).toHaveLength(8)
