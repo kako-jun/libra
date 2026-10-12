@@ -139,19 +139,35 @@ function startInstallFailureServer(port) {
 }
 
 /**
- * 更新チェック~install失敗までの非同期処理を待つ。固定待ちだと遅い環境(CI・負荷時)で install の
- * 途中(一時キャッシュ "-installing" がまだ残っている最中)を測ってしまうため、最低 1.5 秒待った後、
- * 一時キャッシュが消えるまで最大 10 秒ポーリングする。10 秒たっても残っていれば残骸として検査が失敗する。
+ * 更新チェックを起こし、新しい SW の install が終わる(失敗なら redundant になる)まで待つ。
+ * 固定待ちだと遅い環境(CI・負荷時)で install の途中を測ってしまうため、worker の状態遷移を待つ。
+ * 15 秒たっても終わらなければ待ちを打ち切り、その時点の状態で各検査が判定する。
  */
-async function waitForInstallToSettle(page) {
-  await page.waitForTimeout(1500)
-  await page
-    .waitForFunction(
-      async () => !(await caches.keys()).some((name) => name.endsWith('-installing')),
-      undefined,
-      { timeout: 10000 },
-    )
-    .catch(() => {})
+async function updateAndWaitForInstall(page) {
+  await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.ready
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 15000)
+      const done = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      registration.addEventListener(
+        'updatefound',
+        () => {
+          const worker = registration.installing
+          if (!worker || worker.state === 'redundant') return done()
+          worker.addEventListener('statechange', () => {
+            if (['redundant', 'installed', 'activated'].includes(worker.state)) done()
+          })
+        },
+        { once: true },
+      )
+      registration.update().catch(done)
+    })
+  })
+  // 失敗後の一時キャッシュ削除などの後始末が終わるのを少し待つ
+  await page.waitForTimeout(500)
 }
 
 async function checkInstallFailureKeepsOldVersion(chromium, port) {
@@ -181,12 +197,7 @@ async function checkInstallFailureKeepsOldVersion(chromium, port) {
     // v2: sw.js のバイト内容を変えて更新チェックを誘発し、precache対象の1件(manifest)を
     // 500にする。install が失敗し、v1 の SW・キャッシュがそのまま残ることを期待する
     state.phase = 'v2'
-    await page.evaluate(async () => {
-      const registration = await navigator.serviceWorker.ready
-      await registration.update()
-    })
-    // 更新チェック~install失敗までの非同期処理を待つ
-    await waitForInstallToSettle(page)
+    await updateAndWaitForInstall(page)
 
     const cacheNamesAfter = await page.evaluate(() => caches.keys())
     if (!cacheNamesAfter.includes(v1CacheName)) {
@@ -222,11 +233,7 @@ async function checkInstallFailureKeepsOldVersion(chromium, port) {
     // caches.delete()するのは一時名だけであり、同名であっても本名を巻き込まない)
     state.phase = 'v3-collision'
     state.collisionName = v1CacheName
-    await page.evaluate(async () => {
-      const registration = await navigator.serviceWorker.ready
-      await registration.update()
-    })
-    await waitForInstallToSettle(page)
+    await updateAndWaitForInstall(page)
 
     const cacheNamesAfterCollision = await page.evaluate(() => caches.keys())
     if (!cacheNamesAfterCollision.includes(v1CacheName)) {
