@@ -242,9 +242,10 @@ export interface HomeMenuOptions {
 export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
   const showUndo = options.showUndo && !options.emergencyActive
   return homeScreen([
-    ...(showUndo ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem] : []),
     message('yes', 'はい', 'はい。'),
     message('no', 'いいえ', 'いいえ。'),
+    // 取り消しは「いいえ」の直後(Issue #102)。出入りしても「はい」「いいえ」の位置と到達時間を変えない
+    ...(showUndo ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem] : []),
     // 並びは 快 → 不快 → 要望(Issue #93)。続けて・やめて・変えて(質問への受動の答え)を
     // 先に、要望(会話寄り)を後ろに置く
     navigate('comfort-nav', '快', 'comfort', options.phrases),

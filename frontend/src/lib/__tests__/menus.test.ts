@@ -194,9 +194,9 @@ describe('urgentDetail の選択済み候補除外', () => {
 })
 
 describe('buildHomeMenu の取り消し表示デシジョンテーブル', () => {
-  it('showUndo=true & emergencyActive=false のとき items[1] が取り消しになる', () => {
+  it('showUndo=true & emergencyActive=false のとき items[3](いいえの直後)が取り消しになる', () => {
     const items = buildHomeMenu({ showUndo: true, emergencyActive: false })
-    expect(items[1].action).toEqual({ type: 'undo' })
+    expect(items[3].action).toEqual({ type: 'undo' })
   })
 
   it('showUndo=false & emergencyActive=false のとき取り消しは含まれない', () => {
@@ -234,13 +234,13 @@ describe('戻る先(PARENT_SCREEN)', () => {
 })
 
 describe('ホームの並び順(安全の優先順位 §2 の回帰テスト)', () => {
-  it('緊急→取り消し→はい→いいえ→快→不快→要望→文字盤の順になる(Issue #93)', () => {
+  it('緊急→はい→いいえ→取り消し→快→不快→要望→文字盤の順になる(Issue #93/#102)', () => {
     const items = buildHomeMenu({ showUndo: true, emergencyActive: false })
     expect(items.map((item) => item.label)).toEqual([
       '緊急',
-      '取り消し',
       'はい',
       'いいえ',
+      '取り消し',
       '快',
       '不快',
       '要望',
@@ -259,6 +259,22 @@ describe('ホームの並び順(安全の優先順位 §2 の回帰テスト)', 
       '要望',
       '文字盤',
     ])
+  })
+
+  it('取り消しの出入りで緊急・はい・いいえの添字は変わらない(Issue #102)', () => {
+    const base = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const withUndo = buildHomeMenu({ showUndo: true, emergencyActive: false })
+    for (const id of ['yes', 'no']) {
+      expect(withUndo.findIndex((i) => i.id === id)).toBe(base.findIndex((i) => i.id === id))
+    }
+    expect(withUndo[0].action.type).toBe('emergency')
+    expect(withUndo.length).toBeLessThanOrEqual(8)
+  })
+
+  it('取り消し表示中はモールス入口を畳み、ホームは8項目以内(Issue #93)', () => {
+    const items = buildHomeMenu({ showUndo: true, emergencyActive: false, morseEnabled: true })
+    expect(items.some((i) => i.id === 'morse-nav')).toBe(false)
+    expect(items.length).toBeLessThanOrEqual(8)
   })
 
   it('要望はホームから直接開く(階層を増やさない)。快の中に要望の入口はない(Issue #93)', () => {
