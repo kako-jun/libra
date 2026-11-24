@@ -19,13 +19,13 @@ libra/
 
 画面状態は `frontend/src/App.tsx` に集約し、画面ごとの項目は `frontend/src/lib/menus.ts` のビルダーが組み立てる。
 
-- 画面: 本人画面の全 `ScreenId`（home / urgentDetail / discomfort / discomfortOther / painLocation / painIntensity / comfort / requests / feelings / letters / lettersRow / morse）。親子関係・戻り先の正本は `requirements.md` §4.1.1 と `menus.ts` の `PARENT_SCREEN`。介助者メニューは本人画面の階層に含めない
+- 画面: 本人画面の全 `ScreenId`（home / urgentDetail / emergencyRelease / discomfort / discomfortOther / painLocation / painIntensity / comfort / requests / feelings / letters / lettersRow / morse）。親子関係・戻り先の正本は `requirements.md` §4.1.1 と `menus.ts` の `PARENT_SCREEN`。介助者用メニューは本人画面の階層に含めない
 - 画面IDと保存キー名の違い（Issue #93）: 画面ID `comfort` は「快」、`requests` は「要望」。フレーズの保存キー（`phrases` のグループ名、書き出し JSON のキー）`moodRequest` は「要望」のフレーズグループで、保存済み設定を壊さないため改名していない（`PHRASE_GROUP_SCREEN` が `moodRequest` → `requests` を対応づける）
-- 状態: 画面・直前に伝えたこと(履歴は持たない)・緊急状態（`libra:emergency`）・スキャン位置・文字盤の入力中文字列・介助者設定（`libra`）
+- 状態: 画面・直前に伝えたこと・伝達の履歴（端末のメモリ内だけ・最大 50 件。保存しない。Issue #120）・緊急状態（`libra:emergency`）・スキャン位置・文字盤の入力中文字列・介助者設定（`libra`）・好きな画像（`libra:photo`）
 - 入力: キー（任意のキー・Bluetooth シャッター）と、タイルの直接タップ/クリック。背景のタップは何も実行しない。数字キー（1-9）は URL に `?dev` を付けたときだけ有効な開発補助
-- 主な `lib/`: `scan.ts`（自動スキャン・先頭待機・連打無視）/ `switchInput.ts`（押下時間の下限・離して決定）/ `morse.ts`・`morseInput.ts`（モールス）/ `feedback.ts`・`tone.ts`（振動・効果音）/ `guidance.ts`（常時案内の文言。本人画面の緊急中の振動 `buildScreenNotes` / 介助者メニュー上部 `buildCaregiverMenuNotes` / 「いまの動作」`buildBehaviorNotes`）/ `gridLayout.ts`（固定格子）/ `phrases.ts`・`settings.ts`（フレーズ・設定）/ `emergencyState.ts`・`wakeLock.ts`・`offlineReady.ts`・`fitHeading.ts`
+- 主な `lib/`: `scan.ts`（自動スキャン・先頭待機・連打無視）/ `switchInput.ts`（押下時間の下限・離して決定）/ `morse.ts`・`morseInput.ts`（モールス）/ `feedback.ts`・`tone.ts`（振動・効果音）/ `guidance.ts`（常時案内の文言。本人画面の緊急中の振動 `buildScreenNotes` / 介助者用メニュー上部 `buildCaregiverMenuNotes` / 設定の下の動作の説明 `buildBehaviorNoteMap`（配列版 `buildBehaviorNotes`））/ `gridLayout.ts`（固定格子。画面ごとの種類 `standard` 8 セル・`home` 10 セル・`letters` 15 セル）/ `phrases.ts`・`settings.ts`（フレーズ・設定。タブごとの初期値リセットの対象 `SETTINGS_SECTION_KEYS`・`resetSettingsSection`）/ `photo.ts`（好きな画像の保存・縮小。`libra:photo`）/ `appInfo.ts`（「このアプリ」タブのリンク先・利用回数の取得・バージョン）/ `emergencyState.ts`・`wakeLock.ts`・`offlineReady.ts`・`fitHeading.ts`。タイルのアイコンは `TileIcon.tsx`
 - 音声: Web Speech API
-- レイアウト: `#app` と `.app-shell` は `height: 100%`（`body` が `position: fixed; inset: 0` で高さを確定するので、その連鎖で受ける。`100dvh` は dvh 非対応ブラウザで body より高くなり下端が切れるため使わない）で固定し、`overflow: hidden` を実際に効かせる。垂直方向の溢れは `.grid-board`（`overflow-y: auto`）だけが引き受け、document 自体はスクロールしない（`html, body` は `overflow: hidden`、`body` は `position: fixed; inset: 0`。`html/body` に 100vh 基準の高さを置かない。Issue #84）。スキャン対象が変わるたびに `scrollIntoView({block:'nearest'})` で追従させる
+- レイアウト: `#app` と `.app-shell` は `height: 100%`（`body` が `position: fixed; inset: 0` で高さを確定するので、その連鎖で受ける。`100dvh` は dvh 非対応ブラウザで body より高くなり下端が切れるため使わない）で固定し、`overflow: hidden` を実際に効かせる。垂直方向の溢れは、セル数を超えた画面の `.grid-board`（`overflow-y: auto`。文字盤の行段階は Issue #121 で専用の 15 セル格子に収めたので溢れない）だけが引き受け、document 自体はスクロールしない（`html, body` は `overflow: hidden`、`body` は `position: fixed; inset: 0`。`html/body` に 100vh 基準の高さを置かない。Issue #84）。スキャン対象が変わるたびに `scrollIntoView({block:'nearest'})` で追従させる
 
 ## Backend
 
@@ -51,11 +51,16 @@ Hono on Cloudflare Workers。現時点では薄い API に留める。
 
 ## Storage
 
-localStorage に2つのキーで保存する。
+localStorage に3つのキーで保存する。
 
 - `libra`: 介助者の設定（スキャン間隔・文字サイズ・テーマ等）。実装: `frontend/src/lib/settings.ts`
 - `libra:emergency`: 緊急状態（下記）
+- `libra:photo`: 好きな画像（data URL。長辺 480px に縮小して保存。Issue #122）。実装: `frontend/src/lib/photo.ts`。設定（`libra`）とは別キーで、設定の書き出し・取り込みには含めない。端末の外へは送らない
 
-緊急状態（有効・詳細・副表示）は設定とは別キー `libra:emergency` に保存し、起動時に未解除なら復元して視覚表示を再開する。介助者の緊急解除で保存ごと消す（実装: `frontend/src/lib/emergencyState.ts`）。
+緊急状態（有効・詳細・副表示）は設定とは別キー `libra:emergency` に保存し、起動時に未解除なら復元して視覚表示を再開する。介助者の緊急解除、または本人の解除（緊急 → 緊急を解除 → 解除する。Issue #108）で、保存ごと消す（実装: `frontend/src/lib/emergencyState.ts`）。
 
 複数タブでの同期（storage イベント）は行わない。
+
+## 外部通信
+
+アプリが外部へ通信するのは、介助者用メニュー「このアプリ」タブの利用回数の取得だけ（Issue #118。`frontend/src/lib/appInfo.ts`）。Nostalgic のカウンター（公開 ID `libra-d59ef40c`）へ、起動ごとに 1 回、`increment`（本番のホスト `libra.llll-ll.com` で開いたとき）または `get`（それ以外のホスト）を送る。8 秒でタイムアウトし、失敗しても何も投げず「取得できません」と表示するだけで、伝達機能・スキャン・緊急には影響しない。画像・設定・緊急状態・履歴は送らない。バージョンとビルド日は、`vite.config.ts` が `package.json` の `version` とビルド日（日本時間）をビルド時に埋め込む（`__APP_VERSION__` / `__BUILD_DATE__`）。
