@@ -31,6 +31,7 @@ import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
 import TileIcon, { hasTileIcon } from './TileIcon'
+import { clearPhoto, fileToPhotoDataUrl, loadPhoto, savePhoto } from './lib/photo'
 import { createSwitchInput } from './lib/switchInput'
 import { EMERGENCY_MESSAGE } from './lib/phrases'
 import {
@@ -627,6 +628,30 @@ export default function App() {
   const replaceSettings = (next: Settings) => {
     saveSettings(next)
     setSettings(next)
+  }
+
+  // Issue #122: 「介助者用」ボタンの左に出す、利用者の好きな画像。端末内だけに保存する
+  const [photo, setPhoto] = createSignal<string | null>(loadPhoto())
+  const [photoStatus, setPhotoStatus] = createSignal('')
+  let photoInputEl: HTMLInputElement | undefined
+  const choosePhoto = async (file: File | undefined) => {
+    if (!file) return
+    try {
+      const dataUrl = await fileToPhotoDataUrl(file)
+      if (!savePhoto(dataUrl)) {
+        setPhotoStatus('保存できませんでした。もっと小さい画像を選んでください。')
+        return
+      }
+      setPhoto(dataUrl)
+      setPhotoStatus('画像を設定しました。')
+    } catch {
+      setPhotoStatus('この画像は読み込めませんでした。別の画像を選んでください。')
+    }
+  }
+  const removePhoto = () => {
+    clearPhoto()
+    setPhoto(null)
+    setPhotoStatus('画像を消しました。')
   }
 
   // Issue #117: 開いているタブの設定だけを初期値に戻す。ほかのタブの設定・緊急状態・スキャンには触れない
@@ -1436,6 +1461,11 @@ export default function App() {
           <h2>{currentScreenGuidance()}</h2>
         </div>
 
+        {/* Issue #122: 介助者が選んだ好きな画像。未設定なら何も出さない(余白も増やさない) */}
+        <Show when={photo()}>
+          {(src) => <img class="guide-photo" src={src()} alt="好きな画像" draggable={false} />}
+        </Show>
+
         <div class="message-panel-controls">
           <button
             type="button"
@@ -2069,10 +2099,57 @@ export default function App() {
                   <span>高コントラスト</span>
                 </label>
 
+                <div class="caregiver-item">
+                  <div class="caregiver-field">
+                    <span>好きな画像（本人画面の「介助者用」ボタンの左に表示）</span>
+                    <div class="caregiver-choice-options">
+                      <button type="button" onClick={() => photoInputEl?.click()}>
+                        {photo() ? '画像を変える' : '画像を選ぶ'}
+                      </button>
+                      <Show when={photo()}>
+                        <button type="button" onClick={removePhoto}>
+                          画像を消す
+                        </button>
+                      </Show>
+                    </div>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="photo-input"
+                    hidden
+                    ref={(el) => {
+                      photoInputEl = el
+                    }}
+                    onChange={(event) => {
+                      const input = event.currentTarget
+                      void choosePhoto(input.files?.[0])
+                      // 同じファイルを選び直しても change が出るようにする
+                      input.value = ''
+                    }}
+                  />
+                  <Show when={photo()}>
+                    {(src) => <img class="photo-preview" src={src()} alt="いまの画像" />}
+                  </Show>
+                  <p class="caregiver-hint">
+                    画像はこの端末の中だけに保存します（外へは送りません）。設定の書き出しには含まれません。
+                  </p>
+                  <Show when={photoStatus()}>
+                    <p class="caregiver-status" role="status">
+                      <span class="caregiver-status-text">{photoStatus()}</span>
+                    </p>
+                  </Show>
+                </div>
+
                 <TabReset
                   tabLabel="表示"
-                  targets="文字サイズ・明るさ・高コントラスト"
-                  onReset={() => resetSection('display')}
+                  targets="文字サイズ・明るさ・高コントラスト・好きな画像"
+                  onReset={() => {
+                    resetSection('display')
+                    clearPhoto()
+                    setPhoto(null)
+                    setPhotoStatus('')
+                  }}
                 />
               </div>
             </Show>

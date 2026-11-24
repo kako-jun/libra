@@ -1441,7 +1441,7 @@ h1[data-fit='single'] {
 }
 
 .app-shell.is-morse .screen-guide .message-panel-controls {
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
 }
 
@@ -1541,9 +1541,11 @@ h1[data-fit='single'] {
   /* Issue #114: 直前に伝えたこと(2行目)の下。伝達が無いときは 2 行目が高さ 0 で、緊急の帯のすぐ下に来る */
   grid-row: 3;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* 列: 現在地と案内 / 好きな画像(Issue #122。未設定なら幅 0) / 介助者用ボタン。
+     列の間隔は gap でなく画像・ボタン側の margin で取る(画像が無いときに間隔が二重にならない) */
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: start;
-  gap: 12px;
+  gap: 0;
   min-height: 72px;
   /* Issue #109: 介助者用ボタンの上・右・下の余白を同じ値にする。左(文字側)だけ別の値 */
   --guide-pad: 10px;
@@ -1657,8 +1659,9 @@ h1[data-fit='single'] {
 .screen-guide .message-panel-controls {
   /* Issue #58: 旧 grid-area 名(controls)が未定義のため、介助者ボタンが2段目に落ちて
      案内の枠が約44px高くなっていた。見出しと同じ行の右端に置く(モールス画面と同じ配置) */
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
+  margin-left: 12px;
   /* Issue #109: 案内欄の高さいっぱいに伸ばす(ボタンの上下の余白 = --guide-pad) */
   align-self: stretch;
   min-height: 44px;
@@ -2041,4 +2044,51 @@ h1[data-fit='single'] {
 /* ホームは全項目がアイコン付き。アイコン + 4 文字(もう一度・取り消し・モールス)が 1 行に入る大きさを上限にする */
 .grid-board.grid-home .tile {
   --label-fit-chars: 5.3;
+}
+
+/* ===================================================================
+   Issue #122: 利用者の好きな画像。本人が一番よく見る、案内欄の「介助者用」ボタンの左に出す。
+   縦横比は保ち(切り抜かない)、高さは画面の高さに合わせる。低い画面では格子を優先して小さくする。
+   タップしても何も起きない(背景と同じ。タイルではない)。
+   =================================================================== */
+.guide-photo {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  width: auto;
+  max-width: 34vw;
+  height: clamp(56px, 13vh, 120px);
+  margin-left: 12px;
+  border-radius: 8px;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* 狭い画面では、現在地と案内の文字の幅を残す(画像に押されて案内が何行にも折り返さないようにする) */
+@media (max-width: 480px) {
+  .guide-photo {
+    max-width: 22vw;
+    height: clamp(48px, 9vh, 76px);
+  }
+}
+
+@media (max-height: 500px) {
+  .guide-photo {
+    height: 44px;
+    max-width: 22vw;
+  }
+}
+
+.photo-input[hidden] {
+  display: none;
+}
+
+.photo-preview {
+  justify-self: end;
+  max-width: min(100%, 240px);
+  max-height: 160px;
+  border: var(--grid-line-width) solid var(--grid-line);
+  border-radius: 8px;
+  object-fit: contain;
 }
