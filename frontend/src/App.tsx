@@ -439,7 +439,7 @@ export default function App() {
       currentMenu().length,
       viewportSize().width,
       viewportSize().height,
-      screen() === 'home' ? 'home' : 'standard',
+      screen() === 'home' ? 'home' : screen() === 'letters' ? 'letters' : 'standard',
     ),
   )
   // 固定格子の空きセル数(項目数が格子より少ないぶん。非操作のセルとして描く)

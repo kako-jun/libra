@@ -395,7 +395,11 @@ export const LETTER_ROWS: { name: string; chars: string[] }[] = [
   { name: 'わ行', chars: ['わ', 'を', 'ん', 'ー'] },
 ]
 
-/** 文字盤の行段階: 戻る / 緊急 / あ〜わ行 / 確定 / 1字消す */
+/**
+ * 文字盤の行段階: 戻る / 緊急 / 1字消す / あ〜わ行 / 確定(14 項目)。
+ * 「1字消す」は見つけやすいよう上(緊急の次)に置く(Issue #121)。専用の 15 セル格子で全項目を
+ * スクロールなしで出す(gridLayout.ts の letters)
+ */
 export function buildLettersMenu(): MenuItem[] {
   const rowItems: MenuItem[] = LETTER_ROWS.map((row, index) => ({
     id: `letter-row-${index}`,
@@ -403,9 +407,9 @@ export function buildLettersMenu(): MenuItem[] {
     action: { type: 'letterRow', row: index },
   }))
   return subScreen([
+    { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
     ...rowItems,
     { id: 'commit', label: '確定', action: { type: 'letterCommit' } },
-    { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
   ])
 }
 
