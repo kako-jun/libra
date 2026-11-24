@@ -54,6 +54,8 @@ import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './l
 /** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
 const COMPACT_NOTES_QUERY = '(max-height: 500px), (max-width: 480px)'
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます。'
+/** 振り返れる伝達の件数の上限(Issue #120)。古いものから捨てる */
+const HISTORY_MAX = 50
 /** 介助者用メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
 const CAREGIVER_TABS = [
   { id: 'status', label: '端末の状態' },
@@ -223,6 +225,34 @@ export default function App() {
   const [message, setMessage] = createSignal(restoredEmergency?.sub ?? DEFAULT_MESSAGE)
   const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
 
+  // Issue #120: 伝達の履歴(介助者が左右の矢印で振り返る)。端末のメモリ内だけに持ち、保存しない。
+  // historyBack は「何件前を表示しているか」(0 = 最新)。新しい伝達・緊急・取り消しで必ず 0 に戻し、
+  // 過去の表示が本人の新しい伝達を隠さないようにする
+  const [history, setHistory] = createSignal<string[]>(
+    restoredEmergency?.sub ? [restoredEmergency.sub] : [],
+  )
+  const [historyBack, setHistoryBack] = createSignal(0)
+  const pushHistory = (text: string) => {
+    setHistory((items) => [...items, text].slice(-HISTORY_MAX))
+    setHistoryBack(0)
+  }
+  // 最新の表示(message)が履歴の末尾と同じ伝達を指しているか。取り消し・緊急の解除で最新が空のときは false
+  const liveIsLatestEntry = () => message() !== DEFAULT_MESSAGE
+  /** いまの最新より前にある伝達の件数(= 戻れる最大の件数) */
+  const olderCount = createMemo(() => history().length - (liveIsLatestEntry() ? 1 : 0))
+  const pastEntry = createMemo(() => {
+    const back = historyBack()
+    if (back <= 0) return null
+    const items = history()
+    return items[items.length - back - (liveIsLatestEntry() ? 1 : 0)] ?? null
+  })
+  const displayedMessage = createMemo(() => pastEntry() ?? message())
+  const stepHistory = (delta: -1 | 1) => {
+    // 介助者用メニュー表示中は、背後の矢印を押しても動かさない(パンくずと同じガード)
+    if (caregiverMenuOpen()) return
+    setHistoryBack((back) => Math.min(olderCount(), Math.max(0, back + delta)))
+  }
+
   // Issue #22: 上部メッセージ(h1)を 1 行に収まる最大サイズで表示する。再計算は
   // メッセージ変更・幅変化・回転/リサイズ・Web フォント読み込み後だけ(h1 は文字サイズ設定の対象外)
   // (rAF でまとめる。毎フレームの DOM 測定はしない)
@@ -236,7 +266,7 @@ export default function App() {
     })
   }
   createEffect(() => {
-    message()
+    displayedMessage()
     scheduleHeadingFit()
   })
   onMount(() => {
@@ -554,6 +584,7 @@ export default function App() {
 
   // 通常の伝達完了。緊急状態は専用領域に残したまま、後続伝達を別の結果領域へ出す。
   const completeTransmission = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
+    pushHistory(text)
     if (emergencyActive()) {
       setEmergencySubMessage(text)
       setMessage(text)
@@ -612,6 +643,7 @@ export default function App() {
     setEmergencyDetails([])
     setEmergencySubMessage(null)
     feedback('cleared')
+    setHistoryBack(0)
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
@@ -633,6 +665,7 @@ export default function App() {
         // S1: 緊急の再選択は詳細を消さない。緊急主文は専用領域に立てる
         const alreadyActive = emergencyActive()
         setEmergencyActive(true)
+        setHistoryBack(0)
         // S2: 緊急発生時は取り消しの猶予を必ず終わらせる
         setShowUndo(false)
         undoLapsRemaining = 0
@@ -666,7 +699,9 @@ export default function App() {
         // 数字キー等での直接実行に備えてここでも二重に防ぐ
         if (emergencyActive()) return
         // Issue #94: 取り消したら「直前に伝えたこと」自体を消し、何も伝えていない状態に戻す
-        // (1つ前の返事は復元しない。履歴も持たない)
+        // (1つ前の返事は最新として復元しない)。取り消した伝達は履歴(Issue #120)からも消す
+        if (liveIsLatestEntry()) setHistory((items) => items.slice(0, -1))
+        setHistoryBack(0)
         setMessage(DEFAULT_MESSAGE)
         setMessageTone('neutral')
         document.documentElement.dataset.messageTone = 'neutral'
@@ -1225,12 +1260,55 @@ export default function App() {
       {/* Issue #114: 「直前に伝えたこと」は現在地(パンくず)より上位の情報なので、案内欄より上に置く */}
       <section
         class="message-panel"
-        classList={{ 'is-empty': message() === DEFAULT_MESSAGE }}
+        classList={{
+          'is-empty': message() === DEFAULT_MESSAGE && history().length === 0,
+          'is-past': pastEntry() !== null,
+          'is-cleared': pastEntry() === null && message() === DEFAULT_MESSAGE,
+        }}
         aria-live="polite"
         aria-label="直前に伝えたこと"
       >
-        <p class="message-panel-label">直前に伝えたこと</p>
-        <h1 ref={headingEl}>{message()}</h1>
+        {/* Issue #120: 介助者が過去の伝達を振り返る矢印。スキャン対象ではない(タップ / クリックだけ)。
+            data-caregiver-control は付けない: タップでフォーカスが残っても、続くキー(本人のスイッチ)は
+            矢印を押さず、いつもどおりスキャン対象を実行する */}
+        <Show when={olderCount() > 0 || historyBack() > 0}>
+          <button
+            type="button"
+            class="history-nav"
+            aria-label="前の伝達を表示"
+            disabled={historyBack() >= olderCount()}
+            onClick={() => stepHistory(1)}
+          >
+            <svg viewBox="0 0 20 24" aria-hidden="true">
+              <path d="M15 3 L5 12 L15 21" />
+            </svg>
+          </button>
+        </Show>
+        <div class="message-panel-body">
+          <p class="message-panel-label">
+            {pastEntry() !== null ? `過去に伝えたこと（${historyBack()}件前）` : '直前に伝えたこと'}
+          </p>
+          {/* h1 は常に DOM に置く(1 行に収める再計算が h1 の親を監視するため)。最新が空のときだけ隠す */}
+          <h1 ref={headingEl} hidden={pastEntry() === null && message() === DEFAULT_MESSAGE}>
+            {displayedMessage()}
+          </h1>
+          <Show when={pastEntry() === null && message() === DEFAULT_MESSAGE}>
+            <p class="message-panel-none">いまは、伝えたことがありません。</p>
+          </Show>
+        </div>
+        <Show when={olderCount() > 0 || historyBack() > 0}>
+          <button
+            type="button"
+            class="history-nav"
+            aria-label="次の伝達を表示"
+            disabled={historyBack() <= 0}
+            onClick={() => stepHistory(-1)}
+          >
+            <svg viewBox="0 0 20 24" aria-hidden="true">
+              <path d="M5 3 L15 12 L5 21" />
+            </svg>
+          </button>
+        </Show>
       </section>
 
       <section class="screen-guide" aria-label="現在の画面">

@@ -1895,3 +1895,68 @@ h1[data-fit='single'] {
     --scan-ring-width: 7px;
   }
 }
+
+/* ===================================================================
+   Issue #120: 伝達履歴。「直前に伝えたこと」の枠の左右に、介助者が押す矢印を置く(スキャン対象外)。
+   過去を表示している間は枠の色と見出しを変え、最新の伝達と取り違えないようにする。
+   =================================================================== */
+.message-panel {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.message-panel-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.message-panel h1[hidden] {
+  display: none;
+}
+
+.message-panel-none {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.history-nav {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 2px solid currentColor;
+  border-radius: 8px;
+  touch-action: manipulation;
+}
+
+.history-nav:disabled {
+  opacity: 0.35;
+}
+
+.history-nav svg {
+  width: 14px;
+  height: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 過去の伝達・「いまは無し」は、最新の伝達(濃緑 / 緊急色調の赤)と違う薄い面にする。
+   緊急色調の指定(:root[data-message-tone='urgent'] .message-panel)と同じ詳細度なので、後ろに置いて勝たせる */
+.app-shell .message-panel:is(.is-past, .is-cleared) {
+  color: var(--text);
+  background: var(--surface-calm);
+}
+
+.app-shell .message-panel.is-past {
+  box-shadow: inset 0 0 0 3px var(--text-muted);
+}
