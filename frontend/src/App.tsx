@@ -30,6 +30,7 @@ import {
 import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
+import TileIcon, { hasTileIcon } from './TileIcon'
 import { createSwitchInput } from './lib/switchInput'
 import { EMERGENCY_MESSAGE } from './lib/phrases'
 import {
@@ -1549,7 +1550,13 @@ export default function App() {
               onClick={() => onTileClick(index())}
             >
               <span class="tile-number">{index() + 1}</span>
-              <span class="tile-label">{item.label}</span>
+              <span class="tile-label">
+                {/* Issue #115: ラベルの左にアイコンを併記する(同じ行。入りきらない幅ではアイコンが上の行に回る) */}
+                <Show when={hasTileIcon(item.id)}>
+                  <TileIcon itemId={item.id} />
+                </Show>
+                {item.label}
+              </span>
               <Show when={item.detail}>
                 <span class="tile-detail">{item.detail}</span>
               </Show>

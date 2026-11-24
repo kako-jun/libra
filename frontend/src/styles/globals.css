@@ -566,6 +566,9 @@ h1[data-fit='single'] {
      のは逆効果。足りない高さは、短い画面で帯・余白を詰めてセル側に確保する。下の
      @media (max-height: 500px) 参照)。この項にも --ring-extra を足し、高コントラストの
      太い帯でも標準と同じ下限にそろえる(高コントラストのほうが標準より小さくならない) */
+  /* 1 行に収める基準の文字数。通常は 4 文字の語(4.02)。ホームは全項目にアイコン(約 1.25 文字ぶん)を
+     併記するので、アイコン + 4 文字が 1 行に入る 5.3 にする(下の .grid-home。Issue #115) */
+  --label-fit-chars: 4.02;
   --ring-extra: calc(var(--scan-ring-inset) - 12px);
   --tile-label-font: clamp(
     min(1.05rem, max(13px, calc((100cqb + 2 * var(--ring-extra)) / 2.4))),
@@ -580,7 +583,7 @@ h1[data-fit='single'] {
       /* Issue #65: 4文字の語(「モールス」「ひらがな」)が山形アイコンを避けたラベル幅に
          1行で入る大きさを上限にする(語の途中で改行しない)。避け幅は文字サイズ設定に
          よらない(下の .tile-nav .tile-label) */
-      calc((100cqi - clamp(20px, 12cqi, 36px)) / 4.02)
+      calc((100cqi - clamp(20px, 12cqi, 36px)) / var(--label-fit-chars))
     ),
     min(calc(var(--font-scale) * 4.8vh), 3.4rem)
   );
@@ -2005,4 +2008,37 @@ h1[data-fit='single'] {
 /* もう一度伝えるものが無い間の「もう一度」。位置は空けず、薄く見せる */
 .tile-unavailable .tile-label {
   opacity: 0.4;
+}
+
+/* ===================================================================
+   Issue #115: タイルのアイコン。ラベルの左に、文字と同じ色・同じ高さで併記する(TileIcon.tsx)。
+   ラベルの行の中に置くので、タイルの大きさ・ラベルの位置決め(中央寄せ・山形アイコンの避け)は変えない。
+   =================================================================== */
+.tile-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.18em;
+  vertical-align: -0.14em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* セルの高さに余裕があるとき(タブレットなど)は、アイコンをラベルの上に大きく置く。
+   しきい値は .tile(container-type: size)の content-box の高さ。足りないセルは上の「同じ行」のまま */
+@container (min-height: 150px) {
+  .tile-icon {
+    display: block;
+    width: 1.9em;
+    height: 1.9em;
+    margin: 0 auto 0.12em;
+  }
+}
+
+/* ホームは全項目がアイコン付き。アイコン + 4 文字(もう一度・取り消し・モールス)が 1 行に入る大きさを上限にする */
+.grid-board.grid-home .tile {
+  --label-fit-chars: 5.3;
 }
