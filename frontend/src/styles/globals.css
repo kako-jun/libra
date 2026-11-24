@@ -1960,3 +1960,49 @@ h1[data-fit='single'] {
 .app-shell .message-panel.is-past {
   box-shadow: inset 0 0 0 3px var(--text-muted);
 }
+
+/* ===================================================================
+   Issue #123: 「もう一度」。伝え直したことが、音声が無くても周囲に分かるよう、伝達欄(緊急の再伝達なら
+   緊急の帯)の内側に黄色の枠を2回点滅させる。同じ要素で続けて押しても再生されるよう、同じ動きの
+   キーフレームを2つ持ち、App.tsx が回数の偶奇でクラスを切り替える。
+   =================================================================== */
+@keyframes repeat-pulse-a {
+  0%,
+  40%,
+  80% {
+    box-shadow: inset 0 0 0 6px var(--scan-ring);
+  }
+
+  20%,
+  60%,
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+
+@keyframes repeat-pulse-b {
+  0%,
+  40%,
+  80% {
+    box-shadow: inset 0 0 0 6px var(--scan-ring);
+  }
+
+  20%,
+  60%,
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+
+.repeat-pulse-a {
+  animation: repeat-pulse-a 1.8s steps(1, end) 1;
+}
+
+.repeat-pulse-b {
+  animation: repeat-pulse-b 1.8s steps(1, end) 1;
+}
+
+/* もう一度伝えるものが無い間の「もう一度」。位置は空けず、薄く見せる */
+.tile-unavailable .tile-label {
+  opacity: 0.4;
+}

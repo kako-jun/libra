@@ -232,6 +232,16 @@ export default function App() {
     restoredEmergency?.sub ? [restoredEmergency.sub] : [],
   )
   const [historyBack, setHistoryBack] = createSignal(0)
+  // Issue #123: 「もう一度」。直前の伝達の振動パターン(はい/いいえ等)を覚えておき、同じものを出し直す
+  let lastMessageEvent: FeedbackEvent = 'message'
+  // もう一度伝えた回数。伝達欄(緊急の再伝達なら緊急の帯)を点滅させ、音声が無くても周囲に分かるようにする
+  const [repeatPulse, setRepeatPulse] = createSignal(0)
+  const [repeatedMessage, setRepeatedMessage] = createSignal(false)
+  const [repeatedEmergency, setRepeatedEmergency] = createSignal(false)
+  const clearRepeatMarks = () => {
+    setRepeatedMessage(false)
+    setRepeatedEmergency(false)
+  }
   const pushHistory = (text: string) => {
     setHistory((items) => [...items, text].slice(-HISTORY_MAX))
     setHistoryBack(0)
@@ -247,6 +257,8 @@ export default function App() {
     return items[items.length - back - (liveIsLatestEntry() ? 1 : 0)] ?? null
   })
   const displayedMessage = createMemo(() => pastEntry() ?? message())
+  /** 「もう一度」で伝え直せるものがあるか(直前の伝達、または緊急の呼び出し) */
+  const canRepeat = () => message() !== DEFAULT_MESSAGE || emergencyActive()
   const stepHistory = (delta: -1 | 1) => {
     // 介助者用メニュー表示中は、背後の矢印を押しても動かさない(パンくずと同じガード)
     if (caregiverMenuOpen()) return
@@ -421,7 +433,12 @@ export default function App() {
       : { width: window.innerWidth, height: window.innerHeight }
   const [viewportSize, setViewportSize] = createSignal(readViewport())
   const gridLayout = createMemo(() =>
-    computeGridLayout(currentMenu().length, viewportSize().width, viewportSize().height),
+    computeGridLayout(
+      currentMenu().length,
+      viewportSize().width,
+      viewportSize().height,
+      screen() === 'home' ? 'home' : 'standard',
+    ),
   )
   // 固定格子の空きセル数(項目数が格子より少ないぶん。非操作のセルとして描く)
   const emptyCellCount = createMemo(() => {
@@ -585,6 +602,8 @@ export default function App() {
   // 通常の伝達完了。緊急状態は専用領域に残したまま、後続伝達を別の結果領域へ出す。
   const completeTransmission = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     pushHistory(text)
+    clearRepeatMarks()
+    lastMessageEvent = event ?? (tone === 'urgent' ? 'urgentMessage' : 'message')
     if (emergencyActive()) {
       setEmergencySubMessage(text)
       setMessage(text)
@@ -643,6 +662,7 @@ export default function App() {
     setEmergencyDetails([])
     setEmergencySubMessage(null)
     feedback('cleared')
+    clearRepeatMarks()
     setHistoryBack(0)
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
@@ -666,6 +686,7 @@ export default function App() {
         const alreadyActive = emergencyActive()
         setEmergencyActive(true)
         setHistoryBack(0)
+        clearRepeatMarks()
         // S2: 緊急発生時は取り消しの猶予を必ず終わらせる
         setShowUndo(false)
         undoLapsRemaining = 0
@@ -688,6 +709,7 @@ export default function App() {
         setEmergencyDetails((details) =>
           details.includes(action.label) ? details : [...details, action.label],
         )
+        clearRepeatMarks()
         feedback('urgentMessage')
         announce(`${EMERGENCY_MESSAGE}${action.label}`, action.label)
         setShowUndo(false)
@@ -702,11 +724,32 @@ export default function App() {
         // (1つ前の返事は最新として復元しない)。取り消した伝達は履歴(Issue #120)からも消す
         if (liveIsLatestEntry()) setHistory((items) => items.slice(0, -1))
         setHistoryBack(0)
+        clearRepeatMarks()
         setMessage(DEFAULT_MESSAGE)
         setMessageTone('neutral')
         document.documentElement.dataset.messageTone = 'neutral'
         setShowUndo(false)
         undoLapsRemaining = 0
+        goTo('home')
+        return
+      }
+      case 'repeat': {
+        // Issue #123: 直前の伝達をもう一度伝える。新しい伝達ではないので、履歴・取り消しの猶予は変えない。
+        // 伝達が無く緊急中なら、緊急の呼び出しをもう一度伝える。どちらも無ければ何も伝えない
+        setHistoryBack(0)
+        if (message() !== DEFAULT_MESSAGE) {
+          feedback(lastMessageEvent)
+          announce(message())
+          setRepeatedMessage(true)
+          setRepeatedEmergency(false)
+          setRepeatPulse((n) => n + 1)
+        } else if (emergencyActive()) {
+          const details = emergencyDetails()
+          feedback('emergency')
+          announce(`${EMERGENCY_MESSAGE}${details.join('、')}`, EMERGENCY_MESSAGE)
+          setRepeatedEmergency(true)
+          setRepeatPulse((n) => n + 1)
+        }
         goTo('home')
         return
       }
@@ -1244,7 +1287,15 @@ export default function App() {
   return (
     <main class="app-shell" classList={{ 'is-morse': screen() === 'morse' }}>
       <Show when={emergencyActive()}>
-        <section class="emergency-status" role="status" aria-label="未解除の緊急状態">
+        <section
+          class="emergency-status"
+          classList={{
+            'repeat-pulse-a': repeatedEmergency() && repeatPulse() % 2 === 1,
+            'repeat-pulse-b': repeatedEmergency() && repeatPulse() % 2 === 0,
+          }}
+          role="status"
+          aria-label="未解除の緊急状態"
+        >
           <p class="emergency-status-message">{EMERGENCY_MESSAGE}</p>
           <Show when={emergencyDetails().length > 0}>
             <div class="emergency-detail-status">
@@ -1264,6 +1315,8 @@ export default function App() {
           'is-empty': message() === DEFAULT_MESSAGE && history().length === 0,
           'is-past': pastEntry() !== null,
           'is-cleared': pastEntry() === null && message() === DEFAULT_MESSAGE,
+          'repeat-pulse-a': repeatedMessage() && repeatPulse() % 2 === 1,
+          'repeat-pulse-b': repeatedMessage() && repeatPulse() % 2 === 0,
         }}
         aria-live="polite"
         aria-label="直前に伝えたこと"
@@ -1286,7 +1339,11 @@ export default function App() {
         </Show>
         <div class="message-panel-body">
           <p class="message-panel-label">
-            {pastEntry() !== null ? `過去に伝えたこと（${historyBack()}件前）` : '直前に伝えたこと'}
+            {pastEntry() !== null
+              ? `過去に伝えたこと（${historyBack()}件前）`
+              : repeatedMessage()
+                ? '直前に伝えたこと（もう一度）'
+                : '直前に伝えたこと'}
           </p>
           {/* h1 は常に DOM に置く(1 行に収める再計算が h1 の親を監視するため)。最新が空のときだけ隠す */}
           <h1 ref={headingEl} hidden={pastEntry() === null && message() === DEFAULT_MESSAGE}>
@@ -1443,6 +1500,7 @@ export default function App() {
         classList={{
           'show-numbers': showDevNumbers,
           'grid-fill': gridLayout().fill,
+          'grid-home': screen() === 'home',
           'is-hidden': screen() === 'morse',
         }}
         style={{
@@ -1463,9 +1521,12 @@ export default function App() {
                 scanning: scanState().index === index(),
                 'tile-nav': item.action.type === 'navigate',
                 'tile-emergency': item.action.type === 'emergency',
+                // Issue #123: もう一度伝えるものが無い間は薄く見せる(押しても何も伝えない)
+                'tile-unavailable': item.action.type === 'repeat' && !canRepeat(),
               }}
               role="button"
               aria-label={item.label}
+              aria-disabled={item.action.type === 'repeat' && !canRepeat() ? 'true' : undefined}
               onPointerDown={(event) => onTilePointerDown(event, index())}
               onClick={() => onTileClick(index())}
             >

@@ -47,6 +47,7 @@ export type ActionId =
   | { type: 'emergency' }
   | { type: 'emergencyDetail'; label: string }
   | { type: 'undo' }
+  | { type: 'repeat' }
   | { type: 'back' }
   | { type: 'navigate'; screen: ScreenId }
   | { type: 'message'; text: string; tone?: Tone }
@@ -242,6 +243,9 @@ export interface HomeMenuOptions {
 export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
   const showUndo = options.showUndo && !options.emergencyActive
   return homeScreen([
+    // 緊急の次に常設(Issue #123)。聞き逃されたとき、同じ選択をやり直さずに直前の伝達をもう一度伝える。
+    // 伝達が無いときも位置を空けない(出入りで はい・いいえ の位置を動かさない。Issue #102 と同じ考え方)
+    { id: 'repeat', label: 'もう一度', action: { type: 'repeat' } },
     message('yes', 'はい', 'はい。'),
     message('no', 'いいえ', 'いいえ。'),
     // 取り消しは「いいえ」の直後(Issue #102)。出入りしても「はい」「いいえ」の位置と到達時間を変えない
