@@ -52,7 +52,7 @@ const CAREGIVER_TABS = [
   { id: 'status', label: '状態' },
   { id: 'scan', label: 'スキャン' },
   { id: 'input', label: '入力方式' },
-  { id: 'feedback', label: 'フィードバック' },
+  { id: 'feedback', label: '音と振動' },
   { id: 'display', label: '表示' },
   { id: 'phrases', label: 'フレーズ' },
   { id: 'backup', label: 'データ' },
@@ -1670,7 +1670,7 @@ export default function App() {
                       updateSettings({ hapticsEnabled: event.currentTarget.checked })
                     }
                   />
-                  <span>本人への振動フィードバック（受理・はい/いいえ・緊急）</span>
+                  <span>本人に振動で知らせる（入力の受理・はい/いいえ・緊急）</span>
                 </label>
 
                 <Show when={settings().hapticsEnabled}>
