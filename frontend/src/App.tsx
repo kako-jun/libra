@@ -54,6 +54,8 @@ import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './l
 /** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
 const COMPACT_NOTES_QUERY = '(max-height: 500px), (max-width: 480px)'
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます。'
+/** 本人が緊急を解除したときに伝達欄へ出す文(Issue #108) */
+const EMERGENCY_RELEASED_MESSAGE = '緊急を解除しました。'
 /** 振り返れる伝達の件数の上限(Issue #120)。古いものから捨てる */
 const HISTORY_MAX = 50
 /** 介助者用メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
@@ -713,6 +715,22 @@ export default function App() {
         feedback('urgentMessage')
         announce(`${EMERGENCY_MESSAGE}${action.label}`, action.label)
         setShowUndo(false)
+        goTo('home')
+        return
+      }
+      case 'emergencyRelease': {
+        // Issue #108: 本人による緊急の解除。緊急 → 緊急を解除 → 解除する の明示操作でだけ届く。
+        // 緊急の帯・保存状態・周期の振動を介助者の解除と同じ処理(clearEmergency)で止め、解除したことを
+        // 伝達欄と読み上げで本人と周囲に知らせる。取り消しは出さない(解除の取り消しは緊急を選び直す)
+        if (!emergencyActive()) {
+          goTo('home')
+          return
+        }
+        clearEmergency()
+        pushHistory(EMERGENCY_RELEASED_MESSAGE)
+        lastMessageEvent = 'message'
+        setMessage(EMERGENCY_RELEASED_MESSAGE)
+        announce(EMERGENCY_RELEASED_MESSAGE)
         goTo('home')
         return
       }
