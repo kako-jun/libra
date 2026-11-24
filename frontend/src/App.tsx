@@ -12,7 +12,14 @@ import {
 } from './lib/menus'
 import { advanceIdleSteps, UNDO_LAPS } from './lib/idleLaps'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
-import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
+import {
+  MORSE_WORD_GAP_MARGIN_MS,
+  loadSettings,
+  resetSettingsSection,
+  saveSettings,
+  type Settings,
+  type SettingsSection,
+} from './lib/settings'
 import { initToneVisibilityResume, resumeToneAudioContext } from './lib/tone'
 import { initWakeLock, type WakeLockStatus } from './lib/wakeLock'
 import {
@@ -567,6 +574,11 @@ export default function App() {
   const replaceSettings = (next: Settings) => {
     saveSettings(next)
     setSettings(next)
+  }
+
+  // Issue #117: 開いているタブの設定だけを初期値に戻す。ほかのタブの設定・緊急状態・スキャンには触れない
+  const resetSection = (section: SettingsSection) => {
+    replaceSettings(resetSettingsSection(settings(), section))
   }
 
   const updateSettings = (patch: Partial<Settings>) => {
@@ -1627,6 +1639,12 @@ export default function App() {
                     {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
                   </Show>
                 </div>
+
+                <TabReset
+                  tabLabel="スキャン"
+                  targets="スキャン間隔・先頭待機倍率・連打無視・押下時間の下限・決定のタイミング・聴覚スキャン"
+                  onReset={() => resetSection('scan')}
+                />
               </div>
             </Show>
 
@@ -1716,6 +1734,12 @@ export default function App() {
                     </label>
                   </div>
                 </Show>
+
+                <TabReset
+                  tabLabel="モールス"
+                  targets="モールス入力を使うかどうかと、長押しの境目・文字の確定・語の区切りの時間"
+                  onReset={() => resetSection('input')}
+                />
               </div>
             </Show>
 
@@ -1799,6 +1823,12 @@ export default function App() {
                     </label>
                   </div>
                 </Show>
+
+                <TabReset
+                  tabLabel="音と振動"
+                  targets="音声モード・振動で知らせるかどうか・振動の強さ・効果音"
+                  onReset={() => resetSection('feedback')}
+                />
               </div>
             </Show>
 
@@ -1860,6 +1890,12 @@ export default function App() {
                   />
                   <span>高コントラスト</span>
                 </label>
+
+                <TabReset
+                  tabLabel="表示"
+                  targets="文字サイズ・明るさ・高コントラスト"
+                  onReset={() => resetSection('display')}
+                />
               </div>
             </Show>
 
@@ -1872,6 +1908,12 @@ export default function App() {
                 tabindex="0"
               >
                 <PhraseEditor settings={settings()} updateSettings={updateSettings} />
+
+                <TabReset
+                  tabLabel="フレーズ"
+                  targets="全部の画面（不快・不快・その他・痛い場所・要望・気分）のフレーズ"
+                  onReset={() => resetSection('phrases')}
+                />
               </div>
             </Show>
 
@@ -1909,5 +1951,53 @@ function StatusRow(props: { label: string; ok: boolean }) {
         </Show>
       </span>
     </p>
+  )
+}
+
+/**
+ * タブごとの「初期値に戻す」(Issue #117)。2 回押しで実行する。1 回目は、どのタブの何が戻るかを表示するだけ。
+ * タブ切替・メニューを閉じるとこのコンポーネントごと消えるので、確認状態も解除される。
+ */
+function TabReset(props: { tabLabel: string; targets: string; onReset: () => void }) {
+  const [armed, setArmed] = createSignal(false)
+  const [done, setDone] = createSignal(false)
+  const press = () => {
+    if (!armed()) {
+      setDone(false)
+      setArmed(true)
+      return
+    }
+    setArmed(false)
+    props.onReset()
+    setDone(true)
+  }
+  return (
+    <div class="caregiver-reset">
+      <Show when={armed()}>
+        <p class="caregiver-status warn" role="status">
+          <span class="caregiver-status-text">
+            「{props.tabLabel}」タブの設定（{props.targets}
+            ）が初期値に戻ります（元に戻せません）。ほかのタブの設定は変わりません。よければもう一度押してください。
+          </span>
+        </p>
+      </Show>
+      <Show when={done()}>
+        <p class="caregiver-status" role="status">
+          <span class="caregiver-status-text">
+            「{props.tabLabel}」タブの設定を初期値に戻しました。
+          </span>
+        </p>
+      </Show>
+      <div class="phrase-actions">
+        <Show when={armed()}>
+          <button type="button" class="caregiver-action caregiver-reset-cancel" onClick={() => setArmed(false)}>
+            やめる
+          </button>
+        </Show>
+        <button type="button" class="caregiver-action caregiver-reset-button" onClick={press}>
+          {armed() ? 'もう一度押すと初期値に戻す' : `「${props.tabLabel}」タブの設定を初期値に戻す`}
+        </button>
+      </div>
+    </div>
   )
 }

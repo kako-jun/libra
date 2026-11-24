@@ -1020,6 +1020,25 @@ h1[data-fit='single'] {
   padding-top: 0;
 }
 
+/* Issue #117: タブごとの「初期値に戻す」。タブの末尾に、設定とは区切って右寄せで置く */
+.caregiver-reset {
+  display: grid;
+  gap: 10px;
+}
+
+.caregiver-tabpanel > .caregiver-reset {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 2px solid var(--grid-line);
+}
+
+.caregiver-reset-button,
+.caregiver-reset-cancel {
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 2px solid var(--caregiver-action-bg);
+}
+
 .caregiver-lead,
 .caregiver-hint {
   margin: 0;
