@@ -939,8 +939,13 @@ export default function App() {
   const POINTER_STALE_MS = 10000 // pointerup/pointercancel が届かなかった記録の破棄(保険)
   // 直近の click(capture で判定)が pointerdown に裏付けられていたか。タイルの click が読む
   let clickBackedByPointer = false
+  // 介助者用メニューを開いた pointerdown のポインター(Issue #112)。タッチでは、同じタップの click が
+  // 開いた直後のパネル(右上の「閉じる」は「介助者用」ボタンと同じ位置)へ届き、開いた瞬間に閉じていた。
+  // その 1 回の click だけをパネルへ届けない。次の押下が始まったら忘れる
+  let menuOpeningPointer: number | null = null
   onMount(() => {
     const onPointerDownCapture = (event: PointerEvent) => {
+      menuOpeningPointer = null
       pointerSeen.set(event.pointerId, { downAt: Date.now(), upAt: null })
       heldInputs.add(`pointer:${event.pointerId}`)
       idleSteps = 0
@@ -974,6 +979,14 @@ export default function App() {
         }
       }
       clickBackedByPointer = consumed !== undefined
+      if (menuOpeningPointer !== null) {
+        const sameGesture = typeof pointerId === 'number' ? pointerId === menuOpeningPointer : true
+        menuOpeningPointer = null
+        if (sameGesture && caregiverMenuOpen()) {
+          event.stopPropagation()
+          event.preventDefault()
+        }
+      }
     }
     const onPointerDown = (event: PointerEvent) => {
       // M2: タッチでは pointerdown にユーザーアクティベーションが伴わないことがあるため、
@@ -1168,8 +1181,9 @@ export default function App() {
     nextTab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }
 
-  const openCaregiverMenu = () => {
+  const openCaregiverMenu = (openingPointerId?: number) => {
     if (caregiverMenuOpen()) return
+    menuOpeningPointer = openingPointerId ?? null
     idleSteps = 0
     input.cancelAll()
     setCaregiverTab('status')
@@ -1237,8 +1251,8 @@ export default function App() {
             type="button"
             class="caregiver-button"
             data-caregiver-control
-            onPointerDown={openCaregiverMenu}
-            onClick={openCaregiverMenu}
+            onPointerDown={(event) => openCaregiverMenu(event.pointerId)}
+            onClick={() => openCaregiverMenu()}
             onContextMenu={(event) => event.preventDefault()}
             aria-label="介助者メニューを開く"
           >
