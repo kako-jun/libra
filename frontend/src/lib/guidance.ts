@@ -55,21 +55,17 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
 
   if (emergencyActive && settings.hapticsEnabled) {
     if (canVibrate) {
+      // Issue #110: 操作に要らない補足(呼び出し継続の合図・入力直後は休む)は書かない
       const every = `${EMERGENCY_REPEAT_MS / 1000}秒ごと`
-      notes.push(
-        compact
-          ? `緊急中は${every}に振動（入力直後は休む）。`
-          : `緊急中は${every}に振動（呼び出し継続の合図。本人の入力直後は休む）。`,
-      )
+      notes.push(compact ? `緊急中は${every}に振動。` : `緊急中は${every}に振動します。`)
       if (vibrationAwaitsTouch) {
+        // 再起動後に振動を再開するための操作。これは必要なので残す
         notes.push(
-          compact
-            ? '再起動後はタッチかキーまで振動なし。'
-            : '再起動後は、画面に触れるかキーを押すまで振動しません。',
+          compact ? 'タッチかキーで振動を再開。' : '画面に触れるかキーを押すと、振動を再開します。',
         )
       }
     } else {
-      notes.push('この端末は振動できません（緊急中の周期振動なし）。')
+      notes.push('この端末は振動できません。')
     }
   }
   return notes
