@@ -32,6 +32,14 @@ import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
 import TileIcon, { hasTileIcon } from './TileIcon'
 import { clearPhoto, fileToPhotoDataUrl, loadPhoto, savePhoto } from './lib/photo'
+import {
+  APP_BUILD_DATE,
+  APP_VERSION,
+  AUTHOR_SITE_URL,
+  FEEDBACK_BBS_URL,
+  USER_GUIDE_URL,
+  fetchUsageCount,
+} from './lib/appInfo'
 import { createSwitchInput } from './lib/switchInput'
 import { EMERGENCY_MESSAGE } from './lib/phrases'
 import {
@@ -69,6 +77,7 @@ const CAREGIVER_TABS = [
   { id: 'display', label: '表示' },
   { id: 'phrases', label: 'フレーズ' },
   { id: 'backup', label: 'データ' },
+  { id: 'about', label: 'このアプリ' },
 ] as const
 const CAREGIVER_TAB_NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
 /** タブ移動に使うキーか。Ctrl/Alt/Meta 付きはブラウザ/OS のショートカット(Alt+←=戻る等)なので対象外 */
@@ -629,6 +638,19 @@ export default function App() {
     saveSettings(next)
     setSettings(next)
   }
+
+  // Issue #118: 利用回数(Nostalgic カウンター)。起動時に 1 回だけ取りに行く。オフライン・失敗は null のままで、
+  // 伝達機能には一切影響させない(待たない・例外を出さない)
+  const [usageCount, setUsageCount] = createSignal<number | null>(null)
+  onMount(() => {
+    let disposed = false
+    void fetchUsageCount().then((count) => {
+      if (!disposed) setUsageCount(count)
+    })
+    onCleanup(() => {
+      disposed = true
+    })
+  })
 
   // Issue #122: 「介助者用」ボタンの左に出す、利用者の好きな画像。端末内だけに保存する
   const [photo, setPhoto] = createSignal<string | null>(loadPhoto())
@@ -2181,6 +2203,74 @@ export default function App() {
                 tabindex="0"
               >
                 <SettingsBackup settings={settings()} replaceSettings={replaceSettings} />
+              </div>
+            </Show>
+
+            <Show when={caregiverTab() === 'about'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-about"
+                tabindex="0"
+              >
+                {/* Issue #118: 使い方・作者サイト・掲示板・利用回数・バージョン。外部リンクはオフラインでは開けないだけで、
+                    伝達機能には影響しない */}
+                <div class="caregiver-item app-guide">
+                  <p class="caregiver-lead">使い方</p>
+                  <ul>
+                    <li>
+                      本人は、黄色い枠（カーソル）が伝えたい項目に来たときに、スイッチ（キーや Bluetooth
+                      シャッター）を1回押します。タイルを直接タップしても選べます。
+                    </li>
+                    <li>
+                      急ぎのときは先頭の「緊急」を選びます。緊急の表示は、介助者がこのメニューの「緊急を解除」を押すか、本人が
+                      緊急 → 緊急を解除 → 解除する を選ぶまで残ります。
+                    </li>
+                    <li>
+                      聞き逃したときは「もう一度」で、直前の伝達をもう一度伝えられます。伝えた内容は、上の枠の左右の矢印で振り返れます。
+                    </li>
+                    <li>
+                      常設するときは、ホーム画面に追加（インストール）して開き、端末の自動ロックを切り、充電したまま使ってください。一度開いておけば、通信がなくても使えます。
+                    </li>
+                  </ul>
+                  <div class="app-links">
+                    <a href={USER_GUIDE_URL} target="_blank" rel="noopener noreferrer">
+                      くわしい使い方
+                    </a>
+                  </div>
+                </div>
+
+                <div class="caregiver-item">
+                  <div class="app-links">
+                    <a href={FEEDBACK_BBS_URL} target="_blank" rel="noopener noreferrer">
+                      ご意見・ご感想の掲示板
+                    </a>
+                    <a href={AUTHOR_SITE_URL} target="_blank" rel="noopener noreferrer">
+                      作者サイト
+                    </a>
+                  </div>
+                  <p class="caregiver-hint">
+                    リンクは別の画面で開きます（通信が必要です）。開いたあとは、この画面に戻ってください。
+                  </p>
+                </div>
+
+                <dl class="app-facts">
+                  <div>
+                    <dt>利用回数</dt>
+                    <dd class="app-usage-count">
+                      {usageCount() === null
+                        ? '取得できません（通信がないときは表示されません）'
+                        : `${usageCount()?.toLocaleString('ja-JP')} 回`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>バージョン</dt>
+                    <dd class="app-version">
+                      {APP_VERSION}（{APP_BUILD_DATE}）
+                    </dd>
+                  </div>
+                </dl>
               </div>
             </Show>
           </div>

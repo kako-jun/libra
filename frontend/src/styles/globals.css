@@ -991,7 +991,9 @@ h1[data-fit='single'] {
 }
 
 /* Issue #111: 見出しは置かず、項目の区切りは線と余白、従属する設定は字下げで示す */
-.caregiver-tabpanel > :is(.caregiver-field, .caregiver-item, .caregiver-sub, .caregiver-status) + * {
+.caregiver-tabpanel
+  > :is(.caregiver-field, .caregiver-item, .caregiver-sub, .caregiver-status)
+  + * {
   padding-top: 16px;
   border-top: 1px solid var(--grid-line);
 }
@@ -2091,4 +2093,60 @@ h1[data-fit='single'] {
   border: var(--grid-line-width) solid var(--grid-line);
   border-radius: 8px;
   object-fit: contain;
+}
+
+/* ===================================================================
+   Issue #118: 介助者用メニュー「このアプリ」タブ(使い方・リンク・利用回数・バージョン)。
+   =================================================================== */
+.app-guide ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.3em;
+  font-weight: 600;
+}
+
+/* リンクもボタンと同じ大きさ・右寄せにする(Issue #111 の統一) */
+.app-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.app-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 14px;
+  color: var(--caregiver-action-text);
+  background: var(--caregiver-action-bg);
+  border-radius: 8px;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.app-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  font-weight: 700;
+}
+
+.app-facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.app-facts dt {
+  font-weight: 700;
+}
+
+.app-facts dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
 }
