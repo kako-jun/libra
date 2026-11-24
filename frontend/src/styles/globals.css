@@ -1543,7 +1543,8 @@ h1[data-fit='single'] {
 }
 
 .screen-guide {
-  grid-row: 2;
+  /* Issue #114: 直前に伝えたこと(2行目)の下。伝達が無いときは 2 行目が高さ 0 で、緊急の帯のすぐ下に来る */
+  grid-row: 3;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
@@ -1655,7 +1656,7 @@ h1[data-fit='single'] {
 }
 
 .message-panel {
-  grid-row: 3;
+  grid-row: 2;
   display: block;
   min-height: 0;
   max-height: 24vh;

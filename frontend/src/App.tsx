@@ -1222,6 +1222,17 @@ export default function App() {
         </section>
       </Show>
 
+      {/* Issue #114: 「直前に伝えたこと」は現在地(パンくず)より上位の情報なので、案内欄より上に置く */}
+      <section
+        class="message-panel"
+        classList={{ 'is-empty': message() === DEFAULT_MESSAGE }}
+        aria-live="polite"
+        aria-label="直前に伝えたこと"
+      >
+        <p class="message-panel-label">直前に伝えたこと</p>
+        <h1 ref={headingEl}>{message()}</h1>
+      </section>
+
       <section class="screen-guide" aria-label="現在の画面">
         <div class="screen-guide-copy">
           <nav aria-label="現在地">
@@ -1271,16 +1282,6 @@ export default function App() {
             介助者用
           </button>
         </div>
-      </section>
-
-      <section
-        class="message-panel"
-        classList={{ 'is-empty': message() === DEFAULT_MESSAGE }}
-        aria-live="polite"
-        aria-label="直前に伝えたこと"
-      >
-        <p class="message-panel-label">直前に伝えたこと</p>
-        <h1 ref={headingEl}>{message()}</h1>
       </section>
 
       <Show when={holdProgress() !== null}>
