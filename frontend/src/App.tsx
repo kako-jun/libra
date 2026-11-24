@@ -283,18 +283,6 @@ export default function App() {
   const [letterRow, setLetterRow] = createSignal(0)
   // Issue #5: 画面スリープ防止の状態。介助者メニューに表示する
   const [wakeLockStatus, setWakeLockStatus] = createSignal<WakeLockStatus>('unsupported')
-  const fullscreenSupported =
-    typeof document !== 'undefined' &&
-    typeof document.documentElement.requestFullscreen === 'function'
-  const [isFullscreen, setIsFullscreen] = createSignal(
-    typeof document !== 'undefined' && Boolean(document.fullscreenElement),
-  )
-  // nit-3: ホーム画面から起動した PWA が既に display-mode:fullscreen で立ち上がっている場合、
-  // Fullscreen API の document.fullscreenElement は null のままなので isFullscreen() だけでは
-  // 判定できない。matchMedia でも確認し、どちらか一方でも全画面なら「全画面にする」を隠す
-  const [isDisplayModeFullscreen, setIsDisplayModeFullscreen] = createSignal(
-    typeof window !== 'undefined' && window.matchMedia?.('(display-mode: fullscreen)').matches,
-  )
   // Issue #5 / PR#11 should-1: オフラインで動く準備(SWがこのページを制御しているか)
   const [offlineReadyStatus, setOfflineReadyStatus] = createSignal<OfflineReadyStatus>('not-ready')
 
@@ -614,14 +602,6 @@ export default function App() {
     goTo('home')
   }
 
-  // Issue #5: 全画面化。誤操作防止(ダブルタップ拡大等)の効果を確実にするため、
-  // 常設運用では全画面での起動を推奨する。非対応環境ではボタン自体を出さない
-  const enterFullscreen = () => {
-    void document.documentElement.requestFullscreen?.().catch(() => {
-      // ユーザー操作起因でない・非対応等で失敗しても、通常表示のまま使い続けられる
-    })
-  }
-
   const runAction = (item: ReturnType<typeof currentMenu>[number]) => {
     const action = item.action
     switch (action.type) {
@@ -853,23 +833,6 @@ export default function App() {
   onMount(() => {
     const stopOfflineReadyWatch = initOfflineReadyWatch(setOfflineReadyStatus)
     onCleanup(stopOfflineReadyWatch)
-  })
-
-  // nit-3: display-mode(ホーム画面追加で起動した際の全画面表示)の変化を追従する
-  onMount(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const query = window.matchMedia('(display-mode: fullscreen)')
-    const onChange = () => setIsDisplayModeFullscreen(query.matches)
-    query.addEventListener('change', onChange)
-    onCleanup(() => query.removeEventListener('change', onChange))
-  })
-
-  // Issue #5: 全画面状態の表示・介助者メニューからの解除操作にも追従させる
-  onMount(() => {
-    if (typeof document === 'undefined') return
-    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
-    document.addEventListener('fullscreenchange', onFullscreenChange)
-    onCleanup(() => document.removeEventListener('fullscreenchange', onFullscreenChange))
   })
 
   // スキャンの進行ループ。setTimeout を自己再スケジュールし、次に進めるべき時刻に合わせる。
@@ -1476,12 +1439,6 @@ export default function App() {
                 <p class="caregiver-status" classList={{ warn: offlineReadyStatus() !== 'ready' }}>
                   {OFFLINE_READY_LABELS[offlineReadyStatus()]}
                 </p>
-
-                <Show when={fullscreenSupported && !isFullscreen() && !isDisplayModeFullscreen()}>
-                  <button type="button" class="caregiver-action" onClick={enterFullscreen}>
-                    全画面にする
-                  </button>
-                </Show>
 
                 {/* Issue #79: 見ても分からない設定依存の挙動。現在の設定値で出し分ける */}
                 <Show when={behaviorNotes().length > 0}>
