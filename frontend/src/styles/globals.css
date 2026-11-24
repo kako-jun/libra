@@ -46,10 +46,6 @@
   --caregiver-action-disabled-bg: #e5e7eb;
   --caregiver-action-disabled-text: #6b7280;
   --caregiver-close-bg: #052e2b;
-  /* メッセージ欄の色調(通常/緊急)ごとに3:1以上を保つため上書きする。
-     既定(通常の濃い緑背景)は明るいボタン */
-  --caregiver-button-bg: #f3fbf7;
-  --caregiver-button-text: #052e2b;
   /* Issue #3 再々レビュー: 隙間なしの格子。セルは右+下の細い区切り線だけで区切る */
   --grid-line: #cde3d4;
 }
@@ -81,8 +77,6 @@
   --caregiver-action-disabled-bg: #2a2a2a;
   --caregiver-action-disabled-text: #8a8a8a;
   --caregiver-close-bg: #06120c;
-  --caregiver-button-bg: #f3fbf7;
-  --caregiver-button-text: #052e2b;
   /* 暗い背景(#07140f)・タイル面(#17362a)のどちらよりも明るい緑にして区切り線を視認できるようにする */
   --grid-line: #2d5a41;
 }
@@ -797,23 +791,21 @@ h1[data-fit='single'] {
    介助者 UI — 目立たないが介助者には分かる見た目。
    =================================================================== */
 .caregiver-button {
-  /* kako-jun 追加指示: 画面隅への固定配置(position:fixed)をやめ、案内欄右上の
-     .message-panel-controls 内に通常のレイアウトとして置く。
-     PR#16 should-1: 色をハードコード(rgb(0 0 0 / 22%))せず、メッセージ欄の色調
-     (通常/緊急)ごとに3:1以上を保つトークン(--caregiver-button-bg/-text)にする。
-     通常・緊急とも既定の色で、メッセージ欄の色調による上書きはない */
+  /* Issue #109: 介助者用メニューの「閉じる」(.caregiver-action.caregiver-close)と同じ見た目にする
+     (濃い緑の面・白文字・同じ角丸・太さ・文字の大きさ)。開く・閉じるが同じ位置・同じ形のボタンになる。
+     案内欄(.screen-guide)の高さいっぱいに伸ばし、上・右・下の余白を同じ値(--guide-pad)にそろえる */
   z-index: 20;
-  /* Issue #22: 表記を「介助者用」にしたため幅は内容に合わせる(正方形の固定幅をやめる) */
+  flex: 1 1 auto;
   width: auto;
   min-width: 44px;
   min-height: 44px;
-  padding: 6px 12px;
+  padding: 10px 14px;
   white-space: nowrap;
-  color: var(--caregiver-button-text);
-  background: var(--caregiver-button-bg);
+  color: var(--caregiver-action-text);
+  background: var(--caregiver-close-bg);
   border: none;
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: 1.125rem;
   font-weight: 800;
   /* タップ時のスクロール/選択/callout メニューが割り込まないようにする */
   touch-action: none;
@@ -1481,7 +1473,7 @@ h1[data-fit='single'] {
 
 @media (max-height: 500px) {
   .app-shell.is-morse .screen-guide {
-    padding-block: 3px;
+    --guide-pad: 3px;
   }
 
   /* Issue #58: 緊急中は画面下の固定案内(.screen-notes)が出るので、その分モールス画面の余白を詰める */
@@ -1550,7 +1542,9 @@ h1[data-fit='single'] {
   align-items: start;
   gap: 12px;
   min-height: 72px;
-  padding: 10px 18px;
+  /* Issue #109: 介助者用ボタンの上・右・下の余白を同じ値にする。左(文字側)だけ別の値 */
+  --guide-pad: 10px;
+  padding: var(--guide-pad) var(--guide-pad) var(--guide-pad) 18px;
   color: var(--text);
   background: var(--surface-calm);
   border-bottom: var(--grid-line-width) solid var(--grid-line);
@@ -1662,6 +1656,8 @@ h1[data-fit='single'] {
      案内の枠が約44px高くなっていた。見出しと同じ行の右端に置く(モールス画面と同じ配置) */
   grid-column: 2;
   grid-row: 1;
+  /* Issue #109: 案内欄の高さいっぱいに伸ばす(ボタンの上下の余白 = --guide-pad) */
+  align-self: stretch;
   min-height: 44px;
 }
 
@@ -1699,9 +1695,13 @@ h1[data-fit='single'] {
 
 @media (max-width: 480px), (max-height: 500px) {
   .emergency-status,
-  .screen-guide,
   .message-panel {
     padding: 7px 12px;
+  }
+
+  .screen-guide {
+    --guide-pad: 7px;
+    padding-left: 12px;
   }
 
   .screen-guide {
@@ -1778,7 +1778,7 @@ h1[data-fit='single'] {
   /* 低い画面では案内の枠の上下余白を詰め、帯の分の高さを作る(ボタンの44pxは保つ) */
   .screen-guide {
     min-height: 0;
-    padding-block: 3px;
+    --guide-pad: 4px;
   }
 
   /* 緊急の帯・直前に伝えたことの余白も詰め、案内の帯の分の高さを作る
