@@ -286,7 +286,7 @@ export function buildUrgentDetailMenu(selectedDetails: readonly string[] = []): 
 }
 
 // 1画面の項目数は緊急・戻るを含めて8以内(requirements.md §4.1)。既定はこれを満たし、
-// 介助者が編集して超える場合は介助者メニューで警告する(phrases.ts)。
+// 介助者が編集して超える場合は介助者用メニューで警告する(phrases.ts)。
 // 「その他」は暑い/寒い/喉が渇いた/かゆい/眠れないを discomfortOther へ退避する。
 export function buildDiscomfortMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen([

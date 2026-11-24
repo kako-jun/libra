@@ -1,4 +1,4 @@
-// 介助者メニューのフレーズ編集(Issue #8)。
+// 介助者用メニューのフレーズ編集(Issue #8)。
 // 編集できるのは不快・不快その他・痛い場所・要望・気分の「伝達メッセージ」項目だけ。
 // 緊急・戻る・はい・いいえ・続けて/やめて/変えて・下位画面への遷移項目・痛みの強さは
 // menus.ts が構造で固定するため、
@@ -73,10 +73,9 @@ export default function PhraseEditor(props: PhraseEditorProps) {
 
   return (
     <section class="phrase-editor" aria-label="フレーズ編集">
-      <h3>フレーズ編集</h3>
       <p class="phrase-note">
         緊急・戻る・はい・いいえ・続けて/やめて/変えて
-        の位置と内容は変えられません。ここで編集できるのは下の定型文だけです。
+        の位置と内容は変えられません。ここで編集できるのは下のフレーズだけです。
       </p>
 
       <div class="caregiver-choice-options">
@@ -190,7 +189,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
           onClick={resetGroup}
           disabled={!isCustomized()}
         >
-          この画面を既定に戻す
+          この画面を初期値に戻す
         </button>
       </div>
     </section>
@@ -203,7 +202,7 @@ interface SettingsBackupProps {
   replaceSettings: (next: Settings) => void
 }
 
-/** 設定の書き出し/取り込み(端末の入れ替え用)。介助者メニューの「データ」タブ */
+/** 設定の書き出し/取り込み(端末の入れ替え用)。介助者用メニューの「データ」タブ */
 export function SettingsBackup(props: SettingsBackupProps) {
   const [backupText, setBackupText] = createSignal('')
   const [backupStatus, setBackupStatus] = createSignal('')
@@ -264,7 +263,6 @@ export function SettingsBackup(props: SettingsBackupProps) {
 
   return (
     <section class="settings-backup" aria-label="設定データ">
-      <h3>設定データ</h3>
       <div class="caregiver-field">
         <span>設定のバックアップ（端末の入れ替え用）</span>
         <textarea

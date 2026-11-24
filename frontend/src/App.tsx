@@ -41,17 +41,17 @@ import {
   type MorseState,
   type MorseSymbol,
 } from './lib/morse'
-import { buildBehaviorNotes, buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
+import { buildBehaviorNoteMap, buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 /** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
 const COMPACT_NOTES_QUERY = '(max-height: 500px), (max-width: 480px)'
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます。'
-/** 介助者メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
+/** 介助者用メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
 const CAREGIVER_TABS = [
-  { id: 'status', label: '状態' },
+  { id: 'status', label: '端末の状態' },
   { id: 'scan', label: 'スキャン' },
-  { id: 'input', label: '入力方式' },
+  { id: 'input', label: 'モールス' },
   { id: 'feedback', label: '音と振動' },
   { id: 'display', label: '表示' },
   { id: 'phrases', label: 'フレーズ' },
@@ -65,7 +65,7 @@ function isCaregiverTabNavKey(event: KeyboardEvent): boolean {
 }
 type CaregiverTabId = (typeof CAREGIVER_TABS)[number]['id']
 
-/** 介助者メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
+/** 介助者用メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
 
 const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
@@ -77,7 +77,7 @@ const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
 
 const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
 
-// Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者メニューに表示する文言。
+// Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者用メニューに表示する文言。
 // 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
 export const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
   active: '画面スリープ防止: 有効',
@@ -87,10 +87,10 @@ export const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
 }
 
 // PR #11 レビュー対応(should-1): オフラインで動く準備(Service Worker がこのページを
-// 制御しているか)を Wake Lock と同じ扱いで介助者メニューに表示する。
+// 制御しているか)を Wake Lock と同じ扱いで介助者用メニューに表示する。
 export const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
   ready: 'オフライン準備: 完了',
-  'not-ready': 'オフライン準備: 未完了',
+  'not-ready': 'オフライン準備: 未完了 — 通信できる場所で、このページを開き直してください。',
 }
 
 function speak(mode: Settings['voiceMode'], text: string, shortText = text, legacyVibrate = false) {
@@ -281,7 +281,7 @@ export default function App() {
   const [painChoice, setPainChoice] = createSignal<PainChoice | undefined>(undefined)
   // 文字盤の文字段階で表示している行(LETTER_ROWS の添字)
   const [letterRow, setLetterRow] = createSignal(0)
-  // Issue #5: 画面スリープ防止の状態。介助者メニューに表示する
+  // Issue #5: 画面スリープ防止の状態。介助者用メニューに表示する
   const [wakeLockStatus, setWakeLockStatus] = createSignal<WakeLockStatus>('unsupported')
   // Issue #5 / PR#11 should-1: オフラインで動く準備(SWがこのページを制御しているか)
   const [offlineReadyStatus, setOfflineReadyStatus] = createSignal<OfflineReadyStatus>('not-ready')
@@ -338,6 +338,18 @@ export default function App() {
     compactQuery.addEventListener?.('change', onChange)
     onCleanup(() => compactQuery.removeEventListener?.('change', onChange))
   })
+  // 介助者用メニュー上部の案内を短縮形にするのは、高さが足りない画面だけ(Issue #111。縦長スマホは通常の文言)
+  const lowScreenQuery =
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(max-height: 500px)')
+      : null
+  const [lowScreen, setLowScreen] = createSignal(lowScreenQuery?.matches === true)
+  onMount(() => {
+    if (!lowScreenQuery) return
+    const onChange = () => setLowScreen(lowScreenQuery.matches)
+    lowScreenQuery.addEventListener?.('change', onChange)
+    onCleanup(() => lowScreenQuery.removeEventListener?.('change', onChange))
+  })
   // Issue #58/#79: 画面下の固定案内は緊急中の振動だけ。通常時は空で、帯ごと出さない
   const screenNotes = createMemo(() =>
     buildScreenNotes({
@@ -348,7 +360,7 @@ export default function App() {
       settings: settings(),
     }),
   )
-  const behaviorNotes = createMemo(() => buildBehaviorNotes({ settings: settings() }))
+  const behaviorNotes = createMemo(() => buildBehaviorNoteMap({ settings: settings() }))
   const currentScreenGuidance = createMemo(() => {
     if (screen() === 'painIntensity' && painChoice()) {
       return `${painChoice()?.label}の痛みの強さを選んでください。`
@@ -475,7 +487,7 @@ export default function App() {
   }
   const morseInput = createMorseInput({
     getConfig: morseConfig,
-    // 介助者メニューを開いている間は、裏で文字が確定したり復帰したりしないよう時間を止める
+    // 介助者用メニューを開いている間は、裏で文字が確定したり復帰したりしないよう時間を止める
     isPaused: caregiverMenuOpen,
     onHold: setMorseHold,
     onState: (state) => {
@@ -565,7 +577,7 @@ export default function App() {
     })
   }
 
-  // M3(a): 介助者メニュー内の操作が60秒ないと自動で閉じ、スキャンを再開する。
+  // M3(a): 介助者用メニュー内の操作が60秒ないと自動で閉じ、スキャンを再開する。
   // パネル内での操作(pointerdown)のたびに resetCaregiverIdleTimer を呼んで先延ばしする。
   let caregiverIdleTimer: number | undefined
 
@@ -829,7 +841,7 @@ export default function App() {
     onCleanup(stopWakeLock)
   })
 
-  // PR#11 should-1: オフラインで動く準備(SWの制御下にあるか)を介助者メニューに表示する
+  // PR#11 should-1: オフラインで動く準備(SWの制御下にあるか)を介助者用メニューに表示する
   onMount(() => {
     const stopOfflineReadyWatch = initOfflineReadyWatch(setOfflineReadyStatus)
     onCleanup(stopOfflineReadyWatch)
@@ -959,7 +971,7 @@ export default function App() {
 
       // 通常タップで開く介助者ボタン自身の pointerdown は、ボタンのハンドラだけで
       // 処理する。メニューを開いた直後にウィンドウ側が「パネル外タップ」として
-      // 閉じないよう、介助者メニュー表示中かどうかより先に除外する。
+      // 閉じないよう、介助者用メニュー表示中かどうかより先に除外する。
       if (target?.closest('.caregiver-button')) return
 
       if (caregiverMenuOpen()) {
@@ -1144,6 +1156,31 @@ export default function App() {
     nextTab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }
 
+  // Issue #111: タブ列が横に続くとき、続きがある側の矢印だけを出す
+  let tablistEl: HTMLDivElement | undefined
+  const [tabScroll, setTabScroll] = createSignal({ left: false, right: false })
+  const updateTabScroll = () => {
+    const el = tablistEl
+    if (!el) return
+    const max = el.scrollWidth - el.clientWidth
+    // 端数(DPR・小数スクロール)で矢印が残らないよう 2px の余裕を見る
+    setTabScroll({ left: el.scrollLeft > 2, right: el.scrollLeft < max - 2 })
+  }
+  const scrollCaregiverTabs = (direction: -1 | 1) => {
+    const el = tablistEl
+    if (!el) return
+    const left = el.scrollLeft + direction * Math.max(120, el.clientWidth * 0.7)
+    if (typeof el.scrollTo === 'function') el.scrollTo({ left, behavior: 'smooth' })
+    else el.scrollLeft = left
+    updateTabScroll()
+  }
+  createEffect(() => {
+    if (!caregiverMenuOpen()) return
+    caregiverTab() // タブを選ぶと選んだタブへスクロールするので、矢印の出し分けを取り直す
+    viewportSize()
+    queueMicrotask(updateTabScroll)
+  })
+
   const openCaregiverMenu = (openingPointerId?: number) => {
     if (caregiverMenuOpen()) return
     menuOpeningPointer = openingPointerId ?? null
@@ -1191,7 +1228,7 @@ export default function App() {
                           class="breadcrumb-link"
                           data-breadcrumb-control
                           onClick={() => {
-                            // 介助者メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
+                            // 介助者用メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
                             if (caregiverMenuOpen()) return
                             idleSteps = 0
                             goTo(target())
@@ -1217,7 +1254,7 @@ export default function App() {
             onPointerDown={(event) => openCaregiverMenu(event.pointerId)}
             onClick={() => openCaregiverMenu()}
             onContextMenu={(event) => event.preventDefault()}
-            aria-label="介助者メニューを開く"
+            aria-label="介助者用メニューを開く"
           >
             介助者用
           </button>
@@ -1372,14 +1409,14 @@ export default function App() {
           <div class="caregiver-panel">
             <div class="caregiver-header">
               <div class="caregiver-header-grid">
-                <h2>介助者メニュー</h2>
+                <h2>介助者用メニュー</h2>
                 <button
                   type="button"
                   class="caregiver-action caregiver-emergency-clear"
                   onClick={clearEmergency}
                   disabled={!emergencyActive()}
                 >
-                  緊急解除{emergencyActive() ? '' : '（緊急なし）'}
+                  緊急を解除{emergencyActive() ? '' : '（緊急なし）'}
                 </button>
                 <button
                   type="button"
@@ -1391,36 +1428,69 @@ export default function App() {
               </div>
             </div>
 
-            <ul class="caregiver-notes" aria-label="介助者メニューの自動で起きること">
+            <ul class="caregiver-notes" aria-label="介助者用メニューの自動で起きること">
               <For
                 each={buildCaregiverMenuNotes(CAREGIVER_MENU_IDLE_TIMEOUT_MS, {
                   morseEnabled: settings().morseEnabled,
-                  compact: compactNotes(),
+                  compact: lowScreen(),
                 })}
               >
                 {(note) => <li>{note}</li>}
               </For>
             </ul>
 
-            <div class="caregiver-tablist" role="tablist" aria-label="設定カテゴリ">
-              <For each={CAREGIVER_TABS}>
-                {(tab) => (
-                  <button
-                    type="button"
-                    role="tab"
-                    class="caregiver-tab"
-                    id={`caregiver-tab-${tab.id}`}
-                    aria-selected={caregiverTab() === tab.id}
-                    aria-controls="caregiver-tabpanel"
-                    tabindex={caregiverTab() === tab.id ? 0 : -1}
-                    classList={{ active: caregiverTab() === tab.id }}
-                    onClick={() => setCaregiverTab(tab.id)}
-                    onKeyDown={onCaregiverTabKeyDown}
-                  >
-                    {tab.label}
-                  </button>
-                )}
-              </For>
+            {/* Issue #111: タブが横に続くときは、続きがある側にだけ矢印を出す。タップで表示範囲を動かす */}
+            <div class="caregiver-tabs">
+              <button
+                type="button"
+                class="caregiver-tab-scroll"
+                aria-label="前のタブを表示"
+                hidden={!tabScroll().left}
+                onClick={() => scrollCaregiverTabs(-1)}
+              >
+                <svg viewBox="0 0 20 24" aria-hidden="true">
+                  <path d="M15 3 L5 12 L15 21" />
+                </svg>
+              </button>
+              <div
+                class="caregiver-tablist"
+                role="tablist"
+                aria-label="設定カテゴリ"
+                ref={(el) => {
+                  tablistEl = el
+                }}
+                onScroll={updateTabScroll}
+              >
+                <For each={CAREGIVER_TABS}>
+                  {(tab) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      class="caregiver-tab"
+                      id={`caregiver-tab-${tab.id}`}
+                      aria-selected={caregiverTab() === tab.id}
+                      aria-controls="caregiver-tabpanel"
+                      tabindex={caregiverTab() === tab.id ? 0 : -1}
+                      classList={{ active: caregiverTab() === tab.id }}
+                      onClick={() => setCaregiverTab(tab.id)}
+                      onKeyDown={onCaregiverTabKeyDown}
+                    >
+                      {tab.label}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <button
+                type="button"
+                class="caregiver-tab-scroll"
+                aria-label="次のタブを表示"
+                hidden={!tabScroll().right}
+                onClick={() => scrollCaregiverTabs(1)}
+              >
+                <svg viewBox="0 0 20 24" aria-hidden="true">
+                  <path d="M5 3 L15 12 L5 21" />
+                </svg>
+              </button>
             </div>
 
             <Show when={caregiverTab() === 'status'}>
@@ -1431,22 +1501,18 @@ export default function App() {
                 aria-labelledby="caregiver-tab-status"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">動作状態</h3>
-                <p class="caregiver-status" classList={{ warn: wakeLockStatus() !== 'active' }}>
-                  {WAKE_LOCK_LABELS[wakeLockStatus()]}
+                {/* Issue #111: ここは端末の状態の表示だけ(操作できる設定は無い)。ボタンに見える囲みにしない */}
+                <p class="caregiver-lead">
+                  この端末のいまの状態です。ここで変える設定はありません。
                 </p>
-
-                <p class="caregiver-status" classList={{ warn: offlineReadyStatus() !== 'ready' }}>
-                  {OFFLINE_READY_LABELS[offlineReadyStatus()]}
-                </p>
-
-                {/* Issue #79: 見ても分からない設定依存の挙動。現在の設定値で出し分ける */}
-                <Show when={behaviorNotes().length > 0}>
-                  <h3 class="caregiver-section-title">いまの動作</h3>
-                  <ul class="caregiver-behavior" aria-label="いまの動作">
-                    <For each={behaviorNotes()}>{(note) => <li>{note}</li>}</For>
-                  </ul>
-                </Show>
+                <StatusRow
+                  label={WAKE_LOCK_LABELS[wakeLockStatus()]}
+                  ok={wakeLockStatus() === 'active'}
+                />
+                <StatusRow
+                  label={OFFLINE_READY_LABELS[offlineReadyStatus()]}
+                  ok={offlineReadyStatus() === 'ready'}
+                />
               </div>
             </Show>
 
@@ -1458,7 +1524,6 @@ export default function App() {
                 aria-labelledby="caregiver-tab-scan"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">スイッチ入力とスキャン</h3>
                 <label class="caregiver-field">
                   <span>スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒</span>
                   <input
@@ -1492,49 +1557,75 @@ export default function App() {
                   />
                 </label>
 
-                <label class="caregiver-field">
-                  <span>連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="3000"
-                    step="100"
-                    value={settings().debounceMs}
-                    onInput={(event) =>
-                      updateSettings({ debounceMs: Number(event.currentTarget.value) })
-                    }
-                  />
-                </label>
+                <div class="caregiver-item">
+                  <label class="caregiver-field">
+                    <span>連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="3000"
+                      step="100"
+                      value={settings().debounceMs}
+                      onInput={(event) =>
+                        updateSettings({ debounceMs: Number(event.currentTarget.value) })
+                      }
+                    />
+                  </label>
+                  <Show when={behaviorNotes().debounce}>
+                    {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
+                  </Show>
+                </div>
 
-                <label class="caregiver-field">
-                  <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2000"
-                    step="100"
-                    value={settings().minHoldMs}
-                    onInput={(event) =>
-                      updateSettings({ minHoldMs: Number(event.currentTarget.value) })
-                    }
-                  />
-                </label>
+                <div class="caregiver-item">
+                  <label class="caregiver-field">
+                    <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="2000"
+                      step="100"
+                      value={settings().minHoldMs}
+                      onInput={(event) =>
+                        updateSettings({ minHoldMs: Number(event.currentTarget.value) })
+                      }
+                    />
+                  </label>
 
-                <div class="caregiver-field">
-                  <span>決定のタイミング</span>
-                  <div class="caregiver-choice-options">
-                    <For each={ACTIVATE_ONS}>
-                      {(timing) => (
-                        <button
-                          type="button"
-                          classList={{ active: settings().activateOn === timing }}
-                          onClick={() => updateSettings({ activateOn: timing })}
-                        >
-                          {ACTIVATE_ON_LABELS[timing]}
-                        </button>
-                      )}
-                    </For>
+                  <div class="caregiver-field">
+                    <span>決定のタイミング</span>
+                    <div class="caregiver-choice-options">
+                      <For each={ACTIVATE_ONS}>
+                        {(timing) => (
+                          <button
+                            type="button"
+                            classList={{ active: settings().activateOn === timing }}
+                            onClick={() => updateSettings({ activateOn: timing })}
+                          >
+                            {ACTIVATE_ON_LABELS[timing]}
+                          </button>
+                        )}
+                      </For>
+                    </div>
                   </div>
+                  <Show when={behaviorNotes().hold}>
+                    {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
+                  </Show>
+                </div>
+
+                <div class="caregiver-item">
+                  <label class="caregiver-field caregiver-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={settings().auditoryScan}
+                      onChange={(event) =>
+                        updateSettings({ auditoryScan: event.currentTarget.checked })
+                      }
+                    />
+                    <span>聴覚スキャン（カーソルが進むたびに項目名を読み上げる）</span>
+                  </label>
+                  <Show when={behaviorNotes().speech}>
+                    {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
+                  </Show>
                 </div>
               </div>
             </Show>
@@ -1547,91 +1638,83 @@ export default function App() {
                 aria-labelledby="caregiver-tab-input"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">入力方式</h3>
-                <label class="caregiver-field caregiver-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings().auditoryScan}
-                    onChange={(event) =>
-                      updateSettings({ auditoryScan: event.currentTarget.checked })
-                    }
-                  />
-                  <span>聴覚スキャン</span>
-                </label>
-
-                <label class="caregiver-field caregiver-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings().morseEnabled}
-                    onChange={(event) =>
-                      updateSettings({ morseEnabled: event.currentTarget.checked })
-                    }
-                  />
-                  <span>
-                    モールス入力を使う（上級者向け。押下と解放を同時に送るシャッターでは長押しが使えず、緊急のSOS（・・・－－－・・・）も出せません）
-                  </span>
-                </label>
+                <div class="caregiver-item">
+                  <label class="caregiver-field caregiver-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={settings().morseEnabled}
+                      onChange={(event) =>
+                        updateSettings({ morseEnabled: event.currentTarget.checked })
+                      }
+                    />
+                    <span>モールス入力を使う（上級者向け）</span>
+                  </label>
+                  <p class="caregiver-hint">
+                    押下と解放を同時に送るシャッターでは長押しが使えず、緊急のSOS（・・・－－－・・・）も出せません。
+                  </p>
+                </div>
 
                 <Show when={settings().morseEnabled}>
-                  <label class="caregiver-field">
-                    <span>
-                      モールス: 長押し(－)の境目 {(settings().morseDashMs / 1000).toFixed(1)} 秒
-                      {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
-                      settings().morseDashMs
-                        ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
-                        : ''}
-                    </span>
-                    <input
-                      type="range"
-                      min="150"
-                      max="1500"
-                      step="50"
-                      value={settings().morseDashMs}
-                      onInput={(event) =>
-                        updateSettings({ morseDashMs: Number(event.currentTarget.value) })
-                      }
-                    />
-                  </label>
-                  <label class="caregiver-field">
-                    <span>
-                      モールス: 文字の確定までの無入力{' '}
-                      {(settings().morseLetterGapMs / 1000).toFixed(1)} 秒
-                    </span>
-                    <input
-                      type="range"
-                      min="500"
-                      max="3000"
-                      step="100"
-                      value={settings().morseLetterGapMs}
-                      onInput={(event) => {
-                        const letterGap = Number(event.currentTarget.value)
-                        // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
-                        updateSettings({
-                          morseLetterGapMs: letterGap,
-                          morseWordGapMs: Math.max(
-                            settings().morseWordGapMs,
-                            letterGap + MORSE_WORD_GAP_MARGIN_MS,
-                          ),
-                        })
-                      }}
-                    />
-                  </label>
-                  <label class="caregiver-field">
-                    <span>
-                      モールス: 語の区切りまでの無入力{' '}
-                      {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
-                    </span>
-                    <input
-                      type="range"
-                      min="1500"
-                      max="8000"
-                      step="100"
-                      value={settings().morseWordGapMs}
-                      onInput={(event) =>
-                        updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
-                      }
-                    />
-                  </label>
+                  <div class="caregiver-sub">
+                    <label class="caregiver-field">
+                      <span>
+                        長押し（－）の境目: {(settings().morseDashMs / 1000).toFixed(1)} 秒
+                        {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
+                        settings().morseDashMs
+                          ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
+                          : ''}
+                      </span>
+                      <input
+                        type="range"
+                        min="150"
+                        max="1500"
+                        step="50"
+                        value={settings().morseDashMs}
+                        onInput={(event) =>
+                          updateSettings({ morseDashMs: Number(event.currentTarget.value) })
+                        }
+                      />
+                    </label>
+                    <label class="caregiver-field">
+                      <span>
+                        文字の確定までの無入力: {(settings().morseLetterGapMs / 1000).toFixed(1)}{' '}
+                        秒
+                      </span>
+                      <input
+                        type="range"
+                        min="500"
+                        max="3000"
+                        step="100"
+                        value={settings().morseLetterGapMs}
+                        onInput={(event) => {
+                          const letterGap = Number(event.currentTarget.value)
+                          // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
+                          updateSettings({
+                            morseLetterGapMs: letterGap,
+                            morseWordGapMs: Math.max(
+                              settings().morseWordGapMs,
+                              letterGap + MORSE_WORD_GAP_MARGIN_MS,
+                            ),
+                          })
+                        }}
+                      />
+                    </label>
+                    <label class="caregiver-field">
+                      <span>
+                        語の区切りまでの無入力: {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
+                      </span>
+                      <input
+                        type="range"
+                        min="1500"
+                        max="8000"
+                        step="100"
+                        value={settings().morseWordGapMs}
+                        onInput={(event) =>
+                          updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
+                        }
+                      />
+                    </label>
+                  </div>
                 </Show>
               </div>
             </Show>
@@ -1644,9 +1727,8 @@ export default function App() {
                 aria-labelledby="caregiver-tab-feedback"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">音声と振動</h3>
                 <div class="caregiver-field">
-                  <span>音声モード</span>
+                  <span>音声モード（伝えた内容の読み上げ）</span>
                   <div class="caregiver-voice-options">
                     <For each={VOICE_MODES}>
                       {(mode) => (
@@ -1674,46 +1756,48 @@ export default function App() {
                 </label>
 
                 <Show when={settings().hapticsEnabled}>
-                  <div class="caregiver-field">
-                    <span>振動の強さ</span>
-                    <div class="caregiver-choice-options">
-                      <For each={HAPTIC_STRENGTHS}>
-                        {(strength) => (
-                          <button
-                            type="button"
-                            classList={{ active: settings().hapticsStrength === strength }}
-                            onClick={() => updateSettings({ hapticsStrength: strength })}
-                          >
-                            {HAPTIC_STRENGTH_LABELS[strength]}
-                          </button>
-                        )}
-                      </For>
+                  <div class="caregiver-sub">
+                    <div class="caregiver-field">
+                      <span>振動の強さ</span>
+                      <div class="caregiver-choice-options">
+                        <For each={HAPTIC_STRENGTHS}>
+                          {(strength) => (
+                            <button
+                              type="button"
+                              classList={{ active: settings().hapticsStrength === strength }}
+                              onClick={() => updateSettings({ hapticsStrength: strength })}
+                            >
+                              {HAPTIC_STRENGTH_LABELS[strength]}
+                            </button>
+                          )}
+                        </For>
+                      </div>
                     </div>
+
+                    <label class="caregiver-field caregiver-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={settings().hapticSoundAlso}
+                        onChange={(event) =>
+                          updateSettings({ hapticSoundAlso: event.currentTarget.checked })
+                        }
+                      />
+                      <span>
+                        振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
+                      </span>
+                    </label>
+
+                    <label class="caregiver-field caregiver-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={settings().hapticSoundWhenVoiceOff}
+                        onChange={(event) =>
+                          updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
+                        }
+                      />
+                      <span>振動できない端末では、音声モードが OFF でも短い効果音で知らせる</span>
+                    </label>
                   </div>
-
-                  <label class="caregiver-field caregiver-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={settings().hapticSoundAlso}
-                      onChange={(event) =>
-                        updateSettings({ hapticSoundAlso: event.currentTarget.checked })
-                      }
-                    />
-                    <span>
-                      振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
-                    </span>
-                  </label>
-
-                  <label class="caregiver-field caregiver-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={settings().hapticSoundWhenVoiceOff}
-                      onChange={(event) =>
-                        updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
-                      }
-                    />
-                    <span>振動できない端末では、音声OFFでも短い効果音で知らせる</span>
-                  </label>
                 </Show>
               </div>
             </Show>
@@ -1726,26 +1810,31 @@ export default function App() {
                 aria-labelledby="caregiver-tab-display"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">表示</h3>
-                <div class="caregiver-field">
-                  <span>文字サイズ</span>
-                  <div class="caregiver-choice-options">
-                    <For each={FONT_SIZES}>
-                      {(size) => (
-                        <button
-                          type="button"
-                          classList={{ active: settings().fontSize === size }}
-                          onClick={() => updateSettings({ fontSize: size })}
-                        >
-                          {FONT_SIZE_LABELS[size]}
-                        </button>
-                      )}
-                    </For>
+                <div class="caregiver-item">
+                  <div class="caregiver-field">
+                    <span>文字サイズ（選ぶタイルの文字）</span>
+                    <div class="caregiver-choice-options">
+                      <For each={FONT_SIZES}>
+                        {(size) => (
+                          <button
+                            type="button"
+                            classList={{ active: settings().fontSize === size }}
+                            onClick={() => updateSettings({ fontSize: size })}
+                          >
+                            {FONT_SIZE_LABELS[size]}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                  {/* Issue #111: 文字サイズも明るさと同じくその場で分かるよう、本人画面のタイルと同じ式で描くサンプル */}
+                  <div class="font-size-sample" role="img" aria-label="文字サイズのサンプル">
+                    <span class="tile-label">はい</span>
                   </div>
                 </div>
 
                 <div class="caregiver-field">
-                  <span>表示</span>
+                  <span>明るさ</span>
                   <div class="caregiver-choice-options">
                     <For each={THEMES}>
                       {(theme) => (
@@ -1801,5 +1890,24 @@ export default function App() {
         </div>
       </Show>
     </main>
+  )
+}
+
+/** 介助者用メニュー「端末の状態」の1行。操作できない状態表示なので、ボタンに見える囲みにしない(Issue #111) */
+function StatusRow(props: { label: string; ok: boolean }) {
+  // 「項目: 値 — 必要な対応」を、状態と対応に分けて出す
+  const parts = () => props.label.split(' — ')
+  return (
+    <p class="caregiver-status" classList={{ warn: !props.ok }}>
+      <span class="caregiver-status-mark" aria-hidden="true">
+        {props.ok ? '✓' : '!'}
+      </span>
+      <span class="caregiver-status-text">
+        <span>{parts()[0]}</span>
+        <Show when={parts()[1]}>
+          <span class="caregiver-status-todo">{parts()[1]}</span>
+        </Show>
+      </span>
+    </p>
   )
 }
