@@ -1578,7 +1578,8 @@ h1[data-fit='single'] {
   flex-wrap: wrap;
   gap: 0 0.25em;
   min-width: 0;
-  margin: 0 0 2px;
+  /* Issue #113: 下の指示文と見分けられるよう、間隔を広げる(低い画面だけ下で詰める) */
+  margin: 0 0 10px;
   padding: 0;
   list-style: none;
   color: var(--text-muted);
@@ -1626,6 +1627,20 @@ h1[data-fit='single'] {
   overflow-wrap: anywhere;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+/* Issue #113: 「ホーム」の家アイコン。文字と同じ色で、文字の高さに合わせる */
+.breadcrumb-home {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.2em;
+  vertical-align: -0.12em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .screen-breadcrumb .breadcrumb-link:focus-visible {
@@ -1699,6 +1714,13 @@ h1[data-fit='single'] {
 
   .screen-guide h2 {
     font-size: clamp(1rem, 3.8vh, 1.35rem);
+  }
+}
+
+/* 低い画面は格子の高さを優先し、パンくずと指示文の間隔を控えめにする */
+@media (max-height: 500px) {
+  .screen-breadcrumb {
+    margin-bottom: 4px;
   }
 }
 

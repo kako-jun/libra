@@ -1244,7 +1244,17 @@ export default function App() {
                       index() === screenBreadcrumb().length - 1 ? 'location' : undefined
                     }
                   >
-                    <Show when={item.screen} fallback={item.title}>
+                    <Show
+                      when={item.screen}
+                      fallback={
+                        <>
+                          <Show when={index() === 0}>
+                            <HomeIcon />
+                          </Show>
+                          {item.title}
+                        </>
+                      }
+                    >
                       {(target) => (
                         <button
                           type="button"
@@ -1257,6 +1267,9 @@ export default function App() {
                             goTo(target())
                           }}
                         >
+                          <Show when={index() === 0}>
+                            <HomeIcon />
+                          </Show>
                           {item.title}
                         </button>
                       )}
@@ -2000,5 +2013,16 @@ function TabReset(props: { tabLabel: string; targets: string; onReset: () => voi
         </button>
       </div>
     </div>
+  )
+}
+
+/** パンくずの「ホーム」に付ける家アイコン(Issue #113)。文字と同じ色・大きさ。読み上げには含めない */
+function HomeIcon() {
+  return (
+    <svg class="breadcrumb-home" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5.5 10v10h13V10" />
+      <path d="M10 20v-6h4v6" />
+    </svg>
   )
 }
