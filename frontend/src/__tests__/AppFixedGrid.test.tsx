@@ -165,11 +165,27 @@ describe('Issue #47: App の固定格子・空きセル', () => {
 
     it('幅=高さちょうど(正方形)は縦長、幅=高さ-1 も縦長、+1 は横長(App 上の境界)', () => {
       const { container } = render(() => <App />)
+      // ホームは幅 600px 以上の縦長で 3×3(PR #124)。境界の判定は 600 未満の幅で見る
+      setViewport(500, 500)
+      expect(gridOf(container)).toEqual(HOME_PORTRAIT)
+      setViewport(499, 500)
+      expect(gridOf(container)).toEqual(HOME_PORTRAIT)
+      setViewport(501, 500)
+      expect(gridOf(container)).toEqual(HOME_LANDSCAPE)
+    })
+
+    it('ホームは幅 600px 以上の縦長(タブレット縦・正方形を含む)で 3×3。599px は 2×5(PR #124)', () => {
+      const { container } = render(() => <App />)
+      setViewport(768, 1024)
+      expect(gridOf(container)).toEqual({ cols: '3', rows: '3', fill: true })
+      // 8 項目 + 空きセル 1 = 9 セル。並び(スキャン順)は 2×5 と同じ
+      expect(tiles(container).length + emptyCells(container).length).toBe(9)
+      expect(labels(container).slice(0, 4)).toEqual(['緊急', 'もう一度', 'はい', 'いいえ'])
       setViewport(600, 600)
+      expect(gridOf(container)).toEqual({ cols: '3', rows: '3', fill: true })
+      setViewport(599, 1000)
       expect(gridOf(container)).toEqual(HOME_PORTRAIT)
-      setViewport(599, 600)
-      expect(gridOf(container)).toEqual(HOME_PORTRAIT)
-      setViewport(601, 600)
+      setViewport(1024, 768)
       expect(gridOf(container)).toEqual(HOME_LANDSCAPE)
     })
 
@@ -472,7 +488,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
 
     it('ラベルは縮めすぎない: 下限は max(13px, …) で、--ring-extra が上限項と下限項の両方に効く', () => {
       const font =
-        css.match(/--tile-label-font:\s*clamp\(([\s\S]*?)\);\s*container-type/)?.[1] ?? ''
+        css.match(/--tile-label-font:\s*clamp\(([\s\S]*?)\n {2}\);/)?.[1] ?? ''
       expect(font).toMatch(/max\(13px,/)
       expect(font.match(/--ring-extra/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
     })

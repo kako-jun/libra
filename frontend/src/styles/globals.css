@@ -528,8 +528,13 @@ h1[data-fit='single'] {
 }
 
 /* 文字サイズの式(--tile-label-font ほか)は、介助者用メニューの文字サイズのサンプル(.font-size-sample。
-   Issue #111)と共有する。タイルそのものの見た目は、すぐ下の .tile だけのブロックに置く */
+   Issue #111)と共有する。タイルそのものの見た目は、すぐ下の .tile だけのブロックに置く。
+   式は .tile の子(ラベル・予告・山形アイコン)でも宣言し直す: カスタムプロパティの var() は宣言した
+   要素で置き換わるので、子で宣言し直さないと、コンテナクエリ(.tile の大きさ)で子の
+   --label-fit-chars を変えても式に効かない(ホームのアイコンを上に置くセル。下の .grid-home)。
+   cqi/cqb はどちらで宣言しても使う側(.tile の子)で .tile を基準に解決されるので、値は同じ */
 .tile,
+.tile > *,
 .font-size-sample {
   /* kako-jun 追加指示: 予告(.tile-preview)の文字サイズをラベルの45〜55%程度にするため、
      ラベルの clamp() 式を変数化して共有する。.tile-label と .tile-preview の両方が
@@ -566,24 +571,29 @@ h1[data-fit='single'] {
      のは逆効果。足りない高さは、短い画面で帯・余白を詰めてセル側に確保する。下の
      @media (max-height: 500px) 参照)。この項にも --ring-extra を足し、高コントラストの
      太い帯でも標準と同じ下限にそろえる(高コントラストのほうが標準より小さくならない) */
-  /* 1 行に収める基準の文字数。通常は 4 文字の語(4.02)。ホームは全項目にアイコン(約 1.25 文字ぶん)を
-     併記するので、アイコン + 4 文字が 1 行に入る 5.3 にする(下の .grid-home。Issue #115) */
-  --label-fit-chars: 4.02;
+  /* 1 行に収める基準の文字数(--label-fit-chars)は .tile 側で決める(下の .tile。通常 4.02、ホームで
+     アイコンをラベルと同じ行に置くセルだけ 5.3) */
   --ring-extra: calc(var(--scan-ring-inset) - 12px);
+  /* cqi/cqb の係数。ブレークポイントの値(:root の --label-cqi/--label-cqb)を、格子ごとの下限
+     (--label-cqi-min/--label-cqb-min。ホーム・文字盤だけが持つ)まで引き上げる */
+  --tile-cqi: max(var(--label-cqi), var(--label-cqi-min, 0));
+  --tile-cqb: max(var(--label-cqb), var(--label-cqb-min, 0));
+  /* ラベルが右端の山形アイコンを避ける幅。山形アイコンの無い格子(文字盤の行段階)は 0 */
+  --label-nav-reserve: var(--label-nav-reserve-override, clamp(20px, 12cqi, 36px));
   --tile-label-font: clamp(
     min(1.05rem, max(13px, calc((100cqb + 2 * var(--ring-extra)) / 2.4))),
     min(
       calc(
         var(--label-ratio) *
           min(
-            calc(var(--label-cqi) * 1cqi + var(--label-cqi) * 0.02 * var(--ring-extra)),
-            calc(var(--label-cqb) * 1cqb + var(--label-cqb) * 0.02 * var(--ring-extra))
+            calc(var(--tile-cqi) * 1cqi + var(--tile-cqi) * 0.02 * var(--ring-extra)),
+            calc(var(--tile-cqb) * 1cqb + var(--tile-cqb) * 0.02 * var(--ring-extra))
           )
       ),
       /* Issue #65: 4文字の語(「モールス」「ひらがな」)が山形アイコンを避けたラベル幅に
          1行で入る大きさを上限にする(語の途中で改行しない)。避け幅は文字サイズ設定に
          よらない(下の .tile-nav .tile-label) */
-      calc((100cqi - clamp(20px, 12cqi, 36px)) / var(--label-fit-chars))
+      calc((100cqi + 2 * var(--ring-extra) - var(--label-nav-reserve)) / var(--label-fit-chars))
     ),
     min(calc(var(--font-scale) * 4.8vh), 3.4rem)
   );
@@ -592,6 +602,12 @@ h1[data-fit='single'] {
      ラベルの避け領域(margin-bottom)・山形アイコンの上端(top)が同じ値を使うので、
      式はここ1か所だけに置く */
   --tile-preview-font: max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font));
+}
+
+.tile,
+.font-size-sample {
+  /* 1 行に収める基準の文字数。通常は 4 文字の語(4.02)。子(.tile > *)はここから受け継ぐ */
+  --label-fit-chars: 4.02;
   container-type: size;
 }
 
@@ -2010,6 +2026,16 @@ h1[data-fit='single'] {
   animation: repeat-pulse-b 1.8s steps(1, end) 1;
 }
 
+/* 動きを減らす設定(prefers-reduced-motion)では点滅させず、同じ黄色の枠を止めたまま出す。
+   伝え直したことは、枠と伝達欄の見出し「直前に伝えたこと（もう一度）」で分かる */
+@media (prefers-reduced-motion: reduce) {
+  .repeat-pulse-a,
+  .repeat-pulse-b {
+    animation: none;
+    box-shadow: inset 0 0 0 6px var(--scan-ring);
+  }
+}
+
 /* もう一度伝えるものが無い間の「もう一度」。位置は空けず、薄く見せる */
 .tile-unavailable .tile-label {
   opacity: 0.4;
@@ -2043,9 +2069,49 @@ h1[data-fit='single'] {
   }
 }
 
-/* ホームは全項目がアイコン付き。アイコン + 4 文字(もう一度・取り消し・モールス)が 1 行に入る大きさを上限にする */
+/* ===================================================================
+   ホームのラベルの大きさ(Issue #115・#123、PR #124 レビュー M2)。
+   ホームは全項目がアイコン付き。アイコンをラベルと同じ行に置くセルだけ、アイコン + 4 文字
+   (もう一度・取り消し・モールス)が 1 行に入る 5.3 文字ぶんを上限にする。アイコンを上に置くセル
+   (高さ 150px 以上)と、大・特大(同じ行のアイコンは隠す)は通常の 4.02 文字ぶんに戻す。
+   ホームのラベルは全部 1 行の短い語(フレーズのような 2 行のラベルは無い)なので、cqb(セルの高さ)の
+   係数を引き上げ、10 セルで低くなったセルでも文字を大きくする(--label-cqb-min)。cqi も、セルの幅が
+   広い画面の係数(15)では 3×3 のタブレット縦で小さくなるので、下限を持たせる(--label-cqi-min)
+   =================================================================== */
 .grid-board.grid-home .tile {
   --label-fit-chars: 5.3;
+  --label-cqi-min: 19;
+  --label-cqb-min: 29;
+}
+
+@container (min-height: 150px) {
+  .grid-board.grid-home .tile > * {
+    --label-fit-chars: 4.02;
+  }
+}
+
+/* 大・特大: 同じ行のアイコンを隠して 4 文字ぶんの大きさに戻す(文字の大きさを優先する)。
+   アイコンを上に置けるセル(高さ 150px 以上)では上に出したまま */
+:root:is([data-font-size='large'], [data-font-size='xlarge']) .grid-board.grid-home .tile {
+  --label-fit-chars: 4.02;
+}
+
+:root:is([data-font-size='large'], [data-font-size='xlarge']) .grid-board.grid-home .tile-icon {
+  display: none;
+}
+
+@container (min-height: 150px) {
+  :root:is([data-font-size='large'], [data-font-size='xlarge']) .grid-board.grid-home .tile-icon {
+    display: block;
+  }
+}
+
+/* 文字盤の行段階(Issue #121): 山形アイコンの付くタイルが無いので、ラベルの避け幅を取らない。
+   最長の語は「1字消す」(4 文字)で、幅の狭いスマホ(3 列で 1 セル 130px)でも 4 文字が 1 行に入る
+   大きさまでは cqi の係数を引き上げる */
+.grid-board.grid-letters .tile {
+  --label-nav-reserve-override: 0px;
+  --label-cqi-min: 25;
 }
 
 /* ===================================================================

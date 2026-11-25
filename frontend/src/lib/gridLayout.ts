@@ -35,7 +35,8 @@ export const LANDSCAPE_GRID = { cols: 4, rows: 2 } as const
  * 格子の種類。画面ごとに固定で、項目数・緊急中・伝達メッセージの有無では変わらない。
  * - standard: 通常の下位画面。8 セル(縦長 2×4 / 横長 4×2)
  * - home: ホーム。「もう一度」(Issue #123)を常設し、取り消し・モールスの出入りでも はい・いいえ の位置と
- *   タイルの大きさを変えないため、10 セル(縦長 2×5 / 横長 5×2)
+ *   タイルの大きさを変えないため、10 セル(縦長 2×5 / 横長 5×2)。ただし幅の広い縦長
+ *   (幅 HOME_WIDE_PORTRAIT_MIN_WIDTH px 以上。タブレット縦など)は 3×3 の 9 セル(HOME_WIDE_PORTRAIT_GRID)
  * - letters: 文字盤の行段階(14 項目)。スクロールさせず全項目を出すため、15 セル(縦長 3×5 / 横長 5×3。Issue #121)
  */
 export type GridKind = 'standard' | 'home' | 'letters'
@@ -48,6 +49,18 @@ export const GRIDS: Record<
   home: { portrait: { cols: 2, rows: 5 }, landscape: { cols: 5, rows: 2 } },
   letters: { portrait: { cols: 3, rows: 5 }, landscape: { cols: 5, rows: 3 } },
 }
+
+/**
+ * ホームを 3×3 にする縦長ビューポートの最小幅(px)。2 列では 1 セルが横に長く低くなり、ラベルが
+ * セルの高さで頭打ちになる(タブレット縦 768x1024 の 2×5 で標準 27.8px)。3 列にすると 1 セルが
+ * 縦に伸び、アイコンをラベルの上に置いたまま文字を大きくできる。スマホ縦(幅 390 など)は 3 列だと
+ * 狭すぎるので 2×5 のまま。ホームの項目は最大 9(緊急・もう一度・はい・いいえ・快・不快・要望・文字盤
+ * + 取り消しかモールスの一方)なので 9 セルで足りる。並び(スキャン順)は格子の形によらず同じで、
+ * はい・いいえ に届くまでの時間も変わらない
+ */
+export const HOME_WIDE_PORTRAIT_MIN_WIDTH = 600
+/** 幅の広い縦長ビューポート(タブレット縦など)のホームの格子 */
+export const HOME_WIDE_PORTRAIT_GRID = { cols: 3, rows: 3 } as const
 
 /**
  * @param itemCount 表示する選択肢の数
@@ -64,7 +77,12 @@ export function computeGridLayout(
   if (itemCount <= 0 || viewportWidth <= 0 || viewportHeight <= 0) {
     return { fill: false, cols: 1, rows: 1 }
   }
-  const grid = viewportWidth > viewportHeight ? GRIDS[kind].landscape : GRIDS[kind].portrait
+  const landscape = viewportWidth > viewportHeight
+  const grid = landscape
+    ? GRIDS[kind].landscape
+    : kind === 'home' && viewportWidth >= HOME_WIDE_PORTRAIT_MIN_WIDTH
+      ? HOME_WIDE_PORTRAIT_GRID
+      : GRIDS[kind].portrait
   // セル数を超える画面(介助者がフレーズを増やした画面など)は、スクロールする別枠
   if (itemCount > grid.cols * grid.rows) {
     return { fill: false, cols: 1, rows: 1 }

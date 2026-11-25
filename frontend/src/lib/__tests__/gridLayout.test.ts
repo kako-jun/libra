@@ -3,6 +3,8 @@ import {
   computeGridLayout,
   GRID_FILL_MAX_ITEMS,
   GRIDS,
+  HOME_WIDE_PORTRAIT_GRID,
+  HOME_WIDE_PORTRAIT_MIN_WIDTH,
   LANDSCAPE_GRID,
   PORTRAIT_GRID,
 } from '../gridLayout'
@@ -50,6 +52,22 @@ describe('computeGridLayout の格子の種類(Issue #121/#123)', () => {
     expect(computeGridLayout(10, 390, 844, 'home')).toEqual({ fill: true, cols: 2, rows: 5 })
     expect(computeGridLayout(10, 844, 390, 'home')).toEqual({ fill: true, cols: 5, rows: 2 })
     expect(computeGridLayout(11, 844, 390, 'home').fill).toBe(false)
+  })
+
+  it('home は幅の広い縦長(幅 600px 以上。タブレット縦など)では 3×3 の 9 セル。境界は 599 / 600', () => {
+    expect(HOME_WIDE_PORTRAIT_MIN_WIDTH).toBe(600)
+    expect(HOME_WIDE_PORTRAIT_GRID).toEqual({ cols: 3, rows: 3 })
+    expect(computeGridLayout(9, 768, 1024, 'home')).toEqual({ fill: true, cols: 3, rows: 3 })
+    expect(computeGridLayout(8, 600, 960, 'home')).toEqual({ fill: true, cols: 3, rows: 3 })
+    // 正方形も縦長に含む
+    expect(computeGridLayout(9, 600, 600, 'home')).toEqual({ fill: true, cols: 3, rows: 3 })
+    expect(computeGridLayout(9, 599, 960, 'home')).toEqual({ fill: true, cols: 2, rows: 5 })
+    // 横長は幅が広くても 5×2 のまま。standard / letters は幅で変わらない
+    expect(computeGridLayout(9, 1024, 768, 'home')).toEqual({ fill: true, cols: 5, rows: 2 })
+    expect(computeGridLayout(8, 768, 1024)).toEqual({ fill: true, ...PORTRAIT_GRID })
+    expect(computeGridLayout(14, 768, 1024, 'letters')).toEqual({ fill: true, cols: 3, rows: 5 })
+    // ホームの項目は最大 9 なので 9 セルで足りる。10 項目になったらスクロール(固定格子に押し込まない)
+    expect(computeGridLayout(10, 768, 1024, 'home').fill).toBe(false)
   })
 
   it('letters は縦長 3×5 / 横長 5×3 の15セルで、行段階の14項目をスクロールなしで出す', () => {

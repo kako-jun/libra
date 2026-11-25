@@ -576,14 +576,9 @@ async function checkFontSizeMonotonicity(chromium, port) {
           // 1.25倍差になる設計。1.15はその下に余裕を持たせた下限値)
           if (font === 'xlarge' && size != null && standardSize != null) {
             const atFloor = standardSize <= LABEL_FLOOR_PX + 0.5
-            // ホーム(10 セル格子 #123)・文字盤(15 セル格子 #121)は、セルが低く標準でもラベルが
-            // セルの高さ上限に近いため、特大との差が小さくなる(実測 390x844 で home 26.0→28.4px = 1.09 倍、
-            // letters 19.8→21.4px = 1.08 倍)。この2種の格子の画面だけ下限を 1.05 倍にする。
-            // 単調性(特大 < 大 などの逆転)の検査は全画面で従来どおり
-            const denseGrid = ['home', 'home+undo', 'emerg5(緊急中ホーム)', 'letters'].includes(
-              screenName,
-            )
-            const minRatio = denseGrid ? 1.05 : 1.15
+            // ホーム(10 セル格子 #123)・文字盤(15 セル格子 #121)も他の画面と同じ 1.15 倍を求める
+            // (PR #124 レビュー S1。一時 1.05 倍に緩めていたのを、ラベルの式を直して戻した)
+            const minRatio = 1.15
             if (!atFloor && size < standardSize * minRatio - 0.1) {
               failures.push(
                 `[ratio ${vw}x${vh} ${screenName}] 標準=${standardSize.toFixed(1)}px 特大=${size.toFixed(1)}px(${minRatio}倍未満、セル上限張り付きでもない)`,
@@ -650,11 +645,13 @@ async function checkFontSizeMonotonicity(chromium, port) {
       // 実測21.80px。Issue #47 で縦長が 2列×4行の固定格子になり(従来は項目数に応じて3行)、
       // Issue #34 でスキャン枠の厚みぶん余白を取るためセルが低くなった結果。
       // 4巡目の回帰値(22.0px)より下だが、固定格子の仕様上の値なので新しい実測を基準にする
-      // ホーム(390x844)は 10 セル格子(#123、縦 2×5)の実測 26.0px を基準に 25(旧: 8 セルの実測 21.80px で 21)
-      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 25 },
+      // ホーム(390x844)は 10 セル格子(#123、縦 2×5)。アイコンを同じ行に置き、セルの高さの係数を
+      // 引き上げた後の実測 28.39px を基準に 27(旧: 8 セルの実測 21.80px で 21)
+      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 27 },
       { vw: 390, vh: 844, screenName: 'discomfort', keys: ['6'], minPx: 21 },
-      // 旧実測41.17px(min 34)。ホームが 10 セル(縦 2×5、#123)になりセルが低くなったため、実測27.81px を基準に 26 とする
-      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 26 },
+      // 旧実測41.17px(min 34)。タブレット縦のホームは 3×3(gridLayout.ts の HOME_WIDE_PORTRAIT_GRID)で、
+      // 実測 37.47px。下限は元の 34 のまま(PR #124 レビュー S1)
+      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
       // 実測28.79px
       { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['6'], minPx: 27 },
     ]
@@ -938,6 +935,85 @@ async function checkTightScreenLabelsAndRing(chromium, port) {
       if (px < MIN_LABEL_PX) {
         failures.push(`[tight 568x320] ラベル最小 ${px.toFixed(2)}px(下限 ${MIN_LABEL_PX}px 未満)`)
       }
+      await context.close()
+    }
+    // ③ 最小セル(PR #124 レビュー S2): 320x568・特大・高コントラスト・緊急詳細5件+伝達(はい)のホーム。
+    // ホームは 10 セル(縦 2×5)でアイコン付き。ラベルは 13px 以上・1 行・枠の帯へ食い込まない
+    {
+      const { context, page } = await open(
+        { width: 320, height: 568 },
+        { fontSize: 'xlarge', highContrast: true, ...maxNotes },
+      )
+      for (const d of ['苦しい', '痛い', '息ができない', '吐きそう', '胸が痛い']) {
+        await hold(page, '緊急')
+        await hold(page, d)
+      }
+      await hold(page, 'はい')
+      const result = await page.evaluate(() => {
+        const ringW = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--scan-ring-width'),
+        )
+        const inset = 4 + ringW + 2
+        let worst = 0
+        let maxLines = 0
+        const tiles = [...document.querySelectorAll('.grid-board .tile')]
+        for (const tile of tiles) {
+          const tr = tile.getBoundingClientRect()
+          for (const sel of ['.tile-label', '.tile-preview', '.tile-chevron']) {
+            const el = tile.querySelector(sel)
+            if (!el) continue
+            const range = document.createRange()
+            range.selectNodeContents(el)
+            const r =
+              sel === '.tile-chevron' ? el.getBoundingClientRect() : range.getBoundingClientRect()
+            const left = sel === '.tile-preview' ? el.getBoundingClientRect().left : r.left
+            const right = sel === '.tile-preview' ? el.getBoundingClientRect().right : r.right
+            worst = Math.max(
+              worst,
+              tr.left + inset - left,
+              right - (tr.right - inset),
+              tr.top + inset - r.top,
+              r.bottom - (tr.bottom - inset),
+            )
+          }
+          // ラベルの文字の行数(アイコンは数えない)
+          const tops = new Set()
+          const walker = document.createTreeWalker(
+            tile.querySelector('.tile-label'),
+            NodeFilter.SHOW_TEXT,
+          )
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const range = document.createRange()
+            range.selectNodeContents(n)
+            for (const rect of range.getClientRects()) {
+              if (rect.width > 0) tops.add(Math.round(rect.top))
+            }
+          }
+          maxLines = Math.max(maxLines, tops.size)
+        }
+        const first = tiles[0]?.getBoundingClientRect()
+        return {
+          details: document.querySelectorAll('.emergency-details li').length,
+          sent: document.querySelector('.message-panel h1')?.textContent ?? '',
+          home: (document.querySelector('.screen-breadcrumb')?.textContent ?? '').trim(),
+          cell: first ? `${first.width.toFixed(1)}x${first.height.toFixed(1)}` : '',
+          worst,
+          maxLines,
+        }
+      })
+      const px = await labelMinPx(page)
+      const name = '[tight 320x568 特大 高コントラスト 緊急5件+伝達 ホーム]'
+      if (result.details !== 5 || result.sent !== 'はい。' || result.home !== 'ホーム') {
+        failures.push(`${name} 想定の状態に到達していない ${JSON.stringify(result)}`)
+      }
+      if (px < MIN_LABEL_PX) {
+        failures.push(`${name} ラベル最小 ${px.toFixed(2)}px(下限 ${MIN_LABEL_PX}px 未満)`)
+      }
+      if (result.maxLines > 1) failures.push(`${name} ラベルが ${result.maxLines} 行になった`)
+      if (result.worst > 0.5) {
+        failures.push(`${name} 文字が枠の帯へ ${result.worst.toFixed(1)}px 食い込んでいる`)
+      }
+      console.log(`${name} セル ${result.cell} ラベル最小 ${px.toFixed(2)}px`)
       await context.close()
     }
     // ②(390x844 は枠9px・幅で頭打ち、768x1024 は枠9px・高さで頭打ち。補正が無いと 0.8〜1.2px 以上小さくなる。
