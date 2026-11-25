@@ -2217,7 +2217,7 @@ export default function App() {
                 {/* Issue #118: 使い方・作者サイト・掲示板・利用回数・バージョン。外部リンクはオフラインでは開けないだけで、
                     伝達機能には影響しない */}
                 <div class="caregiver-item app-guide">
-                  <p class="caregiver-lead">使い方</p>
+                  <h3 class="caregiver-lead">使い方</h3>
                   <ul>
                     <li>
                       本人は、黄色い枠（カーソル）が伝えたい項目に来たときに、スイッチ（キーや Bluetooth
