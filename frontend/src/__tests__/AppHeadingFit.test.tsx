@@ -8,6 +8,7 @@ import App from '../App'
 import { applyHeadingFit } from '../lib/fitHeading'
 
 const HEAD_HOLD_MS = 2000
+const INTERVAL_MS = 1500
 const FRAME_MS = 16
 
 describe('App: 見出しの 1 行フィット配線 (Issue #22)', () => {
@@ -37,7 +38,7 @@ describe('App: 見出しの 1 行フィット配線 (Issue #22)', () => {
     const { container } = render(() => <App />)
     vi.advanceTimersByTime(FRAME_MS * 2)
     vi.mocked(applyHeadingFit).mockClear()
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // カーソルが「はい」へ
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // カーソルが「もう一度」を経て「はい」へ
     fireEvent.keyDown(window, { key: ' ' }) // はい選択 → メッセージが変わる
     vi.advanceTimersByTime(FRAME_MS * 2)
     expect(applyHeadingFit).toHaveBeenCalled()

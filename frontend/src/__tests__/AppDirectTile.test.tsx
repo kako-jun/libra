@@ -106,7 +106,7 @@ describe('Issue #38: タイル直接選択', () => {
   describe('タイルの pointerdown / click', () => {
     it('押したタイルが実行され、スキャン位置のタイルは実行されない', () => {
       const { container } = render(() => <App />)
-      vi.advanceTimersByTime(HEAD_HOLD_MS)
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index1 は「もう一度」、index2 が「はい」
       expect(scanningLabel(container)).toBe('はい')
       fireEvent.pointerDown(tile(container, 'いいえ'), { pointerId: 1 })
       expect(h1Text(container)).toBe('いいえ。')
@@ -397,7 +397,7 @@ describe('Issue #38: タイル直接選択', () => {
 
     it('キーはスキャン位置を実行し、カーソルが進んだ後は進んだ先を実行する', () => {
       const { container } = render(() => <App />)
-      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS)
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2)
       expect(scanningLabel(container)).toBe('いいえ')
       fireEvent.keyDown(window, { key: 'Enter', code: 'Enter' })
       expect(h1Text(container)).toBe('いいえ。')
@@ -406,7 +406,7 @@ describe('Issue #38: タイル直接選択', () => {
     it('離して決定のキーも押し始めのスキャン対象を実行する', () => {
       setSettings({ activateOn: 'release' })
       const { container } = render(() => <App />)
-      vi.advanceTimersByTime(HEAD_HOLD_MS)
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // カーソルは「はい」
       fireEvent.keyDown(window, { key: ' ', code: 'Space' })
       vi.advanceTimersByTime(INTERVAL_MS * 2)
       fireEvent.keyUp(window, { key: ' ', code: 'Space' })

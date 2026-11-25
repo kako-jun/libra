@@ -179,9 +179,9 @@ describe('編集しても戻る・緊急の位置が固定される(安全の優
     }
   })
 
-  it('ホームの並び(緊急→はい→いいえ→…)はフレーズ編集の影響を受けない', () => {
+  it('ホームの並び(緊急→もう一度→はい→いいえ→…)はフレーズ編集の影響を受けない', () => {
     const items = buildMenu('home', { showUndo: false, emergencyActive: false, phrases: hostile })
-    expect(items.slice(0, 3).map((i) => i.label)).toEqual(['緊急', 'はい', 'いいえ'])
+    expect(items.slice(0, 4).map((i) => i.label)).toEqual(['緊急', 'もう一度', 'はい', 'いいえ'])
   })
 
   it('追加したフレーズはその画面の項目になり、不快の遷移項目は固定位置のまま', () => {

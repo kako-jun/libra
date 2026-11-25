@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   computeGridLayout,
   GRID_FILL_MAX_ITEMS,
+  GRIDS,
   LANDSCAPE_GRID,
   PORTRAIT_GRID,
 } from '../gridLayout'
@@ -41,5 +42,30 @@ describe('computeGridLayout (固定格子, Issue #47)', () => {
     expect(computeGridLayout(5, 601, 600)).toMatchObject(LANDSCAPE_GRID)
     expect(computeGridLayout(5, 600, 600)).toMatchObject(PORTRAIT_GRID)
     expect(computeGridLayout(5, 599, 600)).toMatchObject(PORTRAIT_GRID)
+  })
+})
+
+describe('computeGridLayout の格子の種類(Issue #121/#123)', () => {
+  it('home は縦長 2×5 / 横長 5×2 の10セルで、10項目までスクロールしない', () => {
+    expect(computeGridLayout(10, 390, 844, 'home')).toEqual({ fill: true, cols: 2, rows: 5 })
+    expect(computeGridLayout(10, 844, 390, 'home')).toEqual({ fill: true, cols: 5, rows: 2 })
+    expect(computeGridLayout(11, 844, 390, 'home').fill).toBe(false)
+  })
+
+  it('letters は縦長 3×5 / 横長 5×3 の15セルで、行段階の14項目をスクロールなしで出す', () => {
+    expect(computeGridLayout(14, 390, 844, 'letters')).toEqual({ fill: true, cols: 3, rows: 5 })
+    expect(computeGridLayout(14, 844, 390, 'letters')).toEqual({ fill: true, cols: 5, rows: 3 })
+    expect(computeGridLayout(15, 844, 390, 'letters').fill).toBe(true)
+    expect(computeGridLayout(16, 844, 390, 'letters').fill).toBe(false)
+  })
+
+  it('種類を省略すると standard(8セル)で、home / letters は項目数によらず同じ格子を返す', () => {
+    expect(computeGridLayout(8, 844, 390)).toEqual(computeGridLayout(8, 844, 390, 'standard'))
+    expect(computeGridLayout(9, 844, 390).fill).toBe(false)
+    for (const n of [1, 5, 10]) {
+      expect(computeGridLayout(n, 390, 844, 'home')).toEqual({ fill: true, cols: 2, rows: 5 })
+    }
+    expect(GRIDS.standard.portrait).toEqual(PORTRAIT_GRID)
+    expect(GRIDS.standard.landscape).toEqual(LANDSCAPE_GRID)
   })
 })

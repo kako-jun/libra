@@ -73,7 +73,7 @@ function selectByLabel(container: HTMLElement, label: string) {
 function clearEmergencyViaCaregiver(container: HTMLElement) {
   fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
   const target = Array.from(container.querySelectorAll('button')).find((b) =>
-    b.textContent?.includes('緊急解除'),
+    b.textContent?.includes('緊急を解除'),
   ) as HTMLElement
   expect(target).toBeTruthy()
   fireEvent.click(target)
@@ -301,8 +301,10 @@ describe('Issue #43: 緊急の警告音廃止', () => {
       )
       render(() => <App />)
       speakMock().mockClear()
-      vi.advanceTimersByTime(HEAD_HOLD_MS) // 緊急 → はい
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // 緊急 → もう一度
+      vi.advanceTimersByTime(INTERVAL_MS) // もう一度 → はい
       const spoken = speakMock().mock.calls.map((c) => (c[0] as { text: string }).text)
+      expect(spoken).toContain('もう一度')
       expect(spoken).toContain('はい')
     })
   })

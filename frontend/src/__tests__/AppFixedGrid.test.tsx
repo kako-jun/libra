@@ -5,7 +5,7 @@
 // デシジョンテーブル(向き × 項目数 × 状態 → 格子 / 空きセル / fill):
 //   向き(幅×高さ)        | 項目数    | 状態                      | 格子   | 空きセル      | fill
 //   縦長 390x844          | 0         | -                         | 1x1    | 0             | false
-//   縦長 390x844          | 1〜8      | -                         | 2x4    | 8-n           | true
+//   縦長 390x844          | 1〜8      | -                         | 2x4    | 8-n           | true  (標準の格子。ホームは 2x5、文字盤の行段階は 3x5 の専用格子: Issue #121/#123)
 //   縦長 390x844          | 9, 15     | -                         | 1x1    | 0(スクロール) | false
 //   横長 844x390          | 0         | -                         | 1x1    | 0             | false
 //   横長 844x390          | 1〜8      | -                         | 4x2    | 8-n           | true
@@ -83,6 +83,11 @@ beforeAll(async () => {
 
 const PORTRAIT = { cols: '2', rows: '4', fill: true }
 const LANDSCAPE = { cols: '4', rows: '2', fill: true }
+// ホームは「もう一度」を含む 10 セル、文字盤の行段階は 15 セルの専用格子(Issue #121/#123)
+const HOME_PORTRAIT = { cols: '2', rows: '5', fill: true }
+const HOME_LANDSCAPE = { cols: '5', rows: '2', fill: true }
+const LETTERS_PORTRAIT = { cols: '3', rows: '5', fill: true }
+const LETTERS_LANDSCAPE = { cols: '5', rows: '3', fill: true }
 
 describe('Issue #47: 固定格子と空きセル(純関数のデシジョンテーブル)', () => {
   const orientations = [
@@ -142,29 +147,30 @@ describe('Issue #47: App の固定格子・空きセル', () => {
   })
 
   describe('向き切替と空きセル数', () => {
-    it('ホーム(7項目)は縦長で 2x4・空き1、横長で 4x2・空き1、切替に追従する', () => {
+    it('ホーム(8項目)は縦長で 2x5・空き2、横長で 5x2・空き2、切替に追従する(Issue #123)', () => {
       setViewport(390, 844)
       const { container } = render(() => <App />)
-      expect(labels(container)).toHaveLength(7)
-      expect(gridOf(container)).toEqual(PORTRAIT)
-      expect(emptyCells(container)).toHaveLength(1)
+      expect(labels(container)).toHaveLength(8)
+      expect(gridOf(container)).toEqual(HOME_PORTRAIT)
+      expect(board(container).classList.contains('grid-home')).toBe(true)
+      expect(emptyCells(container)).toHaveLength(2)
 
       setViewport(844, 390)
-      expect(gridOf(container)).toEqual(LANDSCAPE)
-      expect(emptyCells(container)).toHaveLength(1)
+      expect(gridOf(container)).toEqual(HOME_LANDSCAPE)
+      expect(emptyCells(container)).toHaveLength(2)
 
       setViewport(390, 844)
-      expect(gridOf(container)).toEqual(PORTRAIT)
+      expect(gridOf(container)).toEqual(HOME_PORTRAIT)
     })
 
     it('幅=高さちょうど(正方形)は縦長、幅=高さ-1 も縦長、+1 は横長(App 上の境界)', () => {
       const { container } = render(() => <App />)
       setViewport(600, 600)
-      expect(gridOf(container)).toEqual(PORTRAIT)
+      expect(gridOf(container)).toEqual(HOME_PORTRAIT)
       setViewport(599, 600)
-      expect(gridOf(container)).toEqual(PORTRAIT)
+      expect(gridOf(container)).toEqual(HOME_PORTRAIT)
       setViewport(601, 600)
-      expect(gridOf(container)).toEqual(LANDSCAPE)
+      expect(gridOf(container)).toEqual(HOME_LANDSCAPE)
     })
 
     it('空きセルは .tile-empty・aria-hidden で、タイル(.tile)でも role=button でもない', () => {
@@ -176,18 +182,18 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         expect(cell.getAttribute('role')).toBeNull()
         expect(cell.textContent).toBe('')
       }
-      // タイル + 空きセル = 格子のセル数(8)
-      expect(tiles(container).length + emptyCells(container).length).toBe(8)
+      // タイル + 空きセル = 格子のセル数(ホームは10)
+      expect(tiles(container).length + emptyCells(container).length).toBe(10)
     })
 
-    it('取り消しが出て8項目になると、格子は同じまま空きセルが0になる(Issue #93)', () => {
+    it('取り消しが出て9項目になると、格子は同じまま空きセルが1になる(Issue #93/#123)', () => {
       setViewport(390, 844)
       const { container } = render(() => <App />)
       const before = gridOf(container)
       press(container, 'はい')
-      expect(labels(container)).toHaveLength(8)
+      expect(labels(container)).toHaveLength(9)
       expect(gridOf(container)).toEqual(before)
-      expect(emptyCells(container)).toHaveLength(0)
+      expect(emptyCells(container)).toHaveLength(1)
     })
 
     it('画面を移動しても(不快など下位画面)格子は同じで、タイル数+空き=8', () => {
@@ -207,9 +213,9 @@ describe('Issue #47: App の固定格子・空きセル', () => {
   })
 
   describe('状態(緊急・伝達メッセージ・特大文字・高コントラスト)は格子に影響しない', () => {
-    for (const [name, w, h, grid] of [
-      ['縦長', 390, 844, PORTRAIT],
-      ['横長', 844, 390, LANDSCAPE],
+    for (const [name, w, h, grid, detailGrid] of [
+      ['縦長', 390, 844, HOME_PORTRAIT, PORTRAIT],
+      ['横長', 844, 390, HOME_LANDSCAPE, LANDSCAPE],
     ] as const) {
       it(`${name}: 緊急中/メッセージ表示中/特大文字/高コントラストでも同じ格子`, () => {
         setViewport(w, h)
@@ -218,7 +224,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         expect(baseGrid).toEqual(grid)
         base.unmount()
 
-        // 伝達メッセージ表示中(「いいえ」を選ぶとメッセージ欄が出る。取り消しで7項目)
+        // 伝達メッセージ表示中(「いいえ」を選ぶとメッセージ欄が出る。取り消しで9項目)
         const msg = render(() => <App />)
         press(msg.container, 'いいえ')
         expect(msg.container.querySelector('h1')?.textContent).toBe('いいえ。')
@@ -229,8 +235,8 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         const emg = render(() => <App />)
         press(emg.container, EMERGENCY_LABEL)
         expect(emg.container.querySelector('.emergency-status')).not.toBeNull()
-        expect(gridOf(emg.container)).toEqual(grid)
-        // 緊急タイルを押すと緊急詳細(先頭は「戻る」)へ進む。そこでも同じ格子
+        // 緊急タイルを押すと緊急詳細(先頭は「戻る」)へ進む。そこは標準の8セル格子(緊急中でも変わらない)
+        expect(gridOf(emg.container)).toEqual(detailGrid)
         expect(labels(emg.container)[0]).toBe('戻る')
         expect(tiles(emg.container).length + emptyCells(emg.container).length).toBe(8)
         emg.unmount()
@@ -240,7 +246,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         setSettings({ fontSize: 'xlarge', highContrast: true })
         const big = render(() => <App />)
         expect(gridOf(big.container)).toEqual(grid)
-        expect(emptyCells(big.container)).toHaveLength(1)
+        expect(emptyCells(big.container)).toHaveLength(2)
         big.unmount()
       })
     }
@@ -289,8 +295,8 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       const { container } = render(() => <App />)
       const all = labels(container)
       const n = all.length
-      expect(n).toBeLessThan(8) // 空きセルがある画面(周期が格子のセル数=8と区別できる)
-      expect(emptyCells(container)).toHaveLength(8 - n)
+      expect(n).toBeLessThan(10) // 空きセルがある画面(周期が格子のセル数=10と区別できる)
+      expect(emptyCells(container)).toHaveLength(10 - n)
       const seen: string[] = []
       vi.advanceTimersByTime(HEAD_HOLD_MS)
       for (let i = 0; i < n * 3 + 2; i += 1) {
@@ -316,7 +322,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       setSettings({ intervalMs: INTERVAL_MS })
       const { container } = render(() => <App />)
       const all = labels(container)
-      expect(all.length).toBeLessThan(8)
+      expect(all.length).toBeLessThan(10)
       vi.advanceTimersByTime(HEAD_HOLD_MS)
       // 最後のタイルまで進め、その次(空きセルがあれば止まってしまう位置)で先頭へ戻っていることを確認する
       let guard = 0
@@ -482,7 +488,8 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     })
 
     it('短い画面の緊急帯は1行(nowrap)で、詳細は長くても省略記号で収める', () => {
-      const short = css.slice(css.lastIndexOf('@media (max-height: 500px) {'))
+      // 低い画面向けの @media (max-height: 500px) ブロックは複数あるので、全部をまとめて見る
+      const short = css.split('@media (max-height: 500px) {').slice(1).join('\n')
       expect(short).toMatch(/\.emergency-status\s*\{[^}]*display:\s*flex/s)
       expect(short).toMatch(/\.emergency-status\s*\{[^}]*flex-wrap:\s*nowrap/s)
       expect(short).toMatch(
@@ -510,12 +517,12 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     })
   })
 
-  describe('取り消し表示中にモールスが有効でも、ホームは8項目で格子に収まる(Issue #93)', () => {
+  describe('取り消し表示中にモールスが有効でも、ホームは9項目で格子に収まる(Issue #93/#123)', () => {
     for (const [w, h] of [
       [390, 844],
       [844, 390],
     ] as const) {
-      it(`${w}x${h}: grid-fill のまま・空きセルなし・モールスの入口は取り消し中だけ畳まれる`, () => {
+      it(`${w}x${h}: grid-fill のまま・空きセル1・モールスの入口は取り消し中だけ畳まれる`, () => {
         setViewport(w, h)
         setSettings({ intervalMs: INTERVAL_MS, morseEnabled: true })
         const { container } = render(() => <App />)
@@ -523,29 +530,30 @@ describe('Issue #47: App の固定格子・空きセル', () => {
         press(container, 'はい')
         expect(labels(container)).toContain('取り消し')
         expect(labels(container)).not.toContain('モールス')
-        expect(labels(container)).toHaveLength(8)
+        expect(labels(container)).toHaveLength(9)
         expect(board(container).classList.contains('grid-fill')).toBe(true)
-        expect(emptyCells(container)).toHaveLength(0)
+        expect(emptyCells(container)).toHaveLength(1)
         // 取り消しが消える(2周後)とモールスが戻る
-        vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 8 * 2 + INTERVAL_MS)
+        vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 9 * 2 + INTERVAL_MS)
         expect(labels(container)).not.toContain('取り消し')
         expect(labels(container)).toContain('モールス')
       })
     }
   })
 
-  describe('文字盤の行段階(14項目): スクロール・sticky 緊急は従来どおり', () => {
-    it('9項目以上は fill しない(grid-fill なし)・空きセルなし・緊急タイルが sticky', () => {
-      for (const [w, h] of [
-        [390, 844],
-        [844, 390],
+  describe('文字盤の行段階(14項目): 専用の15セル格子でスクロールしない(Issue #121)', () => {
+    it('14項目は 3x5 / 5x3 の専用格子に収まり(fill)、空きセルは1つ。緊急タイルは sticky 指定を持つ', () => {
+      for (const [w, h, grid] of [
+        [390, 844, LETTERS_PORTRAIT],
+        [844, 390, LETTERS_LANDSCAPE],
       ] as const) {
         setViewport(w, h)
         const { container, unmount } = render(() => <App />)
         press(container, '文字盤')
-        expect(tiles(container).length).toBeGreaterThanOrEqual(9)
-        expect(board(container).classList.contains('grid-fill')).toBe(false)
-        expect(emptyCells(container)).toHaveLength(0)
+        expect(tiles(container)).toHaveLength(14)
+        expect(gridOf(container)).toEqual(grid)
+        expect(board(container).classList.contains('grid-home')).toBe(false)
+        expect(emptyCells(container)).toHaveLength(1)
         unmount()
       }
       expect(css).toMatch(/\.tile-emergency[^{]*\{[^}]*position:\s*sticky/s)
