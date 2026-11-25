@@ -3,7 +3,7 @@
 //
 // 事前に `npm run build` で dist/ を作っておくこと。実行方法は docs/development.md 参照。
 //
-// - letters-scroll: 横向き小画面で文字盤のスキャン対象が下段に来ても document がスクロールせず、h1 と対象が画面内にある
+// - letters-scroll: 文字盤(14 項目)が 15 セル固定格子でスクロールせず、全項目・h1・緊急が画面内に収まる(#121)
 // - no-overlap: 案内領域・「介助者用」ボタンがタイルと重ならない
 // - heading-fit / xlarge-fit / font-size-monotonic: 見出し・ラベルが収まり、文字サイズが単調に効く
 // - issue37-small-viewport / tight-labels-and-ring / preview-two-lines-overlap / morse-legend-fit: 狭い画面・緊急・プレビューの崩れ
@@ -11,10 +11,14 @@
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
 /**
- * PR#11 再レビュー must-C: orientation:any(縦横両対応)の横向き小画面で、文字盤画面の
- * スキャン対象が下段に来ても、document 自体はスクロールせず(window.scrollY===0)、
- * メッセージパネル(h1、緊急表示を含む)がビューポート内にあり続け、かつスキャン対象の
- * タイル自体もビューポート内にあることを確認する。
+ * 文字盤の行段階(14 項目)は、スクロールさせず 15 セルの固定格子(縦長 3x5 / 横長 5x3)に全項目を
+ * 収める(Issue #121。旧仕様の「下段へ進むと document がスクロールする / 緊急タイルが sticky で残る」
+ * 検査(PR#11 再レビュー must-C)は、スクロール自体が無くなったので同等の検査へ書き換えた)。
+ * 横向き小画面・縦長の狭い画面でも次を確認する:
+ * - document も grid-board もスクロールしない(window.scrollY===0、board の scrollHeight<=clientHeight)
+ * - 全タイル(14 項目)とメッセージパネル(h1)がビューポート内にあり、タイル同士が重ならない
+ * - 緊急タイルが画面内にあり、末尾の確定へカーソルが進んでもカーソルのタイルが画面内に見える
+ * - ラベルは 13px 以上(Issue #34)
  */
 async function checkLettersScrollLayout(chromium, port) {
   const base = `http://localhost:${port}/`
@@ -31,92 +35,118 @@ async function checkLettersScrollLayout(chromium, port) {
     for (const [name, width, height] of viewports) {
       const context = await browser.newContext({ viewport: { width, height } })
       const page = await context.newPage()
+      await page.addInitScript(() =>
+        window.localStorage.setItem(
+          'libra',
+          JSON.stringify({ intervalMs: 500, headHoldMultiplier: 1 }),
+        ),
+      )
       await page.goto(base)
       await page.waitForTimeout(300)
 
-      // home: index6 = 文字盤(先頭待機2000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(2000 + 5 * 1500 + 150)
-      await page.keyboard.press('Space')
-      await page.waitForTimeout(200)
-
-      // letters screen(2 段階文字盤の行段階): 戻る,緊急,あ〜わ行,確定,1字消す(Issue #95 で はい・いいえ を削除)。
-      // 確定は末尾ではないので、ラベルから位置を引く
-      const commitIndex = await page.evaluate(() =>
-        [...document.querySelectorAll('.grid-board .tile')].findIndex(
-          (tile) => tile.querySelector('.tile-label')?.textContent === '確定',
-        ),
-      )
-      await page.waitForTimeout(2000 + (commitIndex - 1) * 1500 + 150)
+      const waitForCursor = (label) =>
+        page.waitForFunction(
+          (expected) =>
+            document.querySelector('.tile.scanning .tile-label')?.textContent === expected,
+          label,
+          { timeout: 15000 },
+        )
+      try {
+        // ホームは位置でなくカーソルのラベルで待つ(ホームの項目数が変わってもタイミングに依存しない)
+        await waitForCursor('文字盤')
+        await page.keyboard.press('Space')
+        await page.waitForTimeout(200)
+        // letters 画面(2 段階文字盤の行段階): 戻る,緊急,1字消す,あ〜わ行,確定(14 項目)。末尾の確定までカーソルを進める
+        await waitForCursor('確定')
+      } catch (error) {
+        failures.push(
+          `[letters-scroll ${name}] 確定へカーソルが進まない: ${error.message.split('\n')[0]}`,
+        )
+        await context.close()
+        continue
+      }
 
       const info = await page.evaluate(() => {
-        // kako-jun 追加指示で app-shell の余白を0にし、グリッドが端から端まで隙間なく
-        // 埋まるようになった結果、fr/minmax の分割計算にサブピクセルの端数が出ることがある
-        // (実測で 0.3px 程度)。ビューポート境界判定に 1px の許容誤差を持たせる
+        // app-shell の余白は 0 で、fr/minmax の分割計算にサブピクセルの端数(実測 0.3px 程度)が出る。
+        // ビューポート境界判定に 1px の許容誤差を持たせる
         const EPSILON = 1
+        const inViewport = (r) =>
+          r.top >= -EPSILON &&
+          r.bottom <= window.innerHeight + EPSILON &&
+          r.left >= -EPSILON &&
+          r.right <= window.innerWidth + EPSILON
         const scanning = document.querySelector('.tile.scanning')
         const h1 = document.querySelector('h1')
         const board = document.querySelector('.grid-board')
-        // #40: 緊急タイルは通常下位画面で2番目になるため、DOM順ではなく意味クラスで参照する
-        const emergencyTile = board?.querySelector('.tile-emergency')
-        const scanningRect = scanning?.getBoundingClientRect()
-        const h1Rect = h1?.getBoundingClientRect()
-        const emergencyRect = emergencyTile?.getBoundingClientRect()
-        const boardRect = board?.getBoundingClientRect()
+        const tiles = [...board.querySelectorAll('.tile')]
+        const rects = tiles.map((t) => t.getBoundingClientRect())
+        let overlaps = 0
+        for (let i = 0; i < rects.length; i += 1) {
+          for (let j = i + 1; j < rects.length; j += 1) {
+            const a = rects[i]
+            const b = rects[j]
+            if (
+              Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+              Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1
+            )
+              overlaps += 1
+          }
+        }
+        const emergencyTile = board.querySelector('.tile-emergency')
         return {
           scrollY: window.scrollY,
+          docOverflow: document.documentElement.scrollHeight - window.innerHeight,
+          boardOverflow: board.scrollHeight - board.clientHeight,
           scanningLabel: scanning?.querySelector('.tile-label')?.textContent,
-          scanningInViewport: scanningRect
-            ? scanningRect.top >= -EPSILON &&
-              scanningRect.bottom <= window.innerHeight + EPSILON &&
-              scanningRect.left >= -EPSILON &&
-              scanningRect.right <= window.innerWidth + EPSILON
-            : false,
-          h1InViewport: h1Rect
-            ? h1Rect.top >= -EPSILON &&
-              h1Rect.bottom <= window.innerHeight + EPSILON &&
-              h1Rect.left >= -EPSILON &&
-              h1Rect.right <= window.innerWidth + EPSILON
-            : false,
+          scanningInViewport: scanning ? inViewport(scanning.getBoundingClientRect()) : false,
+          h1InViewport: h1 ? inViewport(h1.getBoundingClientRect()) : false,
+          tileCount: tiles.length,
+          outside: tiles
+            .filter((t) => !inViewport(t.getBoundingClientRect()))
+            .map((t) => t.querySelector('.tile-label')?.textContent),
+          overlaps,
           emergencyLabel: emergencyTile?.querySelector('.tile-label')?.textContent,
-          // 9項目以上(文字盤)のスクロールモードでも、緊急タイルは sticky で可視範囲内に残る
-          emergencyInBoardViewport:
-            emergencyRect && boardRect
-              ? emergencyRect.bottom > boardRect.top + EPSILON &&
-                emergencyRect.top < boardRect.bottom - EPSILON
-              : false,
-          scanningOverlapsEmergency:
-            scanningRect && emergencyRect && scanning !== emergencyTile
-              ? scanningRect.left < emergencyRect.right &&
-                scanningRect.right > emergencyRect.left &&
-                scanningRect.top < emergencyRect.bottom &&
-                scanningRect.bottom > emergencyRect.top
-              : false,
+          emergencyInViewport: emergencyTile
+            ? inViewport(emergencyTile.getBoundingClientRect())
+            : false,
+          minLabelPx: Math.min(
+            ...tiles.map((t) =>
+              parseFloat(getComputedStyle(t.querySelector('.tile-label')).fontSize),
+            ),
+          ),
         }
       })
 
-      if (info.scrollY !== 0) {
-        failures.push(`[letters-scroll ${name}] window.scrollY が 0 ではない(${info.scrollY})`)
+      if (info.scrollY !== 0 || info.docOverflow > 0) {
+        failures.push(
+          `[letters-scroll ${name}] document がスクロールする(scrollY=${info.scrollY} overflow=${info.docOverflow})`,
+        )
+      }
+      if (info.boardOverflow > 1) {
+        failures.push(
+          `[letters-scroll ${name}] 文字盤がスクロールする(grid-board の scrollHeight-clientHeight=${info.boardOverflow}px。#121 で固定格子になった)`,
+        )
       }
       if (!info.h1InViewport) {
         failures.push(`[letters-scroll ${name}] メッセージパネル(h1)がビューポート外`)
       }
-      if (info.scanningLabel !== '確定') {
-        failures.push(
-          `[letters-scroll ${name}] タイミング計算がずれ、確定にカーソルが無い(${info.scanningLabel})`,
-        )
-      } else if (!info.scanningInViewport) {
-        failures.push(`[letters-scroll ${name}] スキャン対象(確定)がビューポート外`)
+      if (info.tileCount !== 14) {
+        failures.push(`[letters-scroll ${name}] 項目が 14 でない(${info.tileCount})`)
       }
-      if (info.emergencyLabel !== '緊急') {
-        failures.push(`[letters-scroll ${name}] 緊急タイルが見つからない(${info.emergencyLabel})`)
-      } else if (!info.emergencyInBoardViewport) {
-        failures.push(
-          `[letters-scroll ${name}] スキャンが下の方(確定)まで進んだ際、緊急タイルが` +
-            `grid-board の可視範囲外に出ている(sticky が効いていない)`,
-        )
+      if (info.outside.length > 0) {
+        failures.push(`[letters-scroll ${name}] ビューポート外のタイル: ${info.outside.join(',')}`)
       }
-      if (info.scanningOverlapsEmergency) {
-        failures.push(`[letters-scroll ${name}] 緊急タイルがスキャン対象(確定)を覆っている`)
+      if (info.overlaps > 0) failures.push(`[letters-scroll ${name}] タイル同士が重なっている`)
+      if (info.scanningLabel !== '確定' || !info.scanningInViewport) {
+        failures.push(`[letters-scroll ${name}] スキャン対象(確定)が画面内に無い`)
+      }
+      if (info.emergencyLabel !== '緊急' || !info.emergencyInViewport) {
+        failures.push(`[letters-scroll ${name}] 緊急タイルが画面内に無い(${info.emergencyLabel})`)
+      }
+      if (info.minLabelPx < 13) {
+        failures.push(
+          `[letters-scroll ${name}] ラベル最小 ${info.minLabelPx.toFixed(2)}px(13px 未満)`,
+        )
       }
 
       await context.close()
@@ -182,13 +212,12 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
     for (const [name, width, height] of viewports) {
       const context = await browser.newContext({ viewport: { width, height } })
       const page = await context.newPage()
-      await page.goto(base)
+      await page.goto(`${base}?dev`)
       await page.waitForTimeout(700)
       await checkScreen(page, name, 'home')
 
-      // home: index6 = 文字盤(先頭待機2000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(2000 + 5 * 1500 + 150)
-      await page.keyboard.press('Space')
+      // 文字盤へは数字キーで直接入る(?dev。ホームの 8 番目 = 文字盤。#123 で「もう一度」が 2 番目に入った)
+      await page.keyboard.press('8')
       await page.waitForTimeout(300)
       await checkScreen(page, name, 'letters')
 
@@ -256,7 +285,7 @@ async function checkHeadingFit(chromium, port) {
       const page = await context.newPage()
       await page.goto(`${base}?dev`)
       await page.waitForTimeout(300)
-      await page.keyboard.press('2') // 「はい」を伝達し、結果パネルを表示する
+      await page.keyboard.press('3') // 「はい」を伝達し、結果パネルを表示する(#123 で 2 番目が「もう一度」になり、はいは 3 番目)
       await settle(page)
 
       const checkNoOverflow = (label, info) => {
@@ -375,10 +404,14 @@ async function checkLabelsFitAtXlarge(chromium, port) {
       )
       await page.goto(base)
       await page.waitForTimeout(300)
-      // home: index4 = 不快(先頭待機は倍率1×intervalMs=5000ms、以降intervalMs=5000msごとに進む。
-      // addInitScriptで intervalMs を伸ばし、タイミングのブレでずれないようにしている。
+      // カーソルが不快に来るのを待って押す(ホームの項目数は #123 で変わったので、待ち時間の計算でなく
+      // カーソルのラベルで待つ。intervalMs を伸ばして、押す瞬間にカーソルが動かないようにしている。
       // 先頭待機は倍率の既定に依存させないため倍率1を明示する。Issue #92)
-      await page.waitForTimeout(5000 + 3 * 5000 + 200)
+      await page.waitForFunction(
+        () => document.querySelector('.tile.scanning .tile-label')?.textContent === '不快',
+        null,
+        { timeout: 60000 },
+      )
       await page.keyboard.press('Space')
       await page.waitForTimeout(300)
       // 押した項目が実際に不快で、不快画面を検査していること(別の画面を見ていないこと)
@@ -464,8 +497,8 @@ async function checkFontSizeMonotonicity(chromium, port) {
   const browser = await launchBrowser(chromium)
   const failures = []
 
-  // ホーム(緊急/はい/いいえ/快/不快/要望/文字盤)から数字キーで各画面へ直接ジャンプする。
-  // インデックスは menus.ts の並び(先頭は常に緊急)に対応する
+  // ホーム(緊急/もう一度/はい/いいえ/快/不快/要望/文字盤/モールス。#123 で「もう一度」が 2 番目に入った)
+  // から数字キーで各画面へ直接ジャンプする。インデックスは menus.ts の並び(先頭は常に緊急)に対応する
   const VPS = [
     [320, 568],
     [390, 844],
@@ -481,17 +514,17 @@ async function checkFontSizeMonotonicity(chromium, port) {
   const SCREENS = [
     ['home', []],
     ['home+undo', ['3']],
-    ['discomfort', ['5']],
-    ['discomfortOther', ['5', '8']],
-    ['comfort', ['4']],
-    ['requests', ['6']],
-    ['feelings', ['4', '6']],
-    ['pain', ['5', '3']],
-    ['painIntensity', ['5', '3', '4']],
+    ['discomfort', ['6']],
+    ['discomfortOther', ['6', '8']],
+    ['comfort', ['5']],
+    ['requests', ['7']],
+    ['feelings', ['5', '6']],
+    ['pain', ['6', '3']],
+    ['painIntensity', ['6', '3', '4']],
     ['urgentDetail', ['1']],
     ['emerg5(緊急中ホーム)', ['1', '3', '1', '4', '1', '5', '1', '6', '1', '7']],
-    ['letters', ['7']],
-    ['letters-a', ['7', '2']],
+    ['letters', ['8']],
+    ['letters-a', ['8', '4']],
   ]
   // PR#16 4巡目 must-F: --tile-label-font の絶対下限(clamp() の最小値、1.05rem)。
   // セルが小さすぎて label-ratio を上げても既にこの下限に張り付いている場合、
@@ -543,9 +576,17 @@ async function checkFontSizeMonotonicity(chromium, port) {
           // 1.25倍差になる設計。1.15はその下に余裕を持たせた下限値)
           if (font === 'xlarge' && size != null && standardSize != null) {
             const atFloor = standardSize <= LABEL_FLOOR_PX + 0.5
-            if (!atFloor && size < standardSize * 1.15 - 0.1) {
+            // ホーム(10 セル格子 #123)・文字盤(15 セル格子 #121)は、セルが低く標準でもラベルが
+            // セルの高さ上限に近いため、特大との差が小さくなる(実測 390x844 で home 26.0→28.4px = 1.09 倍、
+            // letters 19.8→21.4px = 1.08 倍)。この2種の格子の画面だけ下限を 1.05 倍にする。
+            // 単調性(特大 < 大 などの逆転)の検査は全画面で従来どおり
+            const denseGrid = ['home', 'home+undo', 'emerg5(緊急中ホーム)', 'letters'].includes(
+              screenName,
+            )
+            const minRatio = denseGrid ? 1.05 : 1.15
+            if (!atFloor && size < standardSize * minRatio - 0.1) {
               failures.push(
-                `[ratio ${vw}x${vh} ${screenName}] 標準=${standardSize.toFixed(1)}px 特大=${size.toFixed(1)}px(1.15倍未満、セル上限張り付きでもない)`,
+                `[ratio ${vw}x${vh} ${screenName}] 標準=${standardSize.toFixed(1)}px 特大=${size.toFixed(1)}px(${minRatio}倍未満、セル上限張り付きでもない)`,
               )
             }
           }
@@ -609,12 +650,13 @@ async function checkFontSizeMonotonicity(chromium, port) {
       // 実測21.80px。Issue #47 で縦長が 2列×4行の固定格子になり(従来は項目数に応じて3行)、
       // Issue #34 でスキャン枠の厚みぶん余白を取るためセルが低くなった結果。
       // 4巡目の回帰値(22.0px)より下だが、固定格子の仕様上の値なので新しい実測を基準にする
-      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 21 },
-      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['5'], minPx: 21 },
-      // 実測41.17px
-      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
+      // ホーム(390x844)は 10 セル格子(#123、縦 2×5)の実測 26.0px を基準に 25(旧: 8 セルの実測 21.80px で 21)
+      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 25 },
+      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['6'], minPx: 21 },
+      // 旧実測41.17px(min 34)。ホームが 10 セル(縦 2×5、#123)になりセルが低くなったため、実測27.81px を基準に 26 とする
+      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 26 },
       // 実測28.79px
-      { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['5'], minPx: 27 },
+      { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['6'], minPx: 27 },
     ]
     for (const { vw, vh, screenName, keys, minPx } of standardLabelMinimums) {
       const context = await browser.newContext({ viewport: { width: vw, height: vh } })
@@ -952,7 +994,9 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
       fivePath,
       true,
     ],
-    ['320x480 特大 ホーム', { width: 320, height: 480 }, { fontSize: 'xlarge' }, [], false],
+    // ホームは #123 で 10 セル格子(縦 2×5)になり、320x480 の特大ではセルが低く 2 行モードにならない
+    // (実測: 遷移タイル 4 つ・2 行モード 0)。同じ狭さ・特大で 2 行モードになる 8 セルの不快画面で検査する
+    ['320x480 特大 不快', { width: 320, height: 480 }, { fontSize: 'xlarge' }, ['不快'], false],
     ['320x568 標準 ホーム', { width: 320, height: 568 }, { fontSize: 'standard' }, [], false],
     [
       '844x390 特大 高コントラスト 緊急詳細5件+伝達 不快',

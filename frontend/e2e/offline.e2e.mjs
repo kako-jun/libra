@@ -14,6 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { CONTENT_TYPES, DIST_DIR, launchBrowser, runChecks, startServer } from './lib.mjs'
 
+const KNOWN_EXTERNAL_URL = 'https://api.nostalgic.llll-ll.com/'
 const MODES = ['plain', 'cf', '404dot']
 
 async function checkMode(chromium, mode, port) {
@@ -27,7 +28,11 @@ async function checkMode(chromium, mode, port) {
     const page = await context.newPage()
     const consoleErrors = []
     page.on('console', (msg) => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text())
+      // 起動時の利用回数の取得(#118: https://api.nostalgic.llll-ll.com/visit)は外部通信で、
+      // オフラインでは失敗して当然(アプリ側は失敗を無視する)。この既知の外部 URL だけ除外し、
+      // それ以外の console エラー(アプリ本体のオフライン動作の不具合)は引き続き拾う。
+      if (msg.type() === 'error' && !msg.location().url.startsWith(KNOWN_EXTERNAL_URL))
+        consoleErrors.push(msg.text())
     })
 
     await page.goto(base)
