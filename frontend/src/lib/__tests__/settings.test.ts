@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_SETTINGS,
+  SETTINGS_SECTION_KEYS,
   exportSettingsJson,
   loadSettings,
   normalizeSettings,
   parseSettingsJson,
+  resetSettingsSection,
   saveSettings,
+  type Settings,
+  type SettingsSection,
 } from '../settings'
 
 describe('normalizeSettings', () => {
@@ -368,5 +372,140 @@ describe('#77: 旧い tone(positive / calm)を含む設定', () => {
     const loaded = loadSettings()
     expect(loaded.phrases.moodRequest).toHaveLength(2)
     expect(loaded.phrases.moodRequest?.every((p) => p.tone === undefined)).toBe(true)
+  })
+})
+
+// Issue #117: タブごとの「初期値に戻す」。戻す対象は SETTINGS_SECTION_KEYS が正本。
+//
+// 観点
+//   分割性     | 全ての設定キーが、ちょうど 1 つのまとまりに属する(漏れると「どのタブでも戻せない設定」、重複すると「別のタブの設定まで戻る」)
+//   まとまり   | 介助者用メニューのタブと同じ 5 つ(scan / input / feedback / display / phrases)。端末の状態・データ・このアプリは持たない
+//   戻す範囲   | 指定したまとまりのキーだけが初期値になり、ほかは 1 つも変わらない
+//   副作用なし | 渡した設定オブジェクトを書き換えない・保存しない
+describe('Issue #117: resetSettingsSection(タブごとに初期値へ戻す)', () => {
+  // 全キーを初期値と違う値にした設定(どのキーが戻ったかを判別できる)
+  const customized: Settings = {
+    intervalMs: 3000,
+    headHoldMultiplier: 4,
+    debounceMs: 1500,
+    minHoldMs: 700,
+    activateOn: 'release',
+    auditoryScan: true,
+    morseEnabled: true,
+    morseDashMs: 900,
+    morseLetterGapMs: 2500,
+    morseWordGapMs: 7000,
+    voiceMode: 'full',
+    hapticsEnabled: false,
+    hapticsStrength: 'strong',
+    hapticSoundWhenVoiceOff: true,
+    hapticSoundAlso: true,
+    fontSize: 'xlarge',
+    theme: 'dark',
+    highContrast: true,
+    phrases: { moodRequest: [{ id: 'x', label: 'えっくす', text: 'えっくす。' }] },
+    phrasesVersion: 0,
+  }
+  const SECTIONS = Object.keys(SETTINGS_SECTION_KEYS) as SettingsSection[]
+  const ALL_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[]
+
+  it('前提: 検査用の設定は、全キーが初期値と違う', () => {
+    for (const key of ALL_KEYS) {
+      expect(customized[key], key).not.toEqual(DEFAULT_SETTINGS[key])
+    }
+  })
+
+  it('まとまりは、初期値に戻せる 5 つのタブと同じ', () => {
+    expect(SECTIONS).toEqual(['scan', 'input', 'feedback', 'display', 'phrases'])
+  })
+
+  it('全ての設定キーが、ちょうど 1 つのまとまりに属する(漏れ・重複なし)', () => {
+    const listed = SECTIONS.flatMap((section) => [...SETTINGS_SECTION_KEYS[section]])
+    expect([...listed].sort()).toEqual([...ALL_KEYS].sort())
+    expect(new Set(listed).size).toBe(listed.length)
+  })
+
+  it('各まとまりのキーは、仕様(requirements.md §6)の対象と一致する', () => {
+    expect([...SETTINGS_SECTION_KEYS.scan].sort()).toEqual(
+      [
+        'intervalMs',
+        'headHoldMultiplier',
+        'debounceMs',
+        'minHoldMs',
+        'activateOn',
+        'auditoryScan',
+      ].sort(),
+    )
+    expect([...SETTINGS_SECTION_KEYS.input].sort()).toEqual(
+      ['morseEnabled', 'morseDashMs', 'morseLetterGapMs', 'morseWordGapMs'].sort(),
+    )
+    expect([...SETTINGS_SECTION_KEYS.feedback].sort()).toEqual(
+      [
+        'voiceMode',
+        'hapticsEnabled',
+        'hapticsStrength',
+        'hapticSoundWhenVoiceOff',
+        'hapticSoundAlso',
+      ].sort(),
+    )
+    expect([...SETTINGS_SECTION_KEYS.display].sort()).toEqual(
+      ['fontSize', 'theme', 'highContrast'].sort(),
+    )
+    expect([...SETTINGS_SECTION_KEYS.phrases].sort()).toEqual(['phrases', 'phrasesVersion'].sort())
+  })
+
+  it.each(['scan', 'input', 'feedback', 'display', 'phrases'] as const)(
+    '%s: そのまとまりのキーだけが初期値に戻り、ほかのキーは 1 つも変わらない',
+    (section) => {
+      const result = resetSettingsSection(customized, section)
+      const own = new Set<keyof Settings>(SETTINGS_SECTION_KEYS[section])
+      for (const key of ALL_KEYS) {
+        if (own.has(key))
+          expect(result[key], `${key} は初期値に戻る`).toEqual(DEFAULT_SETTINGS[key])
+        else expect(result[key], `${key} は変わらない`).toEqual(customized[key])
+      }
+    },
+  )
+
+  it('渡した設定を書き換えず、新しいオブジェクトを返す', () => {
+    const before = JSON.parse(JSON.stringify(customized))
+    const result = resetSettingsSection(customized, 'scan')
+    expect(result).not.toBe(customized)
+    expect(customized).toEqual(before)
+  })
+
+  it('保存はしない(保存は呼び出し側の責務)', () => {
+    localStorage.removeItem('libra')
+    resetSettingsSection(customized, 'display')
+    expect(localStorage.getItem('libra')).toBeNull()
+  })
+
+  it('全部のまとまりを順に戻すと、初期値と同じになる', () => {
+    const result = SECTIONS.reduce(
+      (settings, section) => resetSettingsSection(settings, section),
+      customized,
+    )
+    expect(result).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('初期値のままの設定に実行しても変わらない(冪等)', () => {
+    for (const section of SECTIONS) {
+      expect(resetSettingsSection(DEFAULT_SETTINGS, section)).toEqual(DEFAULT_SETTINGS)
+    }
+  })
+
+  it('戻したあとの設定は、正規化しても変わらない(範囲・不変条件を満たす)', () => {
+    for (const section of SECTIONS) {
+      const result = resetSettingsSection(customized, section)
+      // phrasesVersion が古い保存値は読み込み時に昇格されるので、フレーズ以外のまとまりでは対象外にする
+      const { phrases: _p, phrasesVersion: _v, ...rest } = normalizeSettings(result)
+      const { phrases: _p2, phrasesVersion: _v2, ...expected } = result
+      expect(rest, section).toEqual(expected)
+    }
+  })
+
+  it('モールスだけ戻しても、語の区切りは文字の確定より 0.5 秒以上長い', () => {
+    const result = resetSettingsSection(customized, 'input')
+    expect(result.morseWordGapMs).toBeGreaterThanOrEqual(result.morseLetterGapMs + 500)
   })
 })
