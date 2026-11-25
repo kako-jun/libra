@@ -1196,6 +1196,327 @@ async function checkMorseLegendFit(chromium, port) {
   return failures
 }
 
+/**
+ * 実機フィードバック(#108〜#123)のうち、実描画でしか確かめられない見た目を、計算済みスタイルと矩形で測る。
+ * - #114: 「直前に伝えたこと」の枠が、パンくず・案内欄より上にある
+ * - #109: 「介助者用」ボタンの上・右・下の余白が同じ(--guide-pad: 標準 10px / 狭い・低い画面 4px)で、
+ *         見た目(面の色・文字色・角丸 8px・太字・1.125rem)がメニュー内の「閉じる」と同じ
+ * - #113: パンくず先頭の家アイコンが文字と同じ色・高さ。パンくずと指示文の間隔が 10px(高さ 500px 以下は 4px)
+ * - #115: ホームの全タイルのアイコンが見えていて、色は文字と同じ
+ * - #120: 履歴が 2 件になると矢印が見え(display:none でない)、押すと「過去に伝えたこと（1件前）」になる。
+ *         矢印は見出しの文字(h1)と重ならず、44px 以上の押せる大きさがある
+ * - #122: 好きな画像が「介助者用」ボタンの左に見え、ボタン・タイルと重ならず、ホームの 10 セルが画面内に収まる
+ */
+async function checkRealDeviceFeedbackLayout(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  // 1x1 の PNG(縦横比 1:1。表示の高さは CSS の clamp で決まる)
+  const PHOTO =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+  const viewports = [
+    // [名前, 幅, 高さ, 期待する --guide-pad, 期待するパンくず→指示文の間隔]
+    ['1024x768', 1024, 768, 10, 10],
+    ['390x844', 390, 844, 4, 10],
+    ['844x390', 844, 390, 4, 4],
+    ['320x568', 320, 568, 4, 10],
+    ['568x320', 568, 320, 4, 4],
+  ]
+  const EPS = 1
+  try {
+    for (const [name, width, height, guidePad, crumbGap] of viewports) {
+      for (const withPhoto of [false, true]) {
+        const label = `${name}${withPhoto ? ' 画像あり' : ''}`
+        const context = await browser.newContext({ viewport: { width, height } })
+        const page = await context.newPage()
+        await page.addInitScript(
+          ({ photo }) => {
+            window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 60000 }))
+            if (photo) window.localStorage.setItem('libra:photo', photo)
+          },
+          { photo: withPhoto ? PHOTO : null },
+        )
+        try {
+          await page.goto(`http://localhost:${port}/?dev`)
+          await page.evaluate(() => document.fonts.ready)
+          await page.waitForTimeout(700)
+
+          // ---- 伝達 2 件(はい → いいえ)で、直前の伝達の枠と履歴の矢印を出す ----
+          await page.keyboard.press('3') // はい(#123 で 3 番目)
+          await page.waitForTimeout(700)
+          await page.keyboard.press('4') // いいえ(取り消しは いいえ の後ろなので 4 番目のまま)
+          await page.waitForTimeout(700)
+
+          const m = await page.evaluate(() => {
+            const rect = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
+            const cs = (el) => (el ? getComputedStyle(el) : null)
+            const guide = document.querySelector('.screen-guide')
+            const button = document.querySelector('.caregiver-button')
+            const panel = document.querySelector('.message-panel')
+            const crumbList = document.querySelector('.screen-breadcrumb')
+            const crumbFirst = document.querySelector('.screen-breadcrumb li')
+            const homeIcon = document.querySelector('.screen-breadcrumb .breadcrumb-home')
+            const h2 = document.querySelector('.screen-guide h2')
+            const h1 = document.querySelector('.message-panel h1')
+            const photo = document.querySelector('.guide-photo')
+            const arrows = [...document.querySelectorAll('.message-panel .history-nav')]
+            const tiles = [...document.querySelectorAll('.grid-board .tile')]
+            const buttonStyle = cs(button)
+            return {
+              guide: rect(guide),
+              guidePadVar: parseFloat(cs(guide).getPropertyValue('--guide-pad')),
+              button: rect(button),
+              buttonStyle: {
+                bg: buttonStyle.backgroundColor,
+                color: buttonStyle.color,
+                radius: buttonStyle.borderTopLeftRadius,
+                weight: buttonStyle.fontWeight,
+                size: buttonStyle.fontSize,
+              },
+              panel: rect(panel),
+              panelBeforeGuide: Boolean(
+                panel.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING,
+              ),
+              crumbList: rect(crumbList),
+              h2: rect(h2),
+              crumbColor: cs(crumbFirst).color,
+              crumbFont: parseFloat(cs(crumbFirst).fontSize),
+              homeIcon: rect(homeIcon),
+              homeIconDisplay: cs(homeIcon)?.display,
+              homeIconStroke: cs(homeIcon)?.stroke,
+              h1: rect(h1),
+              panelLabel: document.querySelector('.message-panel-label')?.textContent,
+              arrows: arrows.map((a) => ({
+                rect: rect(a),
+                display: cs(a).display,
+                visibility: cs(a).visibility,
+                disabled: a.disabled,
+                label: a.getAttribute('aria-label'),
+              })),
+              photo: rect(photo),
+              photoDisplay: cs(photo)?.display,
+              tiles: tiles.map((t) => ({
+                label: t.querySelector('.tile-label')?.textContent,
+                rect: rect(t),
+                labelColor: cs(t.querySelector('.tile-label')).color,
+                icon: rect(t.querySelector('.tile-icon')),
+                iconDisplay: cs(t.querySelector('.tile-icon'))?.display,
+                iconStroke: cs(t.querySelector('.tile-icon'))?.stroke,
+              })),
+              vw: window.innerWidth,
+              vh: window.innerHeight,
+              scrollY: window.scrollY,
+            }
+          })
+          const overlap = (a, b) =>
+            Math.min(a.right, b.right) - Math.max(a.left, b.left) > EPS &&
+            Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > EPS
+          const inViewport = (r) =>
+            r.top >= -EPS && r.left >= -EPS && r.bottom <= m.vh + EPS && r.right <= m.vw + EPS
+
+          // #114
+          if (!m.panelBeforeGuide || m.panel.bottom > m.guide.top + EPS) {
+            failures.push(
+              `[realdevice ${label}] #114 直前に伝えたことが案内欄より上にない(panel.bottom=${m.panel.bottom} guide.top=${m.guide.top})`,
+            )
+          }
+
+          // #109 余白
+          const gaps = {
+            top: m.button.top - m.guide.top,
+            right: m.guide.right - m.button.right,
+            bottom: m.guide.bottom - m.button.bottom,
+          }
+          // 案内欄の下の境界線(--grid-line-width)のぶん bottom は border を含むので、border を除いて比べる
+          const borderBottom = await page.evaluate(
+            () =>
+              parseFloat(
+                getComputedStyle(document.querySelector('.screen-guide')).borderBottomWidth,
+              ) || 0,
+          )
+          gaps.bottom -= borderBottom
+          if (!(Math.abs(m.guidePadVar - guidePad) <= 0.01)) {
+            failures.push(
+              `[realdevice ${label}] #109 --guide-pad=${m.guidePadVar}px(期待 ${guidePad}px)`,
+            )
+          }
+          for (const [side, gap] of Object.entries(gaps)) {
+            if (!(Math.abs(gap - guidePad) <= EPS)) {
+              failures.push(
+                `[realdevice ${label}] #109 「介助者用」ボタンの${side}の余白 ${gap.toFixed(1)}px(期待 ${guidePad}px)`,
+              )
+            }
+          }
+
+          // #113
+          const gapCrumb = m.h2.top - m.crumbList.bottom
+          if (!(Math.abs(gapCrumb - crumbGap) <= EPS)) {
+            failures.push(
+              `[realdevice ${label}] #113 パンくずと指示文の間隔 ${gapCrumb.toFixed(1)}px(期待 ${crumbGap}px)`,
+            )
+          }
+          if (!m.homeIcon || m.homeIconDisplay === 'none' || m.homeIcon.width < 1) {
+            failures.push(`[realdevice ${label}] #113 パンくずの家アイコンが見えない`)
+          } else {
+            if (!(Math.abs(m.homeIcon.height - m.crumbFont) <= 1)) {
+              failures.push(
+                `[realdevice ${label}] #113 家アイコンの高さ ${m.homeIcon.height}px が文字(${m.crumbFont}px)と違う`,
+              )
+            }
+            if (m.homeIconStroke !== m.crumbColor) {
+              failures.push(
+                `[realdevice ${label}] #113 家アイコンの色 ${m.homeIconStroke} が文字の色 ${m.crumbColor} と違う`,
+              )
+            }
+          }
+
+          // #115
+          for (const t of m.tiles) {
+            if (!t.icon || t.iconDisplay === 'none' || t.icon.width < 4 || t.icon.height < 4) {
+              failures.push(`[realdevice ${label}] #115 「${t.label}」のアイコンが見えない`)
+              continue
+            }
+            if (t.iconStroke !== t.labelColor) {
+              failures.push(
+                `[realdevice ${label}] #115 「${t.label}」のアイコンの色 ${t.iconStroke} が文字の色 ${t.labelColor} と違う`,
+              )
+            }
+            if (!(t.icon.left >= t.rect.left - EPS && t.icon.right <= t.rect.right + EPS)) {
+              failures.push(
+                `[realdevice ${label}] #115 「${t.label}」のアイコンがタイルからはみ出す`,
+              )
+            }
+          }
+
+          // #120 矢印
+          if (m.arrows.length !== 2) {
+            failures.push(`[realdevice ${label}] #120 履歴 2 件で矢印が ${m.arrows.length} 個`)
+          } else {
+            for (const a of m.arrows) {
+              if (a.display === 'none' || a.visibility === 'hidden' || a.rect.width < 1) {
+                failures.push(`[realdevice ${label}] #120 「${a.label}」が見えない`)
+              }
+              if (Math.min(a.rect.width, a.rect.height) < 44 - EPS) {
+                failures.push(
+                  `[realdevice ${label}] #120 「${a.label}」が小さい(${a.rect.width.toFixed(1)}x${a.rect.height.toFixed(1)})`,
+                )
+              }
+              if (m.h1 && overlap(a.rect, m.h1)) {
+                failures.push(`[realdevice ${label}] #120 「${a.label}」が見出しの文字と重なる`)
+              }
+              if (!inViewport(a.rect)) {
+                failures.push(`[realdevice ${label}] #120 「${a.label}」が画面外`)
+              }
+            }
+            const prev = m.arrows.find((a) => a.label === '前の伝達を表示')
+            const next = m.arrows.find((a) => a.label === '次の伝達を表示')
+            if (prev?.disabled !== false || next?.disabled !== true) {
+              failures.push(
+                `[realdevice ${label}] #120 最新表示中の矢印の押せる/押せないが違う(前=${prev?.disabled} 次=${next?.disabled})`,
+              )
+            }
+            // 実際にタップして、過去の表示に切り替わる(スキャン対象を実行しない)
+            await page.locator('.history-nav[aria-label="前の伝達を表示"]').click()
+            await page.waitForTimeout(200)
+            const after = await page.evaluate(() => ({
+              label: document.querySelector('.message-panel-label')?.textContent,
+              h1: document.querySelector('.message-panel h1')?.textContent,
+              crumb: [...document.querySelectorAll('.screen-breadcrumb li')].map(
+                (li) => li.textContent,
+              ),
+            }))
+            if (after.label !== '過去に伝えたこと（1件前）' || after.h1 !== 'はい。') {
+              failures.push(
+                `[realdevice ${label}] #120 前の伝達を押しても過去の表示にならない(${after.label} / ${after.h1})`,
+              )
+            }
+            if (after.crumb.join('>') !== 'ホーム') {
+              failures.push(
+                `[realdevice ${label}] #120 矢印のタップで画面が変わった(${after.crumb.join('>')})`,
+              )
+            }
+          }
+
+          // #122 画像
+          if (withPhoto) {
+            if (!m.photo || m.photoDisplay === 'none' || m.photo.width < 1) {
+              failures.push(`[realdevice ${label}] #122 好きな画像が見えない`)
+            } else {
+              if (m.photo.right > m.button.left + EPS) {
+                failures.push(`[realdevice ${label}] #122 画像が「介助者用」ボタンの左にない`)
+              }
+              if (overlap(m.photo, m.button)) {
+                failures.push(`[realdevice ${label}] #122 画像が「介助者用」ボタンと重なる`)
+              }
+              if (m.photo.height > 120 + EPS) {
+                failures.push(
+                  `[realdevice ${label}] #122 画像の高さ ${m.photo.height}px(上限 120px)`,
+                )
+              }
+              if (!(m.photo.top >= m.guide.top - EPS && m.photo.bottom <= m.guide.bottom + EPS)) {
+                failures.push(`[realdevice ${label}] #122 画像が案内欄からはみ出す`)
+              }
+              for (const t of m.tiles) {
+                if (overlap(m.photo, t.rect)) {
+                  failures.push(`[realdevice ${label}] #122 画像がタイル「${t.label}」と重なる`)
+                }
+              }
+            }
+          } else if (m.photo) {
+            failures.push(`[realdevice ${label}] #122 未設定なのに画像がある`)
+          }
+
+          // どの条件でも、ホームの全タイルが画面内でスクロールなし
+          if (m.scrollY !== 0) failures.push(`[realdevice ${label}] document がスクロールした`)
+          const outside = m.tiles.filter((t) => !inViewport(t.rect)).map((t) => t.label)
+          if (outside.length > 0) {
+            failures.push(`[realdevice ${label}] 画面外のタイル: ${outside.join(',')}`)
+          }
+
+          // #109 見た目を「閉じる」と比べる(メニューを開く)
+          await page.locator('.caregiver-button').click()
+          await page.waitForSelector('.caregiver-close', { timeout: 3000 })
+          const close = await page.evaluate(() => {
+            const s = getComputedStyle(document.querySelector('.caregiver-close'))
+            return {
+              bg: s.backgroundColor,
+              color: s.color,
+              radius: s.borderTopLeftRadius,
+              weight: s.fontWeight,
+              size: s.fontSize,
+            }
+          })
+          for (const key of ['bg', 'color', 'radius', 'weight', 'size']) {
+            if (m.buttonStyle[key] !== close[key]) {
+              failures.push(
+                `[realdevice ${label}] #109 「介助者用」と「閉じる」の ${key} が違う(${m.buttonStyle[key]} / ${close[key]})`,
+              )
+            }
+          }
+          if (m.buttonStyle.radius !== '8px') {
+            failures.push(`[realdevice ${label}] #109 角丸が 8px でない(${m.buttonStyle.radius})`)
+          }
+          if (Number(m.buttonStyle.weight) < 700) {
+            failures.push(`[realdevice ${label}] #109 太字でない(${m.buttonStyle.weight})`)
+          }
+          if (m.buttonStyle.size !== '18px') {
+            failures.push(
+              `[realdevice ${label}] #109 文字が 1.125rem でない(${m.buttonStyle.size})`,
+            )
+          }
+        } catch (error) {
+          failures.push(`[realdevice ${label}] ${error.message.split('\n')[0]}`)
+        }
+        await context.close()
+      }
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
     { name: 'letters-scroll', run: checkLettersScrollLayout },
@@ -1207,6 +1528,7 @@ await runChecks(
     { name: 'preview-two-lines-overlap', run: checkTilePreviewTwoLineOverlap },
     { name: 'tight-labels-and-ring', run: checkTightScreenLabelsAndRing },
     { name: 'morse-legend-fit', run: checkMorseLegendFit },
+    { name: 'realdevice-feedback', run: checkRealDeviceFeedbackLayout },
   ],
   { basePort: 4740 },
 )
