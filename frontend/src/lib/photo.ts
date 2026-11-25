@@ -8,8 +8,16 @@ export const PHOTO_STORAGE_KEY = 'libra:photo'
 /** 保存する画像の長辺の上限(px)。表示は最大でも高さ 120px 程度なので、高精細な画面でも足りる */
 export const PHOTO_MAX_EDGE = 480
 
-/** これより大きい data URL は保存しない(localStorage の容量を使い切って設定の保存を妨げないため) */
-export const PHOTO_MAX_CHARS = 1_500_000
+/**
+ * これより大きい data URL は保存しない(localStorage の容量を使い切って設定の保存を妨げないため)。
+ * 長辺 480px の WebP(品質 0.85)は写真でもおよそ 3〜12 万文字で、ほぼすべて 20 万文字に収まる。
+ * 細かい模様の多い画像や JPEG の書き出しに余裕を見て 30 万文字(約 220KB)にする。
+ * 読み込み(loadPhoto)は長さを問わない: 以前の上限(150 万文字)で保存した画像も、そのまま表示できる
+ */
+export const PHOTO_MAX_CHARS = 300_000
+
+/** 上限を超えたときに順に試す JPEG の品質 */
+const JPEG_QUALITIES = [0.85, 0.6] as const
 
 function isImageDataUrl(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('data:image/')
@@ -77,7 +85,8 @@ function loadImageElement(file: Blob): Promise<HTMLImageElement> {
 
 /**
  * 選んだ画像ファイルを、縮小した data URL にする。画像として読めないときは例外。
- * WebP で書き出し、WebP を書き出せないブラウザ(PNG になる)で大きすぎるときは、白地の JPEG にする。
+ * WebP で書き出し、上限(PHOTO_MAX_CHARS)を超えるとき(WebP を書き出せず PNG になるブラウザ、
+ * 細かい模様の多い画像)は、白地の JPEG(品質 0.85、それでも超えれば 0.6)にする。
  */
 export async function fileToPhotoDataUrl(file: Blob): Promise<string> {
   const image = await loadImageElement(file)
@@ -94,5 +103,11 @@ export async function fileToPhotoDataUrl(file: Blob): Promise<string> {
   ctx.globalCompositeOperation = 'destination-over'
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, size.width, size.height)
-  return canvas.toDataURL('image/jpeg', 0.85)
+  // 品質を下げて上限に収める。最後の品質でも超えるときはそのまま返し、保存側(savePhoto)が断る
+  let jpeg = ''
+  for (const quality of JPEG_QUALITIES) {
+    jpeg = canvas.toDataURL('image/jpeg', quality)
+    if (jpeg.length <= PHOTO_MAX_CHARS) break
+  }
+  return jpeg
 }

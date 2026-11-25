@@ -6,7 +6,7 @@
 //   savePhoto           | 画像の data URL だけを保存する。上限(PHOTO_MAX_CHARS)ちょうどは保存、+1 は保存しない。容量不足は false(例外にしない)
 //   loadPhoto           | 無い・壊れている(画像でない文字列)・読めない(例外)は null
 //   clearPhoto          | 消す。消せなくても例外にしない。設定(libra)には触れない
-//   fileToPhotoDataUrl  | 縮小して WebP。大きすぎるときだけ白地の JPEG。読めない画像・canvas 不可は例外。object URL は必ず解放する
+//   fileToPhotoDataUrl  | 縮小して WebP。大きすぎるときだけ白地の JPEG(0.85 → 0.6)。読めない画像・canvas 不可は例外。object URL は必ず解放する
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PHOTO_MAX_CHARS,
@@ -32,10 +32,10 @@ afterEach(() => {
 })
 
 describe('定数(仕様の値)', () => {
-  it('保存キーは設定(libra)と別の libra:photo、長辺の上限は 480px、文字数の上限は 1,500,000', () => {
+  it('保存キーは設定(libra)と別の libra:photo、長辺の上限は 480px、文字数の上限は 300,000', () => {
     expect(PHOTO_STORAGE_KEY).toBe('libra:photo')
     expect(PHOTO_MAX_EDGE).toBe(480)
-    expect(PHOTO_MAX_CHARS).toBe(1_500_000)
+    expect(PHOTO_MAX_CHARS).toBe(300_000)
   })
 })
 
@@ -86,6 +86,12 @@ describe('savePhoto / loadPhoto / clearPhoto', () => {
     expect(savePhoto(PNG)).toBe(true)
     expect(window.localStorage.getItem(PHOTO_STORAGE_KEY)).toBe(PNG)
     expect(loadPhoto()).toBe(PNG)
+  })
+
+  it('以前の上限(150 万文字)で保存した大きな画像も、読み込みでは捨てずに表示できる', () => {
+    const legacy = `data:image/webp;base64,${'A'.repeat(1_000_000)}`
+    window.localStorage.setItem(PHOTO_STORAGE_KEY, legacy)
+    expect(loadPhoto()).toBe(legacy)
   })
 
   it('保存していなければ null', () => {
@@ -197,7 +203,7 @@ describe('fileToPhotoDataUrl: 縮小して data URL にする', () => {
   }
 
   /** canvas の書き出しを差し替える。type ごとに返す文字列を決める */
-  function stubCanvas(output: (type: string) => string, hasContext = true) {
+  function stubCanvas(output: (type: string, quality?: number) => string, hasContext = true) {
     context = {
       drawImage: vi.fn(),
       fillRect: vi.fn(),
@@ -213,7 +219,8 @@ describe('fileToPhotoDataUrl: 縮小して data URL にする', () => {
     } as never)
     return vi
       .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
-      .mockImplementation(((type?: string) => output(type ?? 'image/png')) as never)
+      .mockImplementation(((type?: string, quality?: number) =>
+        output(type ?? 'image/png', quality)) as never)
   }
 
   beforeEach(() => {
@@ -263,6 +270,30 @@ describe('fileToPhotoDataUrl: 縮小して data URL にする', () => {
     expect(context.globalCompositeOperation).toBe('destination-over')
     expect(context.fillStyle).toBe('#ffffff')
     expect(context.fillRect).toHaveBeenCalledWith(0, 0, 480, 360)
+  })
+
+  it('JPEG(品質 0.85)でも上限を超えるときは、品質 0.6 で書き出し直す', async () => {
+    stubImage({ width: 800, height: 600 })
+    const huge = (type: string) => `data:${type};base64,${'A'.repeat(PHOTO_MAX_CHARS)}`
+    const toDataURL = stubCanvas((type, quality) =>
+      type === 'image/jpeg' && quality === 0.6 ? 'data:image/jpeg;base64,SMALL' : huge(type),
+    )
+    await expect(fileToPhotoDataUrl(file())).resolves.toBe('data:image/jpeg;base64,SMALL')
+    expect(toDataURL.mock.calls.map((call) => call.slice(0, 2))).toEqual([
+      ['image/webp', 0.85],
+      ['image/jpeg', 0.85],
+      ['image/jpeg', 0.6],
+    ])
+  })
+
+  it('品質 0.6 でも上限を超えるときはそのまま返す(保存側が断り、呼び出し側が案内を出す)', async () => {
+    stubImage({ width: 800, height: 600 })
+    const huge = (type: string, quality?: number) =>
+      `data:${type};base64,${quality}${'A'.repeat(PHOTO_MAX_CHARS)}`
+    stubCanvas(huge)
+    const result = await fileToPhotoDataUrl(file())
+    expect(result.startsWith('data:image/jpeg;base64,0.6')).toBe(true)
+    expect(savePhoto(result)).toBe(false)
   })
 
   it('境界: 書き出しが上限ちょうどの長さなら WebP のまま返す(JPEG にしない)', async () => {
