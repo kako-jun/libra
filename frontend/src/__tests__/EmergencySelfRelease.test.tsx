@@ -9,7 +9,7 @@
 //   入口からスイッチを連打(カーソルは先頭) | 残る(先頭は「戻る」)
 //   それ以外の本人入力(はい・もう一度 等)  | 残る
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render } from '@solidjs/testing-library'
+import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import { HAPTIC_PATTERNS } from '../lib/feedback'
 import { IDLE_LAPS_BEFORE_HOME } from '../lib/idleLaps'
@@ -248,7 +248,8 @@ describe('Issue #108: 本人による緊急の解除', () => {
 
       expect(isEmergency(container)).toBe(false)
       expect(container.querySelector('.emergency-detail-status')).toBeNull()
-      expect(shownMessage(container)).toBe(RELEASED_MESSAGE)
+      // 帯は消えるが、解除の文に選んだ詳細が残る(M1)
+      expect(shownMessage(container)).toBe('緊急（苦しい）を解除しました。')
     })
 
     it('取り消しは出さない(解除の取り消しは無い)。2 周待っても出ない', () => {
@@ -369,7 +370,76 @@ describe('Issue #108: 本人による緊急の解除', () => {
 
       expect(isEmergency(container)).toBe(false)
       expect(savedEmergency()).toBeNull()
+      // 復元した詳細も解除の文に入る
+      expect(shownMessage(container)).toBe('緊急（苦しい）を解除しました。')
+    })
+  })
+
+  describe('解除の後も緊急の中身が残る(後から来た介助者が分かる)', () => {
+    const prevButton = (c: HTMLElement) =>
+      c.querySelector<HTMLButtonElement>('.history-nav[aria-label="前の伝達を表示"]')
+
+    it('詳細を選ばずに解除: 解除文は「緊急を解除しました。」。1件前に緊急の呼び出しが残る', () => {
+      const { container } = openReleaseConfirm()
+      tap(container, '解除する')
       expect(shownMessage(container)).toBe(RELEASED_MESSAGE)
+      fireEvent.click(prevButton(container) as HTMLElement)
+      expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
+      expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    })
+
+    it('詳細を2つ選んで解除: 解除文に選んだ順で詳細が入り(読み上げも同じ)、矢印で詳細と緊急の呼び出しを振り返れる', () => {
+      setSettings({ voiceMode: 'full' })
+      const { container } = startEmergency()
+      tap(container, '息ができない')
+      tap(container, '緊急')
+      tap(container, '痛い')
+      tap(container, '緊急')
+      tap(container, '緊急を解除')
+      clearDeviceCalls()
+      tap(container, '解除する')
+
+      expect(shownMessage(container)).toBe('緊急（息ができない・痛い）を解除しました。')
+      expect(spoken()).toEqual(['緊急（息ができない・痛い）を解除しました。'])
+
+      const prev = prevButton(container) as HTMLElement
+      fireEvent.click(prev)
+      expect(shownMessage(container)).toBe(`${EMERGENCY_MESSAGE}痛い`)
+      fireEvent.click(prev)
+      expect(shownMessage(container)).toBe(`${EMERGENCY_MESSAGE}息ができない`)
+      fireEvent.click(prev)
+      expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
+      expect(panelLabel(container)).toBe('過去に伝えたこと（3件前）')
+      // それより前は無い(緊急の再選択・同じ詳細は二重に積まない)
+      expect(prev.hasAttribute('disabled')).toBe(true)
+    })
+
+    it('緊急中の伝達(はい)の後に詳細を選んでも、最新は「はい。」のまま。解除後は順に振り返れる', () => {
+      const { container } = startEmergency()
+      tap(container, '戻る')
+      tap(container, 'はい')
+      tap(container, '緊急')
+      tap(container, '苦しい')
+      expect(shownMessage(container)).toBe('はい。')
+      expect(panelLabel(container)).toBe('直前に伝えたこと')
+
+      tap(container, '緊急')
+      tap(container, '緊急を解除')
+      tap(container, '解除する')
+      expect(shownMessage(container)).toBe('緊急（苦しい）を解除しました。')
+      const prev = prevButton(container) as HTMLElement
+      fireEvent.click(prev)
+      expect(shownMessage(container)).toBe(`${EMERGENCY_MESSAGE}苦しい`)
+      fireEvent.click(prev)
+      expect(shownMessage(container)).toBe('はい。')
+      fireEvent.click(prev)
+      expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
+    })
+
+    it('緊急中、帯と同じ中身(緊急の呼び出し・詳細)しか無い間は伝達欄を出さない', () => {
+      const { container } = startEmergency()
+      tap(container, '苦しい')
+      expect(container.querySelector('.message-panel')?.classList.contains('is-empty')).toBe(true)
     })
   })
 

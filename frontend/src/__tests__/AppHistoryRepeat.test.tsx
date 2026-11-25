@@ -282,6 +282,18 @@ describe('Issue #123: もう一度', () => {
       expect(isHome(container)).toBe(true)
     })
 
+    it('押せない「もう一度」では、受け付けの軽い振動も出さない(受け付けたと誤解させない)', () => {
+      const { container } = render(() => <App />)
+      clearDeviceCalls()
+      tap(container, 'もう一度')
+      expect(vibrations()).not.toContainEqual(HAPTIC_PATTERNS.accepted)
+      // 押せるようになれば受け付けの振動は出る
+      tap(container, 'はい')
+      clearDeviceCalls()
+      tap(container, 'もう一度')
+      expect(vibrations()).toContainEqual(HAPTIC_PATTERNS.accepted)
+    })
+
     it('取り消したあと・介助者が緊急を解除したあとも、何も伝えない', () => {
       const { container } = render(() => <App />)
       tap(container, 'はい')

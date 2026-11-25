@@ -66,6 +66,14 @@ const COMPACT_NOTES_QUERY = '(max-height: 500px), (max-width: 480px)'
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます。'
 /** 本人が緊急を解除したときに伝達欄へ出す文(Issue #108) */
 const EMERGENCY_RELEASED_MESSAGE = '緊急を解除しました。'
+/**
+ * 本人が緊急を解除したときの伝達文。選んだ詳細があれば文に含め、解除した後も緊急の中身が分かるようにする
+ * (例「緊急（息ができない・痛い）を解除しました。」)。詳細が無ければ「緊急を解除しました。」
+ */
+export const emergencyReleasedMessage = (details: readonly string[]) =>
+  details.length === 0 ? EMERGENCY_RELEASED_MESSAGE : `緊急（${details.join('・')}）を解除しました。`
+/** 緊急の詳細を伝達履歴に積むときの文(読み上げと同じ、緊急の主文(EMERGENCY_MESSAGE)＋詳細) */
+const emergencyDetailHistoryText = (label: string) => `${EMERGENCY_MESSAGE}${label}`
 /** 振り返れる伝達の件数の上限(Issue #120)。古いものから捨てる */
 const HISTORY_MAX = 50
 /** 介助者用メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
@@ -185,6 +193,9 @@ const THEME_COLOR: Record<'light' | 'dark', string> = {
   dark: '#0a2318',
 }
 
+/** 伝達履歴の1件。emergency は緊急の呼び出し・詳細の記録(緊急中は帯に同じ中身が出ている) */
+type HistoryEntry = { text: string; emergency: boolean }
+
 export default function App() {
   // 開発補助: URL に ?dev を付けると番号バッジを表示する（既定は非表示）
   const showDevNumbers = new URLSearchParams(window.location.search).has('dev')
@@ -241,8 +252,9 @@ export default function App() {
   // Issue #120: 伝達の履歴(介助者が左右の矢印で振り返る)。端末のメモリ内だけに持ち、保存しない。
   // historyBack は「何件前を表示しているか」(0 = 最新)。新しい伝達・緊急・取り消しで必ず 0 に戻し、
   // 過去の表示が本人の新しい伝達を隠さないようにする
-  const [history, setHistory] = createSignal<string[]>(
-    restoredEmergency?.sub ? [restoredEmergency.sub] : [],
+  // emergency: 緊急の呼び出し・詳細の記録(緊急中は帯に同じ中身が出ている)。伝達欄の「最新」にはならない
+  const [history, setHistory] = createSignal<HistoryEntry[]>(
+    restoredEmergency?.sub ? [{ text: restoredEmergency.sub, emergency: false }] : [],
   )
   const [historyBack, setHistoryBack] = createSignal(0)
   // Issue #123: 「もう一度」。直前の伝達の振動パターン(はい/いいえ等)を覚えておき、同じものを出し直す
@@ -255,20 +267,31 @@ export default function App() {
     setRepeatedMessage(false)
     setRepeatedEmergency(false)
   }
-  const pushHistory = (text: string) => {
-    setHistory((items) => [...items, text].slice(-HISTORY_MAX))
+  const pushHistory = (text: string, emergency = false) => {
+    setHistory((items) => [...items, { text, emergency }].slice(-HISTORY_MAX))
     setHistoryBack(0)
   }
-  // 最新の表示(message)が履歴の末尾と同じ伝達を指しているか。取り消し・緊急の解除で最新が空のときは false
-  const liveIsLatestEntry = () => message() !== DEFAULT_MESSAGE
+  // 最新の表示(message)に当たる履歴の位置。取り消し・緊急の解除で最新が空のときは -1。
+  // 最新は緊急の記録ではない最後の伝達(緊急中は、直前の伝達の後に詳細の記録が続くことがある)
+  const liveIndex = createMemo(() =>
+    message() === DEFAULT_MESSAGE ? -1 : history().findLastIndex((entry) => !entry.emergency),
+  )
+  /** いまの最新を除いた、振り返れる伝達(古い順) */
+  const olderEntries = createMemo(() => history().filter((_, index) => index !== liveIndex()))
   /** いまの最新より前にある伝達の件数(= 戻れる最大の件数) */
-  const olderCount = createMemo(() => history().length - (liveIsLatestEntry() ? 1 : 0))
+  const olderCount = createMemo(() => olderEntries().length)
   const pastEntry = createMemo(() => {
     const back = historyBack()
     if (back <= 0) return null
-    const items = history()
-    return items[items.length - back - (liveIsLatestEntry() ? 1 : 0)] ?? null
+    const items = olderEntries()
+    return items[items.length - back]?.text ?? null
   })
+  /** 伝達欄を出さないか。緊急中、帯に出ている緊急の記録しか無いときも出さない(帯と同じ中身を重ねない) */
+  const messagePanelEmpty = createMemo(
+    () =>
+      message() === DEFAULT_MESSAGE &&
+      history().every((entry) => emergencyActive() && entry.emergency),
+  )
   const displayedMessage = createMemo(() => pastEntry() ?? message())
   /** 「もう一度」で伝え直せるものがあるか(直前の伝達、または緊急の呼び出し) */
   const canRepeat = () => message() !== DEFAULT_MESSAGE || emergencyActive()
@@ -741,6 +764,8 @@ export default function App() {
         setShowUndo(false)
         undoLapsRemaining = 0
         if (!alreadyActive) {
+          // 緊急の呼び出しを伝達履歴に積む。本人が後で解除しても、後から来た介助者が矢印で振り返れる
+          pushHistory(EMERGENCY_MESSAGE, true)
           setEmergencyDetails([])
           setEmergencySubMessage(null)
           setMessage(DEFAULT_MESSAGE)
@@ -756,9 +781,11 @@ export default function App() {
       }
       case 'emergencyDetail': {
         // S1: 見出しは変えず、詳細を積み上げ式(重複なし)で見出し下に表示する
-        setEmergencyDetails((details) =>
-          details.includes(action.label) ? details : [...details, action.label],
-        )
+        if (!emergencyDetails().includes(action.label)) {
+          setEmergencyDetails((details) => [...details, action.label])
+          // 詳細も伝達履歴に積む(解除の後でも、何が起きたかを介助者が振り返れる)
+          pushHistory(emergencyDetailHistoryText(action.label), true)
+        }
         clearRepeatMarks()
         feedback('urgentMessage')
         announce(`${EMERGENCY_MESSAGE}${action.label}`, action.label)
@@ -774,11 +801,13 @@ export default function App() {
           goTo('home')
           return
         }
+        // 解除の文に選んだ詳細を含める(帯が消えても、何の緊急だったかが伝達欄と履歴に残る)
+        const releasedMessage = emergencyReleasedMessage(emergencyDetails())
         clearEmergency()
-        pushHistory(EMERGENCY_RELEASED_MESSAGE)
+        pushHistory(releasedMessage)
         lastMessageEvent = 'message'
-        setMessage(EMERGENCY_RELEASED_MESSAGE)
-        announce(EMERGENCY_RELEASED_MESSAGE)
+        setMessage(releasedMessage)
+        announce(releasedMessage)
         goTo('home')
         return
       }
@@ -788,7 +817,8 @@ export default function App() {
         if (emergencyActive()) return
         // Issue #94: 取り消したら「直前に伝えたこと」自体を消し、何も伝えていない状態に戻す
         // (1つ前の返事は最新として復元しない)。取り消した伝達は履歴(Issue #120)からも消す
-        if (liveIsLatestEntry()) setHistory((items) => items.slice(0, -1))
+        const live = liveIndex()
+        if (live >= 0) setHistory((items) => items.filter((_, index) => index !== live))
         setHistoryBack(0)
         clearRepeatMarks()
         setMessage(DEFAULT_MESSAGE)
@@ -898,8 +928,10 @@ export default function App() {
     const result = press(resynced, itemCount, now, scanConfig(), target?.index)
     setScanState(result.state)
     if (result.activatedIndex === null) return
-    // 入力が受理されたことを、まず軽い振動で返す。この後の伝達・緊急のパターンが置き換える
-    feedback('accepted')
+    // 入力が受理されたことを、まず軽い振動で返す。この後の伝達・緊急のパターンが置き換える。
+    // 押せない(伝えるものが無い)「もう一度」では振動させない(受け付けたと誤解させない)
+    const activated = currentMenu()[result.activatedIndex]
+    if (!(activated?.action.type === 'repeat' && !canRepeat())) feedback('accepted')
     activateIndex(result.activatedIndex)
   }
 
@@ -1378,7 +1410,7 @@ export default function App() {
       <section
         class="message-panel"
         classList={{
-          'is-empty': message() === DEFAULT_MESSAGE && history().length === 0,
+          'is-empty': messagePanelEmpty(),
           'is-past': pastEntry() !== null,
           'is-cleared': pastEntry() === null && message() === DEFAULT_MESSAGE,
           'repeat-pulse-a': repeatedMessage() && repeatPulse() % 2 === 1,
@@ -1572,6 +1604,7 @@ export default function App() {
           'show-numbers': showDevNumbers,
           'grid-fill': gridLayout().fill,
           'grid-home': screen() === 'home',
+          'grid-letters': screen() === 'letters',
           'is-hidden': screen() === 'morse',
         }}
         style={{
@@ -2188,7 +2221,7 @@ export default function App() {
 
                 <TabReset
                   tabLabel="フレーズ"
-                  targets="全部の画面（不快・不快・その他・痛い場所・要望・気分）のフレーズ"
+                  targets="全部の画面（不快・「不快・その他」・痛い場所・要望・気分）のフレーズ"
                   onReset={() => resetSection('phrases')}
                 />
               </div>
@@ -2250,8 +2283,10 @@ export default function App() {
                       作者サイト
                     </a>
                   </div>
-                  <p class="caregiver-hint">
-                    リンクは別の画面で開きます（通信が必要です）。開いたあとは、この画面に戻ってください。
+                  {/* PR #124 レビュー: インストールしたアプリから開くと、リンク先は別の画面(ブラウザ)になり、
+                      その間はスイッチの入力も画面の自動消灯の防止(Wake Lock)も効かない。戻り忘れを防ぐため明記する */}
+                  <p class="caregiver-hint app-links-warning">
+                    リンクは別の画面（ブラウザ）で開きます（通信が必要です）。開いている間は、本人のスイッチの操作も、画面が消えないようにする働きも効きません。見終わったら、必ずこの画面に戻ってください。
                   </p>
                 </div>
 

@@ -211,6 +211,16 @@ describe('Issue #118: 「このアプリ」タブ', () => {
     }
   })
 
+  it('リンクの案内は、開いている間はスイッチと画面の消灯防止が効かず、戻る必要があることを伝える', () => {
+    const { container } = render(() => <App />)
+    const panel = openAbout(container)
+    const warning = panel.querySelector('.app-links-warning')?.textContent ?? ''
+    expect(warning).toContain('通信が必要')
+    expect(warning).toContain('スイッチの操作')
+    expect(warning).toContain('画面が消えないようにする働き')
+    expect(warning).toContain('必ずこの画面に戻ってください')
+  })
+
   it('「使い方」は見出しで、本人・緊急・もう一度・履歴の要点を含む', () => {
     const { container } = render(() => <App />)
     const panel = openAbout(container)
