@@ -64,11 +64,19 @@ export interface MenuItem {
   id: string
   label: string
   detail?: string
-  tone?: Tone
   action: ActionId
   /** 下位画面へ進むタイル(navigate)だけが持つ、遷移先の中身の予告(例:「痛い・苦しい・…」)。
    *  読み上げ対象外(ラベルのみ読む)。タイル表示でだけ使う。 */
   preview?: string
+}
+
+/**
+ * パネルを押したときの伝達欄の色調。urgent になるのは、伝える項目(message)の tone が urgent のときだけ。
+ * 画面遷移(胸などの痛い場所を含む)・緊急・緊急の詳細は伝達欄の色を変えないので neutral。
+ * 伝達欄の色(App.tsx の完了処理)とパネルの色(.tile-urgent)は、必ずこの関数から決める(Issue #136)。
+ */
+export function transmissionTone(action: ActionId): Tone {
+  return action.type === 'message' ? (action.tone ?? 'neutral') : 'neutral'
 }
 
 /** 下位画面の「戻る」の遷移先。画面ツリーに従う（painLocation は discomfort の子）。 */
@@ -158,7 +166,6 @@ export const SCREEN_GUIDANCE: Record<ScreenId, string> = {
 const EMERGENCY_ITEM: MenuItem = {
   id: 'emergency',
   label: '緊急',
-  tone: 'urgent',
   action: { type: 'emergency' },
 }
 
@@ -178,7 +185,7 @@ function subScreen(items: MenuItem[]): MenuItem[] {
 }
 
 function message(id: string, label: string, text: string, tone?: Tone): MenuItem {
-  return { id, label, tone, action: { type: 'message', text, tone } }
+  return { id, label, action: { type: 'message', text, tone } }
 }
 
 const PREVIEW_ITEM_COUNT = 6
@@ -215,7 +222,6 @@ function phraseItems(group: PhraseGroup, phrases?: PhraseSets): MenuItem[] {
         {
           id: p.id,
           label: p.label,
-          tone: p.tone,
           action: { type: 'painLocation', label: p.label, text: p.text, tone: p.tone },
         }
       : message(p.id, p.label, p.text, p.tone),
@@ -289,7 +295,6 @@ export function buildUrgentDetailMenu(selectedDetails: readonly string[] = []): 
       ({ id, label }) => ({
         id,
         label,
-        tone: 'urgent' as const,
         action: { type: 'emergencyDetail' as const, label },
       }),
     ),
