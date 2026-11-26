@@ -8,6 +8,8 @@
 // - heading-fit / xlarge-fit / font-size-monotonic: 見出し・ラベルが収まり、文字サイズが単調に効く
 // - issue37-small-viewport / tight-labels-and-ring / preview-two-lines-overlap / morse-legend-fit: 狭い画面・緊急・プレビューの崩れ
 // - repeat-pulse-reduced-motion: 「もう一度」の点滅が動きを減らす設定で止まり、続けて押すと枠の太さが変わる
+// - message-panel-fixed: 伝達欄の高さと下のタイル位置が内容で変わらず、長文が収まり、内容の色が保たれ白枠が無い(#130・#131・#135)
+// - breadcrumb-center: パンくずの家アイコン・項目名・区切りが上下中央に揃い、階層を移っても動かない(#128)
 
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
@@ -240,7 +242,8 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
  *   (Chromium は字送りを実サイズで整数 px に丸めるため、100px 測定の線形縮尺だけだと
  *   数 px はみ出す。候補サイズでの測り直し(M1 修正)が外れるとここで落ちる)
  * - 短い通常伝達は全 viewport で必ず data-fit="single"
- * - 長文(DOM で h1 を直接長くして resize で再計算させる): data-fit が付かず従来の折り返し
+ * - 長文(DOM で h1 を直接長くして resize で再計算させる): data-fit="wrap" で折り返し、固定の高さの
+ *   伝達欄に全文が収まる(縦にもはみ出さない・スクロールしない。#131)
  * - Issue #44: 未解除の緊急主文は h1 へ混ぜず、専用 .emergency-status 内に表示する
  */
 async function checkHeadingFit(chromium, port) {
@@ -272,6 +275,8 @@ async function checkHeadingFit(chromium, port) {
         fontSize: getComputedStyle(h1).fontSize,
         scrollWidth: panel.scrollWidth,
         clientWidth: panel.clientWidth,
+        textHeight: h1.getBoundingClientRect().height,
+        boxHeight: h1.parentElement.getBoundingClientRect().height,
       }
     })
 
@@ -330,15 +335,20 @@ async function checkHeadingFit(chromium, port) {
       checkSingle('medium', medium, false)
       checkNoOverflow('medium', medium)
 
-      // 長文: 下限サイズでも 1 行に収まらないので data-fit は付かない
+      // 長文: 下限サイズでも 1 行に収まらないので、折り返して大きさを合わせる
       await page.evaluate((text) => {
         document.querySelector('h1').textContent = text
         window.dispatchEvent(new Event('resize'))
       }, LONG)
       await settle(page)
       const long = await probe(page)
-      if (long.fit !== null) {
-        failures.push(`[heading-fit ${name} long] 長文なのに data-fit="${long.fit}" が付いている`)
+      if (long.fit !== 'wrap') {
+        failures.push(`[heading-fit ${name} long] 長文なのに data-fit="${long.fit}"(期待 wrap)`)
+      }
+      if (long.textHeight > long.boxHeight + 0.5) {
+        failures.push(
+          `[heading-fit ${name} long] 長文が伝達欄に収まらない(h1=${long.textHeight} box=${long.boxHeight})`,
+        )
       }
       if (long.whiteSpace === 'nowrap') {
         failures.push(`[heading-fit ${name} long] 長文なのに white-space: nowrap になっている`)
@@ -360,8 +370,9 @@ async function checkHeadingFit(chromium, port) {
           text: message?.textContent,
           scrollWidth: status?.scrollWidth ?? 0,
           clientWidth: status?.clientWidth ?? 0,
-          ordinaryMessageVisible: getComputedStyle(document.querySelector('.message-panel'))
+          ordinaryMessageShown: getComputedStyle(document.querySelector('.message-panel h1'))
             .display,
+          ordinaryNone: document.querySelector('.message-panel-none')?.textContent,
         }
       })
       if (emergency.text !== '緊急です。来てください。') {
@@ -370,7 +381,10 @@ async function checkHeadingFit(chromium, port) {
       if (emergency.scrollWidth > emergency.clientWidth) {
         failures.push(`[heading-fit ${name} emergency] 専用緊急状態が横にはみ出している`)
       }
-      if (emergency.ordinaryMessageVisible !== 'none') {
+      if (
+        emergency.ordinaryMessageShown !== 'none' ||
+        emergency.ordinaryNone !== 'いまは、伝えたことがありません。'
+      ) {
         failures.push(`[heading-fit ${name} emergency] 未伝達の通常結果パネルが表示されている`)
       }
       await emergencyContext.close()
@@ -1073,8 +1087,10 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
     ],
     // ホームは #123 で 10 セル格子(縦 2×5)になり、320x480 の特大ではセルが低く 2 行モードにならない
     // (実測: 遷移タイル 4 つ・2 行モード 0)。同じ狭さ・特大で 2 行モードになる 8 セルの不快画面で検査する
-    ['320x480 特大 不快', { width: 320, height: 480 }, { fontSize: 'xlarge' }, ['不快'], false],
-    ['320x568 標準 ホーム', { width: 320, height: 568 }, { fontSize: 'standard' }, [], false],
+    // #131 で伝達欄が起動時から常に出るので、320x480 の不快と 320x568 のホームはセルが低くなり 2 行モードに
+    // ならない。同じ幅 320 のまま、2 行モードになる高さで重なりを検査する
+    ['320x568 特大 不快', { width: 320, height: 568 }, { fontSize: 'xlarge' }, ['不快'], false],
+    ['320x667 標準 ホーム', { width: 320, height: 667 }, { fontSize: 'standard' }, [], false],
     [
       '844x390 特大 高コントラスト 緊急詳細5件+伝達 不快',
       { width: 844, height: 390 },
@@ -1280,8 +1296,9 @@ async function checkMorseLegendFit(chromium, port) {
  *         見た目(面の色・文字色・角丸 8px・太字・1.125rem)がメニュー内の「閉じる」と同じ
  * - #113: パンくず先頭の家アイコンが文字と同じ色・高さ。パンくずと指示文の間隔が 10px(高さ 500px 以下は 4px)
  * - #115: ホームの全タイルのアイコンが見えていて、色は文字と同じ
- * - #120: 履歴が 2 件になると矢印が見え(display:none でない)、押すと「過去に伝えたこと（1件前）」になる。
- *         矢印は見出しの文字(h1)と重ならず、44px 以上の押せる大きさがある
+ * - #120/#129: 履歴が 2 件になると左向きの矢印だけが見え(display:none でない)、押すと
+ *         「過去に伝えたこと（1件前）」になって右向きだけになる。矢印の出入りで中央の文字の位置・大きさは
+ *         変わらない。矢印は見出しの文字(h1)と重ならず、44px 以上の押せる大きさがある
  * - #122: 好きな画像が「介助者用」ボタンの左に見え、ボタン・タイルと重ならず、ホームの 10 セルが画面内に収まる
  */
 async function checkRealDeviceFeedbackLayout(chromium, port) {
@@ -1362,6 +1379,7 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
               homeIconDisplay: cs(homeIcon)?.display,
               homeIconStroke: cs(homeIcon)?.stroke,
               h1: rect(h1),
+              h1Font: cs(h1).fontSize,
               panelLabel: document.querySelector('.message-panel-label')?.textContent,
               arrows: arrows.map((a) => ({
                 rect: rect(a),
@@ -1466,8 +1484,10 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
           }
 
           // #120 矢印
-          if (m.arrows.length !== 2) {
-            failures.push(`[realdevice ${label}] #120 履歴 2 件で矢印が ${m.arrows.length} 個`)
+          if (m.arrows.length !== 1 || m.arrows[0].label !== '前の伝達を表示') {
+            failures.push(
+              `[realdevice ${label}] #129 最古でない最新表示の矢印が「前」だけでない(${m.arrows.map((a) => a.label)})`,
+            )
           } else {
             for (const a of m.arrows) {
               if (a.display === 'none' || a.visibility === 'hidden' || a.rect.width < 1) {
@@ -1485,13 +1505,6 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
                 failures.push(`[realdevice ${label}] #120 「${a.label}」が画面外`)
               }
             }
-            const prev = m.arrows.find((a) => a.label === '前の伝達を表示')
-            const next = m.arrows.find((a) => a.label === '次の伝達を表示')
-            if (prev?.disabled !== false || next?.disabled !== true) {
-              failures.push(
-                `[realdevice ${label}] #120 最新表示中の矢印の押せる/押せないが違う(前=${prev?.disabled} 次=${next?.disabled})`,
-              )
-            }
             // 実際にタップして、過去の表示に切り替わる(スキャン対象を実行しない)
             await page.locator('.history-nav[aria-label="前の伝達を表示"]').click()
             await page.waitForTimeout(200)
@@ -1501,7 +1514,30 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
               crumb: [...document.querySelectorAll('.screen-breadcrumb li')].map(
                 (li) => li.textContent,
               ),
+              arrows: [...document.querySelectorAll('.message-panel .history-nav')].map((a) =>
+                a.getAttribute('aria-label'),
+              ),
+              body: document.querySelector('.message-panel-body').getBoundingClientRect().toJSON(),
+              h1Rect: document.querySelector('.message-panel h1').getBoundingClientRect().toJSON(),
+              h1Font: getComputedStyle(document.querySelector('.message-panel h1')).fontSize,
             }))
+            if (after.arrows.join() !== '次の伝達を表示') {
+              failures.push(
+                `[realdevice ${label}] #129 最古の表示の矢印が「次」だけでない(${after.arrows})`,
+              )
+            }
+            for (const key of ['left', 'top', 'width']) {
+              if (Math.abs(after.h1Rect[key] - m.h1[key]) > 0.5) {
+                failures.push(
+                  `[realdevice ${label}] #129 矢印の出入りで中央の文字の ${key} が変わる(${m.h1[key]} → ${after.h1Rect[key]})`,
+                )
+              }
+            }
+            if (after.h1Font !== m.h1Font) {
+              failures.push(
+                `[realdevice ${label}] #129 矢印の出入りで中央の文字の大きさが変わる(${m.h1Font} → ${after.h1Font})`,
+              )
+            }
             if (after.label !== '過去に伝えたこと（1件前）' || after.h1 !== 'はい。') {
               failures.push(
                 `[realdevice ${label}] #120 前の伝達を押しても過去の表示にならない(${after.label} / ${after.h1})`,
@@ -1641,7 +1677,9 @@ async function checkRepeatPulseReducedMotion(chromium, port) {
       const second = await panelStyle()
       const name = `[repeat-pulse ${reducedMotion}]`
       if (!first.pulse || !second.pulse || first.pulse === second.pulse) {
-        failures.push(`${name} 偶奇のクラスが切り替わっていない ${JSON.stringify({ first, second })}`)
+        failures.push(
+          `${name} 偶奇のクラスが切り替わっていない ${JSON.stringify({ first, second })}`,
+        )
       }
       if (reducedMotion === 'reduce') {
         if (first.animation !== 'none' || second.animation !== 'none') {
@@ -1665,6 +1703,276 @@ async function checkRepeatPulseReducedMotion(chromium, port) {
   return failures
 }
 
+/**
+ * Issue #131/#130/#135: 伝達欄の高さは画面の大きさだけで決まり、内容(起動直後・短文・赤・過去の表示・
+ * 取り消し後・長文)で 1px も変わらず、下の案内欄とタイルも動かない。長文は欄に全文が収まり(切れない・
+ * スクロールしない)、見出しの行は 1 行。過去の表示に白枠(box-shadow・outline・border)が付かず、
+ * 背景色は表示中の内容の色(通常は最新と同じ、赤の内容は赤)。両テーマで確かめる
+ */
+async function checkMessagePanelFixed(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  const viewports = [
+    [390, 844],
+    [844, 390],
+    [768, 1024],
+    [320, 568],
+    [568, 320],
+    [1024, 768],
+    [280, 653],
+  ]
+  // 文字盤で打てる文は長さの上限が無いので、定型の上限(100 字)より長い 200 字まで確かめる
+  const LONG = 'とても長いメッセージでも全部の文が欄の中に見えること。'.repeat(8).slice(0, 200)
+  try {
+    for (const [width, height] of viewports) {
+      for (const theme of ['light', 'dark']) {
+        const heights = new Set()
+        for (const fontSize of ['standard', 'xlarge']) {
+          const tag = `[message-panel ${width}x${height} ${theme} ${fontSize}]`
+          const context = await browser.newContext({ viewport: { width, height } })
+          const page = await context.newPage()
+          await page.addInitScript(
+            (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
+            { intervalMs: 60000, theme, fontSize },
+          )
+          try {
+            await page.goto(`http://localhost:${port}/`)
+            await page.evaluate(() => document.fonts.ready)
+            await page.waitForTimeout(500)
+            const tap = async (label) => {
+              await page
+                .locator('.grid-board .tile')
+                .filter({ has: page.getByText(label, { exact: true }) })
+                .first()
+                .click()
+              await page.waitForTimeout(700)
+            }
+            const measure = () =>
+              page.evaluate(() => {
+                const rect = (el) => el.getBoundingClientRect()
+                const panel = document.querySelector('.message-panel')
+                const h1 = panel.querySelector('h1')
+                const box = panel.querySelector('.message-panel-text')
+                const text = h1.hidden ? panel.querySelector('.message-panel-none') : h1
+                const label = panel.querySelector('.message-panel-label')
+                const style = getComputedStyle(panel)
+                const probe = document.createElement('div')
+                document.body.appendChild(probe)
+                const color = (token) => {
+                  probe.style.background = `var(${token})`
+                  return getComputedStyle(probe).backgroundColor
+                }
+                const colors = { normal: color('--message-bg'), urgent: color('--urgent-bg') }
+                probe.remove()
+                return {
+                  display: style.display,
+                  height: rect(panel).height,
+                  guideTop: rect(document.querySelector('.screen-guide')).top,
+                  tiles: [...document.querySelectorAll('.grid-board .tile')].map((t) => {
+                    const r = rect(t)
+                    return [r.left, r.top, r.width, r.height].join(',')
+                  }),
+                  textBottom: rect(text).bottom,
+                  boxBottom: rect(box).bottom,
+                  panelBottom: rect(panel).bottom,
+                  textOverflowX: text.scrollWidth - text.clientWidth,
+                  scrollOverflow: panel.scrollHeight - panel.clientHeight,
+                  labelLines: Math.round(
+                    rect(label).height / parseFloat(getComputedStyle(label).lineHeight),
+                  ),
+                  fontSize: getComputedStyle(text).fontSize,
+                  background: style.backgroundColor,
+                  frame: [style.boxShadow, style.outlineStyle, style.borderTopStyle].join(' / '),
+                  colors,
+                }
+              })
+            let base
+            const check = async (state, expected) => {
+              const m = await measure()
+              base ??= m
+              heights.add(m.height)
+              if (m.display === 'none') failures.push(`${tag} ${state}: 伝達欄が出ていない`)
+              if (m.height !== base.height || m.guideTop !== base.guideTop) {
+                failures.push(
+                  `${tag} ${state}: 高さ・案内欄の位置が変わる(${base.height}/${base.guideTop} → ${m.height}/${m.guideTop})`,
+                )
+              }
+              if (
+                m.textBottom > m.boxBottom + 0.5 ||
+                m.boxBottom > m.panelBottom + 0.5 ||
+                m.textOverflowX > 0 ||
+                m.scrollOverflow > 0
+              ) {
+                failures.push(
+                  `${tag} ${state}: 文が欄に収まらない(text=${m.textBottom} box=${m.boxBottom} panel=${m.panelBottom} x=${m.textOverflowX} y=${m.scrollOverflow} font=${m.fontSize})`,
+                )
+              }
+              // 320px 未満は「直前に伝えたこと（もう一度）」が 1 行に入らないので、行数は 320px 以上で見る
+              if (width >= 320 && m.labelLines !== 1) {
+                failures.push(`${tag} ${state}: 見出しが ${m.labelLines} 行`)
+              }
+              if (m.background !== m.colors[expected]) {
+                failures.push(
+                  `${tag} ${state}: 背景色が ${m.background}(期待 ${expected}=${m.colors[expected]})`,
+                )
+              }
+              // 「もう一度」の直後は、伝え直しを知らせる黄色の点滅(#123。box-shadow)があるので枠の検査をしない
+              if (state !== 'もう一度' && m.frame !== 'none / none / none') {
+                failures.push(`${tag} ${state}: 枠が付いている(${m.frame})`)
+              }
+              return m
+            }
+            const arrow = async (label) => {
+              await page.locator(`.history-nav[aria-label="${label}"]`).click()
+              await page.waitForTimeout(250)
+            }
+
+            const start = await check('起動直後', 'normal')
+            // 同じホーム画面の同じ項目数どうしでタイルが 1px も動かないことを比べる(取り消しの出入りは項目数が変わる)
+            const sameTiles = (state, a, b) => {
+              if (a.tiles.join('|') !== b.tiles.join('|')) {
+                failures.push(`${tag} ${state}: 下のタイルが動く`)
+              }
+            }
+            await tap('はい')
+            const yes = await check('はい', 'normal')
+            await tap('不快')
+            await tap('痛い')
+            await tap('胸')
+            await tap('とても')
+            const red = await check('赤の伝達', 'urgent')
+            sameTiles('はい → 赤の伝達', yes, red)
+            await arrow('前の伝達を表示')
+            sameTiles('過去の表示(通常)', red, await check('過去(通常)', 'normal'))
+            await arrow('次の伝達を表示')
+            await check('最新(赤)へ戻る', 'urgent')
+            await tap('いいえ')
+            await arrow('前の伝達を表示')
+            await check('過去(赤)', 'urgent')
+            await arrow('次の伝達を表示')
+            await check('最新(通常)へ戻る', 'normal')
+
+            // 長文(h1 を直接長くして resize で再計算させる)
+            await page.evaluate((text) => {
+              document.querySelector('.message-panel h1').textContent = text
+              window.dispatchEvent(new Event('resize'))
+            }, LONG)
+            await page.waitForTimeout(300)
+            const long = await check('長文200字', 'normal')
+            sameTiles('長文', yes, long)
+
+            // 取り消し → 最新が空で履歴あり
+            await tap('もう一度')
+            await check('もう一度', 'normal')
+            await tap('取り消し')
+            const cleared = await check('取り消し後', 'normal')
+            sameTiles('起動直後 と 取り消し後', start, cleared)
+          } catch (error) {
+            failures.push(`${tag} ${error.message.split('\n')[0]}`)
+          }
+          await context.close()
+        }
+        if (heights.size > 1) {
+          failures.push(
+            `[message-panel ${width}x${height} ${theme}] 文字サイズ設定・内容で高さが違う(${[...heights]})`,
+          )
+        }
+      }
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
+/**
+ * Issue #128: パンくずの家アイコン・項目名・区切りの中心の高さが行の中で揃い(1px 以内)、
+ * 階層を移っても家アイコンが上下に動かない。2 行に折り返す階層でも行ごとに揃う
+ */
+async function checkBreadcrumbCentered(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  const viewports = [
+    [390, 844],
+    [844, 390],
+    [768, 1024],
+    [320, 568],
+    [280, 653],
+  ]
+  try {
+    for (const [width, height] of viewports) {
+      const context = await browser.newContext({ viewport: { width, height } })
+      const page = await context.newPage()
+      await page.addInitScript(() =>
+        window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 60000 })),
+      )
+      await page.goto(`http://localhost:${port}/`)
+      await page.evaluate(() => document.fonts.ready)
+      await page.waitForTimeout(500)
+      let homeCenter
+      for (const label of [null, '不快', '痛い', '胸']) {
+        if (label) {
+          await page
+            .locator('.grid-board .tile')
+            .filter({ has: page.getByText(label, { exact: true }) })
+            .first()
+            .click()
+          await page.waitForTimeout(700)
+        }
+        const items = await page.evaluate(() =>
+          [...document.querySelectorAll('.screen-breadcrumb li')].map((li) => {
+            const center = (r) => r.top + r.height / 2
+            const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT)
+            const texts = []
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+              if (!node.textContent.trim()) continue
+              const range = document.createRange()
+              range.selectNodeContents(node)
+              const rects = [...range.getClientRects()]
+              const top = Math.min(...rects.map((r) => r.top))
+              const bottom = Math.max(...rects.map((r) => r.bottom))
+              texts.push((top + bottom) / 2)
+            }
+            const icon = li.querySelector('.breadcrumb-home')
+            const separator = li.querySelector('.breadcrumb-separator')
+            return {
+              text: li.textContent,
+              li: center(li.getBoundingClientRect()),
+              textCenter: texts[0],
+              icon: icon ? center(icon.getBoundingClientRect()) : null,
+              separator: separator ? center(separator.getBoundingClientRect()) : null,
+            }
+          }),
+        )
+        const tag = `[breadcrumb-center ${width}x${height} ${label ?? 'ホーム'}]`
+        for (const item of items) {
+          for (const key of ['textCenter', 'icon', 'separator']) {
+            if (item[key] !== null && Math.abs(item[key] - item.li) > 1) {
+              failures.push(
+                `${tag} 「${item.text}」の ${key} の中心 ${item[key]} が行の中心 ${item.li} とずれる`,
+              )
+            }
+          }
+        }
+        homeCenter ??= items[0].icon
+        if (Math.abs(items[0].icon - homeCenter) > 0.5) {
+          failures.push(`${tag} 家アイコンが上下に動く(${homeCenter} → ${items[0].icon})`)
+        }
+      }
+      await context.close()
+    }
+  } catch (error) {
+    failures.push(`[breadcrumb-center] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
     { name: 'letters-scroll', run: checkLettersScrollLayout },
@@ -1678,6 +1986,8 @@ await runChecks(
     { name: 'morse-legend-fit', run: checkMorseLegendFit },
     { name: 'realdevice-feedback', run: checkRealDeviceFeedbackLayout },
     { name: 'repeat-pulse-reduced-motion', run: checkRepeatPulseReducedMotion },
+    { name: 'message-panel-fixed', run: checkMessagePanelFixed },
+    { name: 'breadcrumb-center', run: checkBreadcrumbCentered },
   ],
   { basePort: 4740 },
 )

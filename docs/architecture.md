@@ -57,7 +57,7 @@ localStorage に3つのキーで保存する。
 - `libra:emergency`: 緊急状態（下記）
 - `libra:photo`: 好きな画像（data URL。長辺 480px に縮小して保存。Issue #122）。実装: `frontend/src/lib/photo.ts`。設定（`libra`）とは別キーで、設定の書き出し・取り込みには含めない。端末の外へは送らない
 
-緊急状態（有効・詳細・副表示）は設定とは別キー `libra:emergency` に保存し、起動時に未解除なら復元して視覚表示を再開する。介助者の緊急解除、または本人の解除（緊急 → 緊急を解除 → 解除する。Issue #108）で、保存ごと消す（実装: `frontend/src/lib/emergencyState.ts`）。
+緊急状態（有効・詳細・副表示と、副表示が赤のときだけその色）は設定とは別キー `libra:emergency` に保存し、起動時に未解除なら復元して視覚表示を再開する。介助者の緊急解除、または本人の解除（緊急 → 緊急を解除 → 解除する。Issue #108）で、保存ごと消す（実装: `frontend/src/lib/emergencyState.ts`）。
 
 複数タブでの同期（storage イベント）は行わない。
 

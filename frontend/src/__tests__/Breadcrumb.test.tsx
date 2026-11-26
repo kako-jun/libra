@@ -32,7 +32,8 @@ function selectByLabel(container: HTMLElement, label: string) {
   fireEvent.keyDown(window, { key: ' ' })
 }
 
-const crumb = (container: HTMLElement) => container.querySelector('.screen-breadcrumb') as HTMLElement
+const crumb = (container: HTMLElement) =>
+  container.querySelector('.screen-breadcrumb') as HTMLElement
 const crumbButtons = (container: HTMLElement) =>
   Array.from(crumb(container).querySelectorAll<HTMLButtonElement>('button.breadcrumb-link'))
 const crumbButton = (container: HTMLElement, title: string) => {
@@ -42,7 +43,8 @@ const crumbButton = (container: HTMLElement, title: string) => {
 }
 const tileLabels = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('.tile-label')).map((el) => el.textContent ?? '')
-const guideTitle = (container: HTMLElement) => container.querySelector('.screen-guide h2')?.textContent
+const guideTitle = (container: HTMLElement) =>
+  container.querySelector('.screen-guide h2')?.textContent
 
 describe('buildScreenBreadcrumb: 移動先(screen)', () => {
   const screens = Object.keys(PARENT_SCREEN).concat('home') as ScreenId[]
@@ -50,7 +52,7 @@ describe('buildScreenBreadcrumb: 移動先(screen)', () => {
   it('全ScreenIdで、screen を持つ要素は PARENT_SCREEN の祖先チェーンと一致し、現在地は screen を持たない', () => {
     for (const screen of screens) {
       const chain: ScreenId[] = []
-      for (let c = screen; c !== 'home'; ) {
+      for (let c = screen; c !== 'home';) {
         c = PARENT_SCREEN[c]
         chain.unshift(c)
       }
@@ -196,7 +198,8 @@ describe('App: パンくずの祖先クリック', () => {
     vi.advanceTimersByTime(600)
     // 画面は不快のまま(タイル実行されていない)で伝達メッセージも出ていない
     expect(guideTitle(container)).toBe('つらいことを選んでください。')
-    expect(container.querySelector('.message-panel.is-empty')).not.toBeNull()
+    expect(container.querySelector('.message-panel-none')).not.toBeNull()
+    expect(container.querySelector<HTMLElement>('.message-panel h1')?.hidden).toBe(true)
   })
 
   it('ボタン以外にフォーカスがある Enter/Space は従来どおり本人のスイッチ入力', () => {
@@ -211,13 +214,43 @@ describe('App: パンくずの祖先クリック', () => {
     expect(tileLabels(container)).toContain('緊急')
     expect(crumbButtons(container)).toHaveLength(0)
   })
+
+  // Issue #128: パンくずの要素の並べ方
+  it('現在地以外の項目の末尾に区切りの図形があり、読み上げと項目名の文字には含まれない', () => {
+    const { container } = render(() => <App />)
+    selectByLabel(container, '不快')
+    selectByLabel(container, '痛い')
+    const items = Array.from(crumb(container).querySelectorAll('li'))
+    expect(items.map((li) => li.querySelectorAll('.breadcrumb-separator').length)).toEqual([
+      1, 1, 0,
+    ])
+    for (const li of items.slice(0, -1)) {
+      expect(li.lastElementChild?.getAttribute('class')).toBe('breadcrumb-separator')
+      expect(li.lastElementChild?.getAttribute('aria-hidden')).toBe('true')
+    }
+    expect(items.map((li) => li.textContent)).toEqual(['ホーム', '不快', '痛い場所'])
+  })
+
+  it('現在地と祖先ボタンは同じ並べ方の入れ物に、家アイコンと文字を入れる', () => {
+    const { container } = render(() => <App />)
+    const home = () => crumb(container).querySelector('li .breadcrumb-home')?.parentElement
+    expect(home()?.className).toBe('breadcrumb-current')
+    selectByLabel(container, '不快')
+    expect(home()?.className).toBe('breadcrumb-link')
+  })
 })
 
 describe('globals.css: .breadcrumb-link(静的)', () => {
   const bodies = (selector: string): string => {
     const out: string[] = []
     for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      if (m[1].split(',').map((s) => s.trim()).includes(selector)) out.push(m[2])
+      if (
+        m[1]
+          .split(',')
+          .map((s) => s.trim())
+          .includes(selector)
+      )
+        out.push(m[2])
     }
     return out.join('\n')
   }
@@ -229,6 +262,8 @@ describe('globals.css: .breadcrumb-link(静的)', () => {
   })
 
   it(':focus-visible の outline を持つ', () => {
-    expect(bodies('.screen-breadcrumb .breadcrumb-link:focus-visible')).toMatch(/outline:\s*\d+px solid/)
+    expect(bodies('.screen-breadcrumb .breadcrumb-link:focus-visible')).toMatch(
+      /outline:\s*\d+px solid/,
+    )
   })
 })

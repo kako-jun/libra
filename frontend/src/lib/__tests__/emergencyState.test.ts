@@ -63,6 +63,20 @@ describe('emergencyState', () => {
     expect(loadEmergencyState()).toEqual({ active: true, details: [], sub: 'はい' })
   })
 
+  it('Issue #135: 直前の伝達が赤のときだけ subTone を保存し、復元する', () => {
+    saveEmergencyState({ details: [], sub: '胸がとても痛いです。', subTone: 'urgent' })
+    expect(loadEmergencyState()?.subTone).toBe('urgent')
+    saveEmergencyState({ details: [], sub: 'はい。', subTone: 'neutral' })
+    expect(loadEmergencyState()).toEqual({ active: true, details: [], sub: 'はい。' })
+    // sub が無い・未知の値は通常の色
+    for (const raw of [
+      { active: true, details: [], sub: null, subTone: 'urgent' },
+      { active: true, details: [], sub: 'a', subTone: 'calm' },
+    ]) {
+      expect(normalizeEmergencyState(raw)?.subTone).toBeUndefined()
+    }
+  })
+
   it('localStorage の get/set/remove が例外を投げても握りつぶす', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('denied')
