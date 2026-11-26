@@ -1690,9 +1690,10 @@ async function checkRepeatPulseReducedMotion(chromium, port) {
  * - 丸ごと空く行が無い
  * - はい と いいえ は同じ段(上端・下端が一致)で、いいえ が はい のすぐ右に接する
  * - 全タイルが画面内で、ラベルはタイルからはみ出さない
- * - ラベルは下の予告に重ならない。アイコンはラベルの文字に重ならず、出ているときは文字の 0.85 倍以上
- *   (高さが足りないセルではアイコンを縮める。標準の配色ではほぼ文字と同じ大きさが下限。高コントラストは
- *   標準より小さくならないよう文字だけが数 px 大きくなる(#34)ぶん、アイコンは文字の約 0.87 倍まで下がる)
+ * - ラベルは下の予告に重ならない。アイコンはラベルの文字に重ならず、出ているときは通常の配色で文字の
+ *   0.98 倍以上、高コントラストで 0.85 倍以上(高さが足りないセルではアイコンを縮める。通常の配色では
+ *   ほぼ文字と同じ大きさが下限。高コントラストは標準より小さくならないよう文字だけが数 px 大きくなる(#34)
+ *   ぶん、アイコンは文字の約 0.87 倍まで下がる)
  * 起動直後・伝達後・緊急中(詳細を伝えてホームへ戻った状態)× 文字サイズ 標準/大/特大 × 高コントラスト OFF/ON で確かめる
  */
 async function checkHomeGrid(chromium, port) {
@@ -1858,9 +1859,10 @@ async function checkHomeGrid(chromium, port) {
                   `${name} 「${t.text}」のアイコンがラベルの文字に ${t.iconOverlap.toFixed(1)}px 重なる`,
                 )
               }
-              if (t.iconRatio !== null && t.iconRatio < 0.85) {
+              const minIconRatio = highContrast ? 0.85 : 0.98
+              if (t.iconRatio !== null && t.iconRatio < minIconRatio) {
                 failures.push(
-                  `${name} 「${t.text}」のアイコンが小さすぎる(文字の ${t.iconRatio.toFixed(2)} 倍)`,
+                  `${name} 「${t.text}」のアイコンが小さすぎる(文字の ${t.iconRatio.toFixed(2)} 倍。下限 ${minIconRatio})`,
                 )
               }
               if (t.labelOut > 1) {
