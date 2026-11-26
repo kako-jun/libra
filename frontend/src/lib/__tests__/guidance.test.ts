@@ -26,7 +26,6 @@ import { EMERGENCY_REPEAT_MS } from '../feedback'
 import {
   buildBehaviorNoteMap,
   buildBehaviorNotes,
-  buildCaregiverMenuNotes,
   buildScreenNotes,
   formatSeconds,
   type BehaviorNotesContext,
@@ -258,51 +257,6 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
   })
 })
 
-describe('buildCaregiverMenuNotes', () => {
-  it('所定の4行が固定順で出る(60秒タップ・キーで閉じる・スキャン停止・無入力でホームへ)', () => {
-    expect(buildCaregiverMenuNotes(60000)).toEqual([
-      '60秒タップしないと、自動で閉じてホームに戻ります（キーを打っても延びません）。',
-      'キーやスイッチを押すと閉じて、ホームの先頭から再開します（文字の入力・スライダーの操作・タブ移動のキーを除く）。',
-      '開いている間は、スキャンが止まります。',
-      '本人の画面は、入力がないまま3周するとホームに戻ります（モールス入力・ホームを除く）。',
-    ])
-  })
-
-  it('モールス入力が有効なときだけ、モールス入力の時間停止も出す', () => {
-    expect(buildCaregiverMenuNotes(60000, { morseEnabled: true })[2]).toBe(
-      '開いている間は、スキャンとモールス入力の時間が止まります。',
-    )
-    expect(buildCaregiverMenuNotes(60000, { morseEnabled: false })[2]).not.toContain('モールス')
-  })
-
-  it('短縮形も同じ行数・同じ事実を保つ(出る行数は変わらない)', () => {
-    const full = buildCaregiverMenuNotes(60000, { morseEnabled: true })
-    const compact = buildCaregiverMenuNotes(60000, { morseEnabled: true, compact: true })
-    expect(compact).toHaveLength(full.length)
-    expect(compact[0]).toContain('60秒タップしないと')
-    expect(compact[0]).toContain('キーでは延びません')
-    expect(compact[1]).toContain('入力欄の編集')
-    expect(compact[2]).toContain('モールス')
-    expect(compact[3]).toContain('3周無入力でホームへ')
-    for (let i = 0; i < full.length; i += 1) expect(compact[i].length).toBeLessThan(full[i].length)
-  })
-
-  it('自動で閉じる秒数は引数に追従し、他の行は変わらない', () => {
-    const a = buildCaregiverMenuNotes(60000)
-    const b = buildCaregiverMenuNotes(30000)
-    expect(b[0]).toBe(
-      '30秒タップしないと、自動で閉じてホームに戻ります（キーを打っても延びません）。',
-    )
-    expect(b.slice(1)).toEqual(a.slice(1))
-  })
-
-  it('絵文字を含まない', () => {
-    for (const note of buildCaregiverMenuNotes(60000, { morseEnabled: true })) {
-      expect(/\p{Extended_Pictographic}/u.test(note)).toBe(false)
-    }
-  })
-})
-
 describe('formatSeconds', () => {
   it('100ms 刻みは小数1桁、それ以外は小数2桁で丸めない', () => {
     expect(formatSeconds(500)).toBe('0.5秒')
@@ -311,22 +265,5 @@ describe('formatSeconds', () => {
     expect(formatSeconds(1050)).toBe('1.05秒')
     expect(formatSeconds(0)).toBe('0.0秒')
     expect(formatSeconds(5)).toBe('0.01秒未満')
-  })
-})
-
-describe('介助者用メニューの短縮形(compact)', () => {
-  it('介助者用メニュー: タップで延びる/キーでは延びない/閉じるとホーム先頭から再開/停止するもの', () => {
-    const [idle, outside, stops] = buildCaregiverMenuNotes(60000, {
-      morseEnabled: true,
-      compact: true,
-    })
-    expect(idle).toContain('60秒タップしないと閉じてホームへ戻ります')
-    expect(idle).toContain('キーでは延びません')
-    expect(outside).toContain('キーを押すと閉じて')
-    expect(outside).not.toContain('外側')
-    expect(outside).toContain('ホーム先頭から再開')
-    expect(outside).toContain('入力欄の編集・タブ移動のキーを除く')
-    expect(stops).toContain('スキャン')
-    expect(stops).toContain('モールス')
   })
 })

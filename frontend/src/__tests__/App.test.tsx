@@ -829,21 +829,43 @@ describe('App', () => {
     expect(tileLabels(container).slice(0, 3)).toEqual(['戻る', '緊急', 'テレビ'])
   })
 
-  it('Issue #8: 「この画面を既定に戻す」で既定のフレーズに戻る', () => {
+  it('Issue #154: 分類ごとの初期化ボタンは無く、フレーズタブの「初期値に戻す」で全分類の編集が戻る', () => {
+    const custom = (id: string) => [{ id, label: 'テレビ', text: 'テレビ' }]
     window.localStorage.setItem(
       'libra',
-      JSON.stringify({ phrases: { moodRequest: [{ id: 'c1', label: 'テレビ', text: 'テレビ' }] } }),
+      JSON.stringify({
+        phrases: {
+          discomfort: custom('c1'),
+          discomfortOther: custom('c2'),
+          painLocation: custom('c3'),
+          moodRequest: custom('c4'),
+          feelings: custom('c5'),
+        },
+      }),
     )
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
     selectCaregiverTab(container, 'フレーズ')
-    const editor = container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '要望')
-    clickButton(editor, 'この画面を初期値に戻す')
-    clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
-    selectByLabel(container, '要望')
-    expect(tileLabels(container)).toContain('大丈夫')
+    const editor = () => container.querySelector('.phrase-editor') as HTMLElement
+    const labels = () =>
+      Array.from(editor().querySelectorAll('.phrase-row label:first-child input')).map(
+        (i) => (i as HTMLInputElement).value,
+      )
+    const groups = ['不快', '不快・その他', '痛い場所', '要望', '気分']
+    for (const g of groups) {
+      clickButton(editor(), g)
+      expect(labels(), g).toEqual(['テレビ'])
+      expect(editor().textContent).not.toContain('この画面を初期値に戻す')
+    }
+    const reset = () => container.querySelector('.caregiver-reset-button') as HTMLElement
+    fireEvent.click(reset())
+    fireEvent.click(reset())
     expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').phrases).toEqual({})
+    for (const g of groups) {
+      clickButton(editor(), g)
+      expect(labels().length, g).toBeGreaterThan(1)
+      expect(labels(), g).not.toContain('テレビ')
+    }
   })
 
   it('Issue #8: 目安(8項目)を超えると警告を出す', () => {
@@ -1916,12 +1938,14 @@ describe('App', () => {
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
     })
 
-    it('緊急なしの解除ボタンは無効で何も起きない(A→解除→B)', () => {
+    it('緊急なしでは解除ボタンが出ない(A→メニュー開閉→B)', () => {
       const { container } = render(() => <App />)
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // home index2=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい (A)
       expect(h1Text(container)).toBe('はい。')
-      clearEmergencyViaMenu(container) // 緊急なしの解除ボタン(disabled で何も起きない)
+      fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
+      expect(container.querySelector('.caregiver-panel')).not.toBeNull()
+      expect(container.querySelector('.caregiver-emergency-clear')).toBeNull()
       expect(h1Text(container)).toBe('はい。') // 直前の伝達は消えない
       closeCaregiverMenu(container)
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // 緊急→もう一度→はい→いいえ
@@ -2219,12 +2243,12 @@ describe('App', () => {
   // Issue #31: 介助者メニューの上部カテゴリタブ(ARIA tablist)
   describe('Issue #31: 介助者メニューのカテゴリタブ', () => {
     const TAB_LABELS = [
-      '端末の状態',
+      '使用準備',
       'スキャン',
-      'モールス',
       '音と振動',
       '表示',
       'フレーズ',
+      'モールス',
       'データ',
       'このアプリ',
     ]
@@ -2248,7 +2272,7 @@ describe('App', () => {
     function openAndFocus(label: string) {
       const view = render(() => <App />)
       openCaregiverMenu(view.container)
-      if (label !== '端末の状態') selectCaregiverTab(view.container, label)
+      if (label !== '使用準備') selectCaregiverTab(view.container, label)
       const tab = tabByLabel(view.container, label)
       tab.focus()
       return { ...view, tab }
@@ -2269,11 +2293,11 @@ describe('App', () => {
       expect(tabs(container).map((t) => t.textContent)).toEqual(TAB_LABELS)
     })
 
-    it('開いた直後は「端末の状態」だけが選択され tabindex=0、他 7 つは未選択で tabindex=-1', () => {
+    it('開いた直後は「使用準備」だけが選択され tabindex=0、他 7 つは未選択で tabindex=-1', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       tabs(container).forEach((t) => {
-        const isStatus = t.textContent === '端末の状態'
+        const isStatus = t.textContent === '使用準備'
         expect(t.getAttribute('aria-selected')).toBe(String(isStatus))
         expect(t.getAttribute('tabindex')).toBe(isStatus ? '0' : '-1')
       })
@@ -2297,7 +2321,7 @@ describe('App', () => {
       openCaregiverMenu(container)
       selectCaregiverTab(container, 'スキャン')
       const scan = tabByLabel(container, 'スキャン')
-      const status = tabByLabel(container, '端末の状態')
+      const status = tabByLabel(container, '使用準備')
       expect(scan.getAttribute('aria-selected')).toBe('true')
       expect(scan.getAttribute('tabindex')).toBe('0')
       expect(scan.classList.contains('active')).toBe(true)
@@ -2308,10 +2332,10 @@ describe('App', () => {
     })
 
     it.each([
-      ['ArrowRight', '端末の状態', 'スキャン'],
-      ['ArrowLeft', 'スキャン', '端末の状態'],
-      ['Home', '表示', '端末の状態'],
-      ['End', '端末の状態', 'このアプリ'],
+      ['ArrowRight', '使用準備', 'スキャン'],
+      ['ArrowLeft', 'スキャン', '使用準備'],
+      ['Home', '表示', '使用準備'],
+      ['End', '使用準備', 'このアプリ'],
     ])(
       'タブにフォーカス中の %s で選択とフォーカスが移り、メニューは開いたまま・既定動作は止める(%s→%s)',
       (key, from, to) => {
@@ -2327,25 +2351,25 @@ describe('App', () => {
     it('末尾で ArrowRight は先頭へ、先頭で ArrowLeft は末尾へ循環する', () => {
       const last = openAndFocus('このアプリ')
       fireEvent.keyDown(last.tab, { key: 'ArrowRight' })
-      expect(selectedLabel(last.container)).toBe('端末の状態')
+      expect(selectedLabel(last.container)).toBe('使用準備')
       cleanup()
-      const first = openAndFocus('端末の状態')
+      const first = openAndFocus('使用準備')
       fireEvent.keyDown(first.tab, { key: 'ArrowLeft' })
       expect(selectedLabel(first.container)).toBe('このアプリ')
     })
 
     it('矢印キー 1 回でタブは 1 つだけ進む(二重移動しない)', () => {
-      const { container, tab } = openAndFocus('端末の状態')
+      const { container, tab } = openAndFocus('使用準備')
       fireEvent.keyDown(tab, { key: 'ArrowRight' })
       expect(selectedLabel(container)).toBe('スキャン')
       fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowRight' })
-      expect(selectedLabel(container)).toBe('モールス')
+      expect(selectedLabel(container)).toBe('音と振動')
     })
 
     it.each(['Enter', ' '])(
       'タブにフォーカス中の「%s」は本人のスイッチ入力として閉じ、項目は実行されない',
       (key) => {
-        const { container, tab } = openAndFocus('端末の状態')
+        const { container, tab } = openAndFocus('使用準備')
         fireEvent.keyDown(tab, { key })
         expect(menuOpen(container)).toBe(false)
         expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
@@ -2355,7 +2379,7 @@ describe('App', () => {
     it.each(['Escape', 'Tab', 'ArrowDown', 'a', 'AudioVolumeUp'])(
       'Issue #30 回帰: タブにフォーカスがあっても「%s」では閉じる(タブ移動の例外は左右/Home/End だけ)',
       (key) => {
-        const { container, tab } = openAndFocus('端末の状態')
+        const { container, tab } = openAndFocus('使用準備')
         fireEvent.keyDown(tab, { key })
         expect(menuOpen(container)).toBe(false)
       },
@@ -2374,7 +2398,7 @@ describe('App', () => {
       const tabBefore = selectedLabel(container)
       fireEvent.keyDown(target, { key: 'ArrowRight' })
       expect(menuOpen(container)).toBe(false)
-      expect(tabBefore).toBe('端末の状態')
+      expect(tabBefore).toBe('使用準備')
     })
 
     it('フォーカス無し(window)の ArrowRight でも閉じる', () => {
@@ -2389,7 +2413,7 @@ describe('App', () => {
       fireEvent.keyDown(window, { key: 'ArrowRight' })
       expect(h1Text(container)).toBe('緊急です。来てください。') // Space と同じく先頭項目を選ぶスイッチ扱い
       openCaregiverMenu(container)
-      expect(selectedLabel(container)).toBe('端末の状態')
+      expect(selectedLabel(container)).toBe('使用準備')
     })
 
     it('入力欄での ArrowLeft は閉じず、タブも動かない', () => {
@@ -2404,8 +2428,8 @@ describe('App', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container) // 開いた時刻(t=0)
       vi.advanceTimersByTime(20000)
-      fireEvent.pointerDown(tabByLabel(container, '端末の状態')) // 最後の延長(t=20s)
-      const tab = tabByLabel(container, '端末の状態')
+      fireEvent.pointerDown(tabByLabel(container, '使用準備')) // 最後の延長(t=20s)
+      const tab = tabByLabel(container, '使用準備')
       tab.focus()
       let focused: HTMLElement = tab
       for (let i = 0; i < 5; i += 1) {
@@ -2431,35 +2455,35 @@ describe('App', () => {
       expect(menuOpen(container)).toBe(false)
     })
 
-    it('フレーズタブで閉じて開き直すと「状態」タブから始まる', () => {
+    it('フレーズタブで閉じて開き直すと「使用準備」タブから始まる', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       selectCaregiverTab(container, 'フレーズ')
       fireEvent.click(buttonByText(container, '閉じる'))
       openCaregiverMenu(container)
-      expect(selectedLabel(container)).toBe('端末の状態')
+      expect(selectedLabel(container)).toBe('使用準備')
     })
 
-    it('無操作の自動クローズ後に開き直しても「状態」タブから始まる', () => {
+    it('無操作の自動クローズ後に開き直しても「使用準備」タブから始まる', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       selectCaregiverTab(container, '表示')
       vi.advanceTimersByTime(IDLE_MS)
       expect(menuOpen(container)).toBe(false)
       openCaregiverMenu(container)
-      expect(selectedLabel(container)).toBe('端末の状態')
+      expect(selectedLabel(container)).toBe('使用準備')
     })
 
-    it('介助者ボタンの pointerdown と click が両方発火しても「状態」タブに固定される', () => {
+    it('介助者ボタンの pointerdown と click が両方発火しても「使用準備」タブに固定される', () => {
       const { container } = render(() => <App />)
       const button = container.querySelector('.caregiver-button') as HTMLElement
       fireEvent.pointerDown(button)
       fireEvent.click(button)
       expect(container.querySelectorAll('.caregiver-panel').length).toBe(1)
-      expect(selectedLabel(container)).toBe('端末の状態')
+      expect(selectedLabel(container)).toBe('使用準備')
     })
 
-    it('他タブを選んだ後に介助者ボタンを押しても「状態」へ戻らない', () => {
+    it('他タブを選んだ後に介助者ボタンを押しても「使用準備」へ戻らない', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       selectCaregiverTab(container, '表示')
@@ -2467,8 +2491,9 @@ describe('App', () => {
       expect(selectedLabel(container)).toBe('表示')
     })
 
-    it('全 8 タブで「緊急を解除」と「閉じる」が常設される', () => {
+    it('緊急中は全 8 タブで「緊急を解除」と「閉じる」が常設される', () => {
       const { container } = render(() => <App />)
+      activateEmergency()
       openCaregiverMenu(container)
       for (const label of TAB_LABELS) {
         selectCaregiverTab(container, label)
@@ -2491,14 +2516,14 @@ describe('App', () => {
       expect(menuOpen(container)).toBe(false)
     })
 
-    it('緊急状態であっても介助者メニューは「状態」タブから開く', () => {
+    it('緊急状態であっても介助者メニューは「使用準備」タブから開く', () => {
       const { container } = render(() => <App />)
       activateEmergency()
       openCaregiverMenu(container)
-      expect(selectedLabel(container)).toBe('端末の状態')
+      expect(selectedLabel(container)).toBe('使用準備')
     })
 
-    it('他のタブへ移ると「端末の状態」の内容は DOM から消え、フレーズ以外では .phrase-editor も無い', () => {
+    it('他のタブへ移ると「使用準備」の内容は DOM から消え、フレーズ以外では .phrase-editor も無い', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       expect(container.querySelector('.caregiver-panel')?.textContent).toContain('画面スリープ防止')
@@ -2587,8 +2612,8 @@ describe('App', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       for (const label of TAB_LABELS) selectCaregiverTab(container, label)
-      tabByLabel(container, '端末の状態').focus()
-      selectCaregiverTab(container, '端末の状態')
+      tabByLabel(container, '使用準備').focus()
+      selectCaregiverTab(container, '使用準備')
       for (let i = 0; i < TAB_LABELS.length + 1; i += 1) {
         fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowRight' })
       }
@@ -2601,7 +2626,7 @@ describe('App', () => {
       ;(HTMLElement.prototype as unknown as { scrollIntoView: unknown }).scrollIntoView =
         scrollIntoView
       try {
-        const { container, tab } = openAndFocus('端末の状態')
+        const { container, tab } = openAndFocus('使用準備')
         fireEvent.keyDown(tab, { key: 'ArrowRight' })
         expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' })
         expect(scrollIntoView.mock.instances.at(-1)).toBe(tabByLabel(container, 'スキャン'))
@@ -2615,7 +2640,7 @@ describe('App', () => {
     it.each(['ctrlKey', 'altKey', 'metaKey'])(
       '%s 付きの ArrowRight はタブ移動の例外にせず、ブラウザ/OS ショートカット扱いで従来どおり閉じる',
       (modifier) => {
-        const { container, tab } = openAndFocus('端末の状態')
+        const { container, tab } = openAndFocus('使用準備')
         fireEvent.keyDown(tab, { key: 'ArrowRight', [modifier]: true })
         expect(menuOpen(container)).toBe(false)
       },
@@ -2786,11 +2811,11 @@ describe('App', () => {
       expect(saved().intervalMs).toBe(3000)
     })
 
-    it('設定全体を一括で戻すボタンは無い。データタブ・端末の状態・このアプリにはリセットが出ない', () => {
+    it('設定全体を一括で戻すボタンは無い。データタブ・使用準備・このアプリにはリセットが出ない', () => {
       const { container } = openTab('データ')
       expect(container.querySelector('.caregiver-reset')).toBeNull()
       expect(container.textContent).not.toContain('設定を既定に戻す')
-      for (const label of ['端末の状態', 'このアプリ']) {
+      for (const label of ['使用準備', 'このアプリ']) {
         selectCaregiverTab(container, label)
         expect(container.querySelector('.caregiver-reset')).toBeNull()
       }
