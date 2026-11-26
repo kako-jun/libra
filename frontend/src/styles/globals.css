@@ -532,7 +532,10 @@ h1[data-fit='single'] {
    式は .tile の子(ラベル・予告・山形アイコン)でも宣言し直す: カスタムプロパティの var() は宣言した
    要素で置き換わるので、子で宣言し直さないと、コンテナクエリ(.tile の大きさ)で子の
    --label-fit-chars を変えても式に効かない(ホームのアイコンを上に置くセル。下の .grid-home)。
-   cqi/cqb はどちらで宣言しても使う側(.tile の子)で .tile を基準に解決されるので、値は同じ */
+   cqi/cqb はどちらで宣言しても使う側(.tile の子)で .tile を基準に解決されるので、値は同じ。
+   注意: .tile > * はタイルの直接の子すべてに当たる。将来タイルに子を足すと、その子もこの式を持ち、
+   その子で使う --tile-label-font などの cq 単位は(.tile を基準に)その子の側で解決される。子を
+   コンテナ(container-type)にすると基準がその子に変わるので、タイルの子をコンテナにしない */
 .tile,
 .tile > *,
 .font-size-sample {
@@ -2027,12 +2030,21 @@ h1[data-fit='single'] {
 }
 
 /* 動きを減らす設定(prefers-reduced-motion)では点滅させず、同じ黄色の枠を止めたまま出す。
-   伝え直したことは、枠と伝達欄の見出し「直前に伝えたこと（もう一度）」で分かる */
+   伝え直したことは、枠と伝達欄の見出し「直前に伝えたこと（もう一度）」で分かる。
+   続けてもう一度押したときも見た目が変わるよう、回数の偶奇で枠の太さを変える(6px / 10px。
+   動きではなく静的な差。色は同じ --scan-ring なのでコントラストは変わらない) */
 @media (prefers-reduced-motion: reduce) {
   .repeat-pulse-a,
   .repeat-pulse-b {
     animation: none;
+  }
+
+  .repeat-pulse-a {
     box-shadow: inset 0 0 0 6px var(--scan-ring);
+  }
+
+  .repeat-pulse-b {
+    box-shadow: inset 0 0 0 10px var(--scan-ring);
   }
 }
 

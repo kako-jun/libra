@@ -7,6 +7,7 @@
 // - no-overlap: 案内領域・「介助者用」ボタンがタイルと重ならない
 // - heading-fit / xlarge-fit / font-size-monotonic: 見出し・ラベルが収まり、文字サイズが単調に効く
 // - issue37-small-viewport / tight-labels-and-ring / preview-two-lines-overlap / morse-legend-fit: 狭い画面・緊急・プレビューの崩れ
+// - repeat-pulse-reduced-motion: 「もう一度」の点滅が動きを減らす設定で止まり、続けて押すと枠の太さが変わる
 
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
@@ -1593,6 +1594,77 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
   return failures
 }
 
+/**
+ * PR #124: 「もう一度」の点滅は、動きを減らす設定(prefers-reduced-motion: reduce)では止め、黄色の枠を
+ * 止めたまま出す。続けて押したときも見た目が変わるよう、回数の偶奇で枠の太さ(6px / 10px)が変わる。
+ * 通常の設定では従来どおりアニメーションする。computed style で確かめる
+ */
+async function checkRepeatPulseReducedMotion(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  try {
+    for (const reducedMotion of ['reduce', 'no-preference']) {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        reducedMotion,
+      })
+      const page = await context.newPage()
+      await page.addInitScript(() =>
+        window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 5000 })),
+      )
+      await page.goto(`http://localhost:${port}/`)
+      await page.waitForTimeout(300)
+      const tap = async (label) => {
+        await page
+          .locator('.grid-board .tile')
+          .filter({ has: page.getByText(label, { exact: true }) })
+          .first()
+          .click()
+        // 画面が変わった直後のクリックは無視されるので、間を空ける
+        await page.waitForTimeout(800)
+      }
+      const panelStyle = () =>
+        page.evaluate(() => {
+          const panel = document.querySelector('.message-panel')
+          const style = getComputedStyle(panel)
+          return {
+            pulse: ['repeat-pulse-a', 'repeat-pulse-b'].find((c) => panel.classList.contains(c)),
+            animation: style.animationName,
+            shadow: style.boxShadow,
+          }
+        })
+      await tap('はい')
+      await tap('もう一度')
+      const first = await panelStyle()
+      await tap('もう一度')
+      const second = await panelStyle()
+      const name = `[repeat-pulse ${reducedMotion}]`
+      if (!first.pulse || !second.pulse || first.pulse === second.pulse) {
+        failures.push(`${name} 偶奇のクラスが切り替わっていない ${JSON.stringify({ first, second })}`)
+      }
+      if (reducedMotion === 'reduce') {
+        if (first.animation !== 'none' || second.animation !== 'none') {
+          failures.push(`${name} 動きを減らす設定なのにアニメーションしている`)
+        }
+        if (!/inset/.test(first.shadow) || !/inset/.test(second.shadow)) {
+          failures.push(`${name} 止めた枠が出ていない ${JSON.stringify({ first, second })}`)
+        }
+        if (first.shadow === second.shadow) {
+          failures.push(`${name} 続けて押しても枠の見た目が変わらない(${first.shadow})`)
+        }
+      } else if (first.animation === 'none' || second.animation === 'none') {
+        failures.push(`${name} 通常の設定でアニメーションしていない`)
+      }
+      await context.close()
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
     { name: 'letters-scroll', run: checkLettersScrollLayout },
@@ -1605,6 +1677,7 @@ await runChecks(
     { name: 'tight-labels-and-ring', run: checkTightScreenLabelsAndRing },
     { name: 'morse-legend-fit', run: checkMorseLegendFit },
     { name: 'realdevice-feedback', run: checkRealDeviceFeedbackLayout },
+    { name: 'repeat-pulse-reduced-motion', run: checkRepeatPulseReducedMotion },
   ],
   { basePort: 4740 },
 )
