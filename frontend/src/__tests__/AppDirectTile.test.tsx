@@ -1,5 +1,6 @@
-// Issue #38: タイルの直接タップ/クリック(押したタイルを実行)・キー/外部スイッチ(スキャン対象を実行)・
-// 背景タップ(何も実行しない)の入力経路を固定するテスト。
+// Issue #38: タイルの直接タップ/クリック(押したタイルを実行)・キー/外部スイッチ(スキャン対象を実行)の入力経路と、
+// click の二重実行を防ぐ押下の記録を固定するテスト。パネル・ボタン以外の押下は黄色のパネルを選ぶ
+// (Issue #134。その全体は AppPressAnywhere.test.tsx)。
 //
 // デシジョンテーブル(入力 × メニュー × 入力モード × 画面 → 実行されるもの):
 //   入力                 | 介助者メニュー | モード         | 画面            | 実行
@@ -8,12 +9,14 @@
 //   タイル pointerdown   | 閉             | 長押し・画面変 | 通常            | 無視(別項目を実行しない)
 //   タイル pointerdown   | 閉             | 連打           | 通常            | 2回目は無視(連打無視区間)
 //   タイル pointerdown   | 閉             | -              | 緊急詳細        | 押したタイル(戻る/詳細)
-//   タイル pointerdown   | 閉             | -              | モールス        | (タイル非表示。符号は押下の長さ。背景は無効)
+//   タイル pointerdown   | 閉             | -              | モールス        | (タイル非表示。背景の押下も符号。Issue #134)
 //   タイル pointerdown   | 開             | -              | 通常            | 何も実行しない(メニューは閉じる)
 //   タイル click 単独    | 閉             | -              | 通常            | 押したタイル(支援技術の合成 click)
 //   タイル click 単独    | 開             | -              | 通常            | 何も実行しない
 //   pointerdown→click    | 閉             | -              | 通常            | pointerdown の1回だけ(click は捨てる)
-//   背景 pointerdown/click| 閉            | -              | 通常/緊急       | 何も実行しない
+//   背景 pointerdown     | 閉             | 各モード       | 通常/緊急       | 黄色のタイル(Issue #134)
+//   背景 click 単独      | 閉             | -              | 通常/緊急       | 何も実行しない
+//   背景 主ボタン以外    | 閉             | -              | 通常            | 何も実行しない(押下の記録だけ残る)
 //   キー/外部スイッチ    | 閉             | 各モード       | 通常            | 現在のスキャン対象
 //   キー                 | 開             | -              | 通常            | 何も実行しない(閉じる)
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -70,6 +73,10 @@ function screenLabel(container: HTMLElement): string {
 const pointerClick = (el: Element, pointerId: number) =>
   fireEvent(el, new PointerEvent('click', { pointerId, bubbles: true, cancelable: true }))
 const setSettings = (value: object) => window.localStorage.setItem('libra', JSON.stringify(value))
+// 何も選ばずに押下の記録だけを残す押下(主ボタン以外)。主ボタンの背景の押下は黄色を選んで画面が変わるので、
+// click の記録の消費を見るテストはこれを使う
+const nonSelectingDown = (el: Element, pointerId: number) =>
+  fireEvent.pointerDown(el, { pointerId, button: 2 })
 
 describe('Issue #38: タイル直接選択', () => {
   let vibrate: ReturnType<typeof vi.fn>
@@ -237,8 +244,8 @@ describe('Issue #38: タイル直接選択', () => {
     })
   })
 
-  describe('背景・メッセージ欄・緊急パネルのタップは何も実行しない', () => {
-    it('.grid-board / body / メッセージ欄 の pointerdown と click は何も実行しない', () => {
+  describe('背景の click と、押下の記録による二重実行の防止', () => {
+    it('背景の click だけ(pointerdown を伴わない)は何も実行しない', () => {
       const { container } = render(() => <App />)
       vi.advanceTimersByTime(HEAD_HOLD_MS)
       const before = h1Text(container)
@@ -247,46 +254,15 @@ describe('Issue #38: タイル直接選択', () => {
         document.body,
         container.querySelector('.message-panel, h1') as Element,
       ]
-      for (const el of targets) {
-        fireEvent.pointerDown(el, { pointerId: 1 })
-        fireEvent.pointerUp(el, { pointerId: 1 })
-        fireEvent.click(el)
-      }
+      for (const el of targets) fireEvent.click(el)
       expect(h1Text(container)).toBe(before)
       expect(container.querySelector('.emergency-status-message')).toBeNull()
       expect(screenLabel(container)).toContain('ホーム')
     })
 
-    it('下限・離して決定モードでも背景の押下は決定されない', () => {
-      setSettings({ minHoldMs: 300, activateOn: 'release' })
-      const { container } = render(() => <App />)
-      const board = container.querySelector('.grid-board') as HTMLElement
-      fireEvent.pointerDown(board, { pointerId: 1 })
-      vi.advanceTimersByTime(1000)
-      fireEvent.pointerUp(board, { pointerId: 1 })
-      expect(container.querySelector('.emergency-status-message')).toBeNull()
-      expect(screenLabel(container)).toContain('ホーム')
-    })
-
-    it('緊急パネルのタップは何も実行しない(緊急状態も変わらない)', () => {
-      const { container } = render(() => <App />)
-      fireEvent.pointerDown(tile(container, '緊急'), { pointerId: 1 })
-      expect(h1Text(container)).toBe(EMERGENCY)
-      const panel = container.querySelector('.emergency-status-message') as HTMLElement
-      const screenBefore = screenLabel(container)
-      vi.advanceTimersByTime(1000)
-      fireEvent.pointerDown(panel, { pointerId: 2 })
-      fireEvent.pointerUp(panel, { pointerId: 2 })
-      fireEvent.click(panel)
-      expect(h1Text(container)).toBe(EMERGENCY)
-      expect(screenLabel(container)).toBe(screenBefore)
-    })
-
     it('背景の pointerdown に続くタイルの click は実行されない(同じ操作の click)', () => {
       const { container } = render(() => <App />)
-      fireEvent.pointerDown(container.querySelector('.grid-board') as HTMLElement, {
-        pointerId: 1,
-      })
+      nonSelectingDown(container.querySelector('.grid-board') as HTMLElement, 1)
       fireEvent.pointerUp(container.querySelector('.grid-board') as HTMLElement, { pointerId: 1 })
       fireEvent.click(tile(container, 'はい'))
       expect(h1Text(container)).not.toBe('はい。')
@@ -298,8 +274,8 @@ describe('Issue #38: タイル直接選択', () => {
     it('マルチタッチ: 1と2を押し、2を離して id2 の click を消費しても、id1 の記録は残る', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
-      fireEvent.pointerDown(board, { pointerId: 1 })
-      fireEvent.pointerDown(board, { pointerId: 2 })
+      nonSelectingDown(board, 1)
+      nonSelectingDown(board, 2)
       fireEvent.pointerUp(board, { pointerId: 2 })
       pointerClick(tile(container, 'はい'), 2)
       expect(h1Text(container)).not.toBe('はい。')
@@ -314,8 +290,8 @@ describe('Issue #38: タイル直接選択', () => {
     it('マルチタッチ: id2 を cancel しても、id1 の click は消費される(id2 の記録だけが消える)', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
-      fireEvent.pointerDown(board, { pointerId: 1 })
-      fireEvent.pointerDown(board, { pointerId: 2 })
+      nonSelectingDown(board, 1)
+      nonSelectingDown(board, 2)
       fireEvent.pointerCancel(window, { pointerId: 2 })
       pointerClick(tile(container, 'はい'), 2) // id2 の記録は無い → 合成として実行される
       expect(h1Text(container)).toBe('はい。')
@@ -328,7 +304,7 @@ describe('Issue #38: タイル直接選択', () => {
     it('記録されていない pointerId(-1)の click は合成として実行される', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
-      fireEvent.pointerDown(board, { pointerId: 1 }) // 別ポインターの記録があっても消費しない
+      nonSelectingDown(board, 1) // 別ポインターの記録があっても消費しない
       pointerClick(tile(container, 'はい'), -1)
       expect(h1Text(container)).toBe('はい。')
     })
@@ -336,7 +312,7 @@ describe('Issue #38: タイル直接選択', () => {
     it('pointerup 後に1秒以上経っても、同じ pointerId の click は消費される(合成扱いで二重実行しない)', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
-      fireEvent.pointerDown(board, { pointerId: 1 })
+      nonSelectingDown(board, 1)
       fireEvent.pointerUp(board, { pointerId: 1 })
       vi.advanceTimersByTime(2500) // メインスレッドが止まった想定
       pointerClick(tile(container, 'はい'), 1)
@@ -346,7 +322,7 @@ describe('Issue #38: タイル直接選択', () => {
     it('pointerup が届かなかった記録も、10秒を超えれば次の合成 click を捨てない', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
-      fireEvent.pointerDown(board, { pointerId: 1 })
+      nonSelectingDown(board, 1)
       vi.advanceTimersByTime(11000)
       fireEvent.click(tile(container, 'はい')) // pointerId なし → 期限切れ破棄後に合成として実行
       expect(h1Text(container)).toBe('はい。')
@@ -366,7 +342,7 @@ describe('Issue #38: タイル直接選択', () => {
     it('pointercancel した押下の記録は残らず、次の合成 click は捨てられない', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
-      fireEvent.pointerDown(board, { pointerId: 1 })
+      nonSelectingDown(board, 1)
       fireEvent.pointerCancel(window, { pointerId: 1 })
       fireEvent.click(tile(container, 'はい'))
       expect(h1Text(container)).toBe('はい。')
@@ -375,7 +351,7 @@ describe('Issue #38: タイル直接選択', () => {
     it('click が届かなかった押下の記録は、時間が経てば次の合成 click を捨てない', () => {
       const { container } = render(() => <App />)
       const board = container.querySelector('.grid-board') as HTMLElement
-      fireEvent.pointerDown(board, { pointerId: 1 })
+      nonSelectingDown(board, 1)
       fireEvent.pointerUp(board, { pointerId: 1 }) // click は祖先にも来ず消費されなかった
       vi.advanceTimersByTime(2000)
       fireEvent.click(tile(container, 'はい'))
@@ -475,7 +451,7 @@ describe('Issue #38: タイル直接選択', () => {
     })
   })
 
-  describe('モールス画面はキーのみ・背景は無効', () => {
+  describe('モールス画面はキーと背景の押下が符号になる(Issue #134)', () => {
     const enterMorseByTile = () => {
       setSettings({ morseEnabled: true })
       const view = render(() => <App />)
@@ -490,22 +466,24 @@ describe('Issue #38: タイル直接選択', () => {
       expect(container.querySelector('.grid-board.is-hidden')).not.toBeNull()
     })
 
-    it('キーの押下が符号になり、背景・パネルの押下は符号にならない', () => {
+    it('キーも背景・パネルの押下も符号になる', () => {
       const { container } = enterMorseByTile()
-      vi.advanceTimersByTime(500)
+      const code = () => container.querySelector('.morse-code')?.textContent?.trim()
+      vi.advanceTimersByTime(100)
       const panel = container.querySelector('.morse-panel') as HTMLElement
       fireEvent.pointerDown(panel, { pointerId: 2 })
       vi.advanceTimersByTime(100)
       fireEvent.pointerUp(panel, { pointerId: 2 })
+      expect(code()).toBe('・')
       fireEvent.pointerDown(document.body, { pointerId: 3 })
+      vi.advanceTimersByTime(600)
       fireEvent.pointerUp(document.body, { pointerId: 3 })
-      vi.advanceTimersByTime(200)
-      expect(container.querySelector('.morse-code')?.textContent?.trim()).toBe('')
+      expect(code()).toBe('・ －')
 
       fireEvent.keyDown(window, { key: ' ', code: 'Space' })
       vi.advanceTimersByTime(100)
       fireEvent.keyUp(window, { key: ' ', code: 'Space' })
-      expect(container.querySelector('.morse-code')?.textContent).toContain('・')
+      expect(code()).toBe('・ － ・')
     })
   })
 

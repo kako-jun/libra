@@ -95,6 +95,20 @@ function isCaregiverTabNavKey(event: KeyboardEvent): boolean {
 }
 type CaregiverTabId = (typeof CAREGIVER_TABS)[number]['id']
 
+/**
+ * それ自身の操作だけをする要素(パネル・ボタン・矢印・パンくずのリンク等)。ここ以外の場所の押下は、
+ * 黄色のパネルを選ぶ(Issue #134)。押せない状態のボタンもボタンなので、ここに含める
+ */
+const OWN_OPERATION_SELECTOR =
+  'button, a[href], input, select, textarea, label, summary, [role="button"], [role="tab"]'
+const ownOperationElement = (target: EventTarget | null): Element | null =>
+  target instanceof Element ? target.closest(OWN_OPERATION_SELECTOR) : null
+
+/** 本人画面の指示文の近くに常に出す、パネル以外の押し方の案内(Issue #134) */
+const PRESS_ANYWHERE_HINT = 'ボタン以外を押すと、黄色を選びます'
+/** モールス画面には黄色のパネルが無く、同じ押し方は符号になる */
+const MORSE_PRESS_ANYWHERE_HINT = 'ボタン以外を押すと、符号を入力します'
+
 /** 介助者用メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
 
@@ -1089,27 +1103,31 @@ export default function App() {
     })
   })
 
-  // 本人の入力は2経路だけ。①タイルの直接タップ/クリック(押したタイルを実行。onTilePointerDown)
-  // ②任意キー / Bluetooth シャッター(キー入力として届く。現在のスキャン対象を実行)。
-  // 画面の背景(タイル以外)へのタップは何も実行しない。ここではポインターの「離し・取り消し」だけ拾い、
-  // 押下(離して決定・押下時間の下限)の解放を取りこぼさないようにする。
-  // pointerdown を見たポインターの記録(ポインター単位)。続く click は同じ操作の一部なので実行しない。
+  // 本人の入力は2経路。①パネルの直接タップ/クリック(押したパネルを実行。onTilePointerDown)
+  // ②黄色のパネル(現在のスキャン対象)を実行する「オン」。任意キー / Bluetooth シャッターと、
+  // パネル・ボタン・リンク以外の場所の押下(Issue #134)がこれに当たる。介助者用メニュー表示中は働かない。
+  // pointerdown を見たポインターの記録(ポインター単位)。続く click は同じ操作の一部なのでパネルは実行しない。
   // pointerdown を伴わない click だけを支援技術の合成として実行する。背景・オーバーレイ・介助者
-  // メニューの押下も記録し、メニューを閉じた押下の click が下のタイルへ届いても実行されないようにする。
+  // メニューの押下も記録し、メニューを閉じた押下の click が下のパネルへ届いても実行されないようにする。
+  // control: 押し始めた、それ自身の操作を持つ要素(背景なら null)。タッチでは、押した瞬間に画面が変わると、
+  // 同じタップの click が指の下に現れた別のボタンへ届く(Issue #112: 開いた直後の「閉じる」)。
+  // そのため click は押し始めた要素にだけ届け、別のボタンへは届けない(1回の押下で操作は1つ)
   // downAt: pointerdown の時刻 / upAt: pointerup の時刻(押下中は null)
-  const pointerSeen = new Map<number, { downAt: number; upAt: number | null }>()
+  const pointerSeen = new Map<
+    number,
+    { downAt: number; upAt: number | null; control: Element | null }
+  >()
   const POINTER_CLICK_WINDOW_MS = 1000 // pointerup 後、click を待つ上限(取りこぼし記録の破棄)
   const POINTER_STALE_MS = 10000 // pointerup/pointercancel が届かなかった記録の破棄(保険)
   // 直近の click(capture で判定)が pointerdown に裏付けられていたか。タイルの click が読む
   let clickBackedByPointer = false
-  // 介助者用メニューを開いた pointerdown のポインター(Issue #112)。タッチでは、同じタップの click が
-  // 開いた直後のパネル(右上の「閉じる」は「介助者用」ボタンと同じ位置)へ届き、開いた瞬間に閉じていた。
-  // その 1 回の click だけをパネルへ届けない。次の押下が始まったら忘れる
-  let menuOpeningPointer: number | null = null
   onMount(() => {
     const onPointerDownCapture = (event: PointerEvent) => {
-      menuOpeningPointer = null
-      pointerSeen.set(event.pointerId, { downAt: Date.now(), upAt: null })
+      pointerSeen.set(event.pointerId, {
+        downAt: Date.now(),
+        upAt: null,
+        control: ownOperationElement(event.target),
+      })
       heldInputs.add(`pointer:${event.pointerId}`)
       idleSteps = 0
     }
@@ -1122,10 +1140,8 @@ export default function App() {
       // pointerId が実際にどうなるかは未確認で、実機確認事項(Issue #38)。
       // 一致する記録は、期限切れの判定より先に探して消費する(メインスレッドが1秒以上止まっても、
       // その押下の click を合成扱いして二重実行しないため)
-      let consumed: number | undefined
-      if (typeof pointerId === 'number') {
-        if (pointerSeen.delete(pointerId)) consumed = pointerId
-      }
+      let consumed = typeof pointerId === 'number' ? pointerSeen.get(pointerId) : undefined
+      if (typeof pointerId === 'number') pointerSeen.delete(pointerId)
       // 期限切れの記録は、消費した記録以外だけを対象に破棄する
       for (const [id, rec] of pointerSeen) {
         const expired =
@@ -1137,18 +1153,21 @@ export default function App() {
       if (consumed === undefined && typeof pointerId !== 'number') {
         const first = pointerSeen.keys().next()
         if (!first.done) {
+          consumed = pointerSeen.get(first.value)
           pointerSeen.delete(first.value)
-          consumed = first.value
         }
       }
       clickBackedByPointer = consumed !== undefined
-      if (menuOpeningPointer !== null) {
-        const sameGesture = typeof pointerId === 'number' ? pointerId === menuOpeningPointer : true
-        menuOpeningPointer = null
-        if (sameGesture && caregiverMenuOpen()) {
-          event.stopPropagation()
-          event.preventDefault()
-        }
+      // pointerId の無い click は記録を推定で消費しているので、まだ押している記録は元の押下とみなさない
+      // (click は離した後に届く)
+      if (!consumed || (typeof pointerId !== 'number' && consumed.upAt === null)) return
+      const clicked = ownOperationElement(event.target)
+      if (clicked && clicked !== consumed.control) {
+        event.stopPropagation()
+        event.preventDefault()
+        // タッチでは、同じタップの mousedown で指の下のボタンへフォーカスが移ることがある。残すと、
+        // 次のキー(本人のスイッチ)の Enter / Space がそのボタンを押してしまうので外す
+        if (clicked instanceof HTMLElement && document.activeElement === clicked) clicked.blur()
       }
     }
     const onPointerDown = (event: PointerEvent) => {
@@ -1174,7 +1193,13 @@ export default function App() {
         return
       }
 
-      // 背景(タイル以外)のタップは本人入力として扱わない。タイルは onTilePointerDown が処理する
+      // パネル・ボタン・リンクはそれ自身の操作だけをする(パネルは onTilePointerDown が処理する)。
+      // それ以外の場所の押下は、キーと同じ「オン」: 押し始めに黄色だったパネルを実行する(モールス画面では
+      // 符号になる)。主ボタン(タッチ・左クリック・ペン先)だけ。判定は capture で取った押し始めの要素を使う
+      // (パネルの押下で画面が切り替わると、ここへ来た時点で target は DOM から外れている)
+      if (event.button !== 0) return
+      if (pointerSeen.get(event.pointerId)?.control) return
+      input.down(`pointer:${event.pointerId}`)
     }
 
     const onPointerUp = (event: PointerEvent) => {
@@ -1369,9 +1394,8 @@ export default function App() {
     queueMicrotask(updateTabScroll)
   })
 
-  const openCaregiverMenu = (openingPointerId?: number) => {
+  const openCaregiverMenu = () => {
     if (caregiverMenuOpen()) return
-    menuOpeningPointer = openingPointerId ?? null
     idleSteps = 0
     input.cancelAll()
     setCaregiverTab('status')
@@ -1512,7 +1536,12 @@ export default function App() {
               </For>
             </ol>
           </nav>
-          <h2>{currentScreenGuidance()}</h2>
+          <div class="screen-guide-text">
+            <h2>{currentScreenGuidance()}</h2>
+            <p class="screen-guide-hint">
+              {screen() === 'morse' ? MORSE_PRESS_ANYWHERE_HINT : PRESS_ANYWHERE_HINT}
+            </p>
+          </div>
         </div>
 
         {/* Issue #122: 介助者が選んだ好きな画像。未設定なら何も出さない(余白も増やさない) */}
@@ -1525,7 +1554,7 @@ export default function App() {
             type="button"
             class="caregiver-button"
             data-caregiver-control
-            onPointerDown={(event) => openCaregiverMenu(event.pointerId)}
+            onPointerDown={() => openCaregiverMenu()}
             onClick={() => openCaregiverMenu()}
             onContextMenu={(event) => event.preventDefault()}
             aria-label="介助者用メニューを開く"

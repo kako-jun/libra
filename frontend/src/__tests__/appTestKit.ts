@@ -141,10 +141,14 @@ export function tap(c: HTMLElement, label: string, pointerId = 1): void {
   // 押下で画面が切り替わるとタイルは DOM から外れ、そこへ送った pointerup は window へ届かない
   // (押しっぱなし扱いになり、無入力周回が数えられなくなる)。実機では指の下の要素から届くので、
   // つながっていれば元のタイル、外れていれば body へ送る
-  fireEvent.pointerUp(target.isConnected ? target : document.body, {
+  const releasedOn = target.isConnected ? target : document.body
+  fireEvent.pointerUp(releasedOn, {
     pointerId,
     pointerType: 'touch',
   })
+  // 実ブラウザは、同じポインターの click も続けて届ける。届けないと押下の記録が残り、次の操作の
+  // click(pointerId の無いテスト上の click)がこの押下の続きと見なされる(Issue #134)
+  pointerClick(releasedOn, pointerId)
 }
 
 /** カーソルが目的の項目に来るまで待って、スイッチ(キー)を押す */
