@@ -378,7 +378,7 @@ describe('Issue #113 / #115: パンくずの家アイコン・タイルのアイ
     expect(items[1].querySelector('svg.breadcrumb-home')).toBeNull()
   })
 
-  it('ホームの全項目にアイコンが付く(取り消し・モールスを含む)。aria-label と文字は変わらない', () => {
+  it('ホームの全項目にアイコンが付く(モールスを含む)。aria-label と文字は変わらない', () => {
     window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true }))
     const { container } = render(() => <App />)
     const check = () => {
@@ -393,7 +393,6 @@ describe('Issue #113 / #115: パンくずの家アイコン・タイルのアイ
     expect(tileLabels(container)).toContain('モールス')
     check()
     tap(container, 'はい')
-    expect(tileLabels(container)).toContain('取り消し')
     check()
   })
 

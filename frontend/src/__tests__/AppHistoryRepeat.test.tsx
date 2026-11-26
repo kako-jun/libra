@@ -4,8 +4,8 @@
 // 観点(#120 履歴)
 //   矢印の出し分け  | 0〜1 件は出さない(戻れる伝達が無い) / 2 件以上で左右に出る。端の側は disabled
 //   見出し          | 過去を表示中は「過去に伝えたこと（N件前）」。最新に戻ると「直前に伝えたこと」
-//   最新へ戻る契機  | 新しい伝達・緊急・取り消し・もう一度(過去の表示が本人の新しい伝達を隠さない)
-//   取り消し        | 取り消した伝達は履歴からも消える。最新が空で履歴ありなら「いまは、伝えたことがありません。」で枠を残す
+//   最新へ戻る契機  | 新しい伝達・緊急・もう一度(過去の表示が本人の新しい伝達を隠さない)
+//   最新が空        | 介助者の緊急解除の後は、履歴ありなら「いまは、伝えたことがありません。」で枠を残す
 //   上限            | 50 件。51 件目で最古を捨てる(境界 49 件前まで戻れ、50 件前は無い)
 //   ガード          | 介助者用メニューを開いている間は動かない / スキャン対象ではない / 押した後のキーはスキャン対象を実行
 //   保存しない      | 再読み込みで履歴は残らない
@@ -15,12 +15,11 @@
 //   伝達あり × 緊急なし → 直前の伝達の振動(はい/いいえ/通常)と読み上げを出し直す。見出し「（もう一度）」
 //   伝達なし × 緊急中   → 緊急の呼び出し(振動・読み上げ)を出し直し、緊急の帯を点滅させる
 //   伝達あり × 緊急中   → 直前の伝達を出し直す(緊急の呼び出しではない)
-//   どの場合も新しい伝達ではない → 履歴の件数・取り消しの猶予は変えない
+//   どの場合も新しい伝達ではない → 履歴の件数は変えない
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import { HAPTIC_PATTERNS } from '../lib/feedback'
-import { UNDO_LAPS } from '../lib/idleLaps'
 import {
   EMERGENCY_MESSAGE,
   clearDeviceCalls,
@@ -136,27 +135,6 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
       expect(messagePanel(container).classList.contains('is-past')).toBe(false)
     })
 
-    it('取り消し(取り消した伝達は履歴からも消える)', () => {
-      const { container } = render(() => <App />)
-      sendMessages(container, ['はい', 'いいえ', 'はい'])
-      fireEvent.click(prevButton(container) as HTMLElement)
-      tap(container, '取り消し')
-      expect(panelLabel(container)).toBe(LATEST)
-      // 最新が空・履歴は残る → 文を隠して「いまは…」を出し、枠は残す
-      expect(shownMessage(container)).toBeNull()
-      expect(noneText(container)).toBe('いまは、伝えたことがありません。')
-      expect(messagePanel(container).classList.contains('is-empty')).toBe(false)
-      expect(messagePanel(container).classList.contains('is-cleared')).toBe(true)
-
-      // 残っている履歴は はい・いいえ の 2 件(取り消した 3 件目の「はい」は無い)
-      fireEvent.click(prevButton(container) as HTMLElement)
-      expect(shownMessage(container)).toBe('いいえ。')
-      expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
-      fireEvent.click(prevButton(container) as HTMLElement)
-      expect(shownMessage(container)).toBe('はい。')
-      expect(prevButton(container)?.disabled).toBe(true)
-    })
-
     it('もう一度', () => {
       const { container } = render(() => <App />)
       sendMessages(container, ['はい', 'いいえ'])
@@ -169,12 +147,29 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     })
   })
 
-  it('1 件だけ伝えて取り消すと、履歴も 0 件になり枠ごと消える(矢印も出ない)', () => {
+  it('最新が空で履歴が残るとき(緊急を介助者が解除した後)は、枠を残して「いまは…」を出し、矢印で振り返れる', () => {
     const { container } = render(() => <App />)
-    tap(container, 'はい')
-    tap(container, '取り消し')
-    expect(messagePanel(container).classList.contains('is-empty')).toBe(true)
-    expect(prevButton(container)).toBeNull()
+    sendMessages(container, ['はい', 'いいえ'])
+    tap(container, '緊急')
+    openCaregiverMenu(container)
+    ;(container.querySelector('.caregiver-emergency-clear') as HTMLElement).click()
+    closeCaregiverMenu(container)
+    expect(panelLabel(container)).toBe(LATEST)
+    // 最新が空・履歴は残る → 文を隠して「いまは…」を出し、枠は残す
+    expect(shownMessage(container)).toBeNull()
+    expect(noneText(container)).toBe('いまは、伝えたことがありません。')
+    expect(messagePanel(container).classList.contains('is-empty')).toBe(false)
+    expect(messagePanel(container).classList.contains('is-cleared')).toBe(true)
+
+    // 履歴は新しい順に 緊急の呼び出し → いいえ → はい
+    fireEvent.click(prevButton(container) as HTMLElement)
+    expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
+    expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    fireEvent.click(prevButton(container) as HTMLElement)
+    expect(shownMessage(container)).toBe('いいえ。')
+    fireEvent.click(prevButton(container) as HTMLElement)
+    expect(shownMessage(container)).toBe('はい。')
+    expect(prevButton(container)?.disabled).toBe(true)
   })
 
   it('境界: 50 件までは最古まで戻れ、51 件目を伝えると最古が捨てられる', () => {
@@ -294,15 +289,8 @@ describe('Issue #123: もう一度', () => {
       expect(vibrations()).toContainEqual(HAPTIC_PATTERNS.accepted)
     })
 
-    it('取り消したあと・介助者が緊急を解除したあとも、何も伝えない', () => {
+    it('介助者が緊急を解除したあとも、何も伝えない', () => {
       const { container } = render(() => <App />)
-      tap(container, 'はい')
-      tap(container, '取り消し')
-      expect(repeatTile(container).classList.contains('tile-unavailable')).toBe(true)
-      clearDeviceCalls()
-      tap(container, 'もう一度')
-      expect(spoken()).toEqual([])
-
       tap(container, '緊急')
       openCaregiverMenu(container)
       ;(container.querySelector('.caregiver-emergency-clear') as HTMLElement).click()
@@ -377,43 +365,6 @@ describe('Issue #123: もう一度', () => {
       fireEvent.click(prevButton(container) as HTMLElement)
       expect(shownMessage(container)).toBe('はい。')
       expect(prevButton(container)?.disabled).toBe(true)
-    })
-
-    it('新しい伝達ではない: 取り消しの猶予(直後の 2 周)を延ばし直さない', () => {
-      const { container } = render(() => <App />)
-      tap(container, 'はい')
-      expect(tileLabels(container)).toContain('取り消し')
-      // 1 周回す(猶予の残りは 1 周)
-      const lap = () => {
-        const n = tileLabels(container).length
-        let changes = 0
-        let last = scanningLabel(container)
-        for (let t = 0; t < 120_000 && changes < n; t += 100) {
-          vi.advanceTimersByTime(100)
-          const now = scanningLabel(container)
-          if (now !== last) {
-            changes += 1
-            last = now
-          }
-        }
-      }
-      lap()
-      expect(tileLabels(container)).toContain('取り消し')
-      tap(container, 'もう一度')
-      expect(tileLabels(container)).toContain('取り消し')
-      // 伝達のときのように 2 周ぶんへ戻っていれば、1 周ではまだ消えない。延ばし直していなければ 1 周で消える
-      lap()
-      expect(UNDO_LAPS).toBe(2)
-      expect(tileLabels(container)).not.toContain('取り消し')
-    })
-
-    it('取り消しを選ぶと、もう一度は再び何も伝えない状態に戻る', () => {
-      const { container } = render(() => <App />)
-      tap(container, 'はい')
-      tap(container, 'もう一度')
-      tap(container, '取り消し')
-      expect(panelLabel(container)).toBe(LATEST)
-      expect(repeatTile(container).classList.contains('tile-unavailable')).toBe(true)
     })
   })
 

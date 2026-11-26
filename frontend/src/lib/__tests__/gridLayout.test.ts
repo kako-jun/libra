@@ -3,8 +3,6 @@ import {
   computeGridLayout,
   GRID_FILL_MAX_ITEMS,
   GRIDS,
-  HOME_WIDE_PORTRAIT_GRID,
-  HOME_WIDE_PORTRAIT_MIN_WIDTH,
   LANDSCAPE_GRID,
   PORTRAIT_GRID,
 } from '../gridLayout'
@@ -48,27 +46,40 @@ describe('computeGridLayout (固定格子, Issue #47)', () => {
 })
 
 describe('computeGridLayout の格子の種類(Issue #121/#123)', () => {
-  it('home は縦長 2×5 / 横長 5×2 の10セルで、10項目までスクロールしない', () => {
-    expect(computeGridLayout(10, 390, 844, 'home')).toEqual({ fill: true, cols: 2, rows: 5 })
-    expect(computeGridLayout(10, 844, 390, 'home')).toEqual({ fill: true, cols: 5, rows: 2 })
+  it('home の通常 8 項目は、空きマスの無い 縦長 2×4 / 横長 4×2(Issue #127)', () => {
+    expect(computeGridLayout(8, 390, 844, 'home')).toEqual({ fill: true, cols: 2, rows: 4 })
+    expect(computeGridLayout(8, 844, 390, 'home')).toEqual({ fill: true, cols: 4, rows: 2 })
+  })
+
+  it('home のモールス使用 9 項目は 縦長 2×5 / 横長 5×2(空き 1 マス)。11 項目はスクロール', () => {
+    expect(computeGridLayout(9, 390, 844, 'home')).toEqual({ fill: true, cols: 2, rows: 5 })
+    expect(computeGridLayout(9, 844, 390, 'home')).toEqual({ fill: true, cols: 5, rows: 2 })
     expect(computeGridLayout(11, 844, 390, 'home').fill).toBe(false)
   })
 
-  it('home は幅の広い縦長(幅 600px 以上。タブレット縦など)では 3×3 の 9 セル。境界は 599 / 600', () => {
-    expect(HOME_WIDE_PORTRAIT_MIN_WIDTH).toBe(600)
-    expect(HOME_WIDE_PORTRAIT_GRID).toEqual({ cols: 3, rows: 3 })
-    expect(computeGridLayout(9, 768, 1024, 'home')).toEqual({ fill: true, cols: 3, rows: 3 })
-    expect(computeGridLayout(8, 600, 960, 'home')).toEqual({ fill: true, cols: 3, rows: 3 })
-    // 正方形も縦長に含む
-    expect(computeGridLayout(9, 600, 600, 'home')).toEqual({ fill: true, cols: 3, rows: 3 })
-    expect(computeGridLayout(9, 599, 960, 'home')).toEqual({ fill: true, cols: 2, rows: 5 })
-    // 横長は幅が広くても 5×2 のまま。standard / letters は幅で変わらない
-    expect(computeGridLayout(9, 1024, 768, 'home')).toEqual({ fill: true, cols: 5, rows: 2 })
-    expect(computeGridLayout(8, 768, 1024)).toEqual({ fill: true, ...PORTRAIT_GRID })
-    expect(computeGridLayout(14, 768, 1024, 'letters')).toEqual({ fill: true, cols: 3, rows: 5 })
-    // ホームの項目は最大 9 なので 9 セルで足りる。10 項目になったらスクロール(固定格子に押し込まない)
-    expect(computeGridLayout(10, 768, 1024, 'home').fill).toBe(false)
-  })
+  // Issue #126: はい・いいえ は並びの添字 2・3。列数から段と列を出し、同じ段で左右に隣り合うことを確かめる
+  it.each([
+    [320, 568],
+    [390, 844],
+    [600, 600],
+    [600, 960],
+    [768, 1024],
+    [1024, 1366],
+    [568, 320],
+    [844, 390],
+    [1024, 768],
+    [1280, 720],
+  ])(
+    '%ix%i: 8 項目でも 9 項目でも はい と いいえ は同じ段で隣り合い、丸ごと空く段が無い',
+    (w, h) => {
+      for (const count of [8, 9]) {
+        const { fill, cols, rows } = computeGridLayout(count, w, h, 'home')
+        expect(fill).toBe(true)
+        expect(Math.floor(2 / cols)).toBe(Math.floor(3 / cols))
+        expect(cols * rows - count).toBe(count === 8 ? 0 : 1)
+      }
+    },
+  )
 
   it('letters は縦長 3×5 / 横長 5×3 の15セルで、行段階の14項目をスクロールなしで出す', () => {
     expect(computeGridLayout(14, 390, 844, 'letters')).toEqual({ fill: true, cols: 3, rows: 5 })
@@ -77,11 +88,14 @@ describe('computeGridLayout の格子の種類(Issue #121/#123)', () => {
     expect(computeGridLayout(16, 844, 390, 'letters').fill).toBe(false)
   })
 
-  it('種類を省略すると standard(8セル)で、home / letters は項目数によらず同じ格子を返す', () => {
+  it('種類を省略すると standard(8セル)で、letters は項目数によらず同じ格子、home は 8 項目以内なら standard と同じ', () => {
     expect(computeGridLayout(8, 844, 390)).toEqual(computeGridLayout(8, 844, 390, 'standard'))
     expect(computeGridLayout(9, 844, 390).fill).toBe(false)
-    for (const n of [1, 5, 10]) {
-      expect(computeGridLayout(n, 390, 844, 'home')).toEqual({ fill: true, cols: 2, rows: 5 })
+    for (const n of [1, 5, 14]) {
+      expect(computeGridLayout(n, 390, 844, 'letters')).toEqual({ fill: true, cols: 3, rows: 5 })
+    }
+    for (const n of [1, 5, 8]) {
+      expect(computeGridLayout(n, 390, 844, 'home')).toEqual(computeGridLayout(n, 390, 844))
     }
     expect(GRIDS.standard.portrait).toEqual(PORTRAIT_GRID)
     expect(GRIDS.standard.landscape).toEqual(LANDSCAPE_GRID)

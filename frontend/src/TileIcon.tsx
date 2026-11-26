@@ -32,13 +32,6 @@ const ICONS: Record<string, () => JSX.Element> = {
       <path d="M18.5 5.5 5.5 18.5" />
     </>
   ),
-  // 取り消し: 左へ引き返す矢印
-  undo: () => (
-    <>
-      <path d="M9 14 4.5 9.5 9 5" />
-      <path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11H9" />
-    </>
-  ),
   // 快: 笑顔
   'comfort-nav': () => (
     <>

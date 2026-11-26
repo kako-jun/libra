@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { advanceIdleSteps, IDLE_LAPS_BEFORE_HOME, UNDO_LAPS } from '../idleLaps'
+import { advanceIdleSteps, IDLE_LAPS_BEFORE_HOME } from '../idleLaps'
 
 /** n ステップ進めた結果(最後の 1 歩の結果を返す) */
 function run(itemCount: number, n: number, start = 0) {
@@ -14,8 +14,7 @@ function run(itemCount: number, n: number, start = 0) {
 }
 
 describe('advanceIdleSteps', () => {
-  it('周回の定数は取り消し2周・無入力3周', () => {
-    expect(UNDO_LAPS).toBe(2)
+  it('周回の定数は無入力3周', () => {
     expect(IDLE_LAPS_BEFORE_HOME).toBe(3)
   })
 

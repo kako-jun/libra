@@ -80,6 +80,8 @@ describe('Issue #134: ボタン以外を押すと黄色のパネルを選ぶ', (
       ['押し方の案内', '.screen-guide-hint'],
       ['パンくずの現在地(リンクでない)', '.screen-breadcrumb li'],
     ])('%s', (_name, selector) => {
+      // ホームの空きマスはモールス使用の 9 項目のときだけある(Issue #127)
+      if (selector === '.tile-empty') setSettings({ morseEnabled: true })
       const { container } = render(() => <App />)
       scanToYes(container)
       const before = vibrations().length

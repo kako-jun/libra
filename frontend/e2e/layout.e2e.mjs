@@ -8,6 +8,7 @@
 // - heading-fit / xlarge-fit / font-size-monotonic: 見出し・ラベルが収まり、文字サイズが単調に効く
 // - issue37-small-viewport / tight-labels-and-ring / preview-two-lines-overlap / morse-legend-fit: 狭い画面・緊急・プレビューの崩れ
 // - repeat-pulse-reduced-motion: 「もう一度」の点滅が動きを減らす設定で止まり、続けて押すと枠の太さが変わる
+// - home-grid: ホームは 8 項目で空きマス無し・モールス使用の 9 項目は空き 1 マス。はい と いいえ は同じ段で隣り合う(#126/#127)
 
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
@@ -509,12 +510,14 @@ async function checkFontSizeMonotonicity(chromium, port) {
     [1280, 720],
   ]
   const FONTS = ['standard', 'large', 'xlarge']
-  // PR#16 4巡目 should-b: ホーム＋取り消し(伝達直後の1周だけ出る取り消しボタン)・
+  // PR#16 4巡目 should-b: 伝達直後のホーム(伝達欄が出て格子が低くなる)・モールス使用の 9 項目のホーム・
   // 痛い(不快→痛い、部位選択画面)・緊急中ホーム(緊急詳細を5件積んでホームへ戻った
   // 状態、emergencyActive のまま)を追加
   const SCREENS = [
     ['home', []],
-    ['home+undo', ['3']],
+    ['home+sent', ['3']],
+    ['home+morse', [], { morseEnabled: true }],
+    ['home+morse+sent', ['3'], { morseEnabled: true }],
     ['discomfort', ['6']],
     ['discomfortOther', ['6', '8']],
     ['comfort', ['5']],
@@ -534,7 +537,7 @@ async function checkFontSizeMonotonicity(chromium, port) {
 
   try {
     for (const [vw, vh] of VPS) {
-      for (const [screenName, keys] of SCREENS) {
+      for (const [screenName, keys, extraSettings = {}] of SCREENS) {
         let prevSize = null
         let prevFont = ''
         let standardSize = null
@@ -543,7 +546,7 @@ async function checkFontSizeMonotonicity(chromium, port) {
           const page = await context.newPage()
           await page.addInitScript(
             (settings) => window.localStorage.setItem('libra', JSON.stringify(settings)),
-            { fontSize: font, intervalMs: 5000 },
+            { fontSize: font, intervalMs: 5000, ...extraSettings },
           )
           await page.goto(base)
           await page.waitForTimeout(200)
@@ -577,7 +580,7 @@ async function checkFontSizeMonotonicity(chromium, port) {
           // 1.25倍差になる設計。1.15はその下に余裕を持たせた下限値)
           if (font === 'xlarge' && size != null && standardSize != null) {
             const atFloor = standardSize <= LABEL_FLOOR_PX + 0.5
-            // ホーム(10 セル格子 #123)・文字盤(15 セル格子 #121)も他の画面と同じ 1.15 倍を求める
+            // ホーム(8 セル / モールス使用は 10 セル #127)・文字盤(15 セル格子 #121)も他の画面と同じ 1.15 倍を求める
             // (PR #124 レビュー S1。一時 1.05 倍に緩めていたのを、ラベルの式を直して戻した)
             const minRatio = 1.15
             if (!atFloor && size < standardSize * minRatio - 0.1) {
@@ -646,13 +649,14 @@ async function checkFontSizeMonotonicity(chromium, port) {
       // 実測21.80px。Issue #47 で縦長が 2列×4行の固定格子になり(従来は項目数に応じて3行)、
       // Issue #34 でスキャン枠の厚みぶん余白を取るためセルが低くなった結果。
       // 4巡目の回帰値(22.0px)より下だが、固定格子の仕様上の値なので新しい実測を基準にする
-      // ホーム(390x844)は 10 セル格子(#123、縦 2×5)。アイコンを同じ行に置き、セルの高さの係数を
-      // 引き上げた後の実測 28.39px を基準に 27(旧: 8 セルの実測 21.80px で 21)
+      // ホーム(390x844)。10 セル(縦 2×5)のときの実測 28.39px を基準にした下限 27 を、8 セル(2×4、#127)でも保つ
       { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 27 },
       { vw: 390, vh: 844, screenName: 'discomfort', keys: ['6'], minPx: 21 },
-      // 旧実測41.17px(min 34)。タブレット縦のホームは 3×3(gridLayout.ts の HOME_WIDE_PORTRAIT_GRID)で、
-      // 実測 37.47px。下限は元の 34 のまま(PR #124 レビュー S1)
-      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
+      // タブレット縦のホームは 2×4(#126 で 3×3 をやめた)。下限は、3×3 だったときの実測
+      // (768x1024 37.47 / 820x1180 40.27 / 1024x1366 51.25px)を下回らないこと(旧下限: 768x1024 は 34)
+      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 37.4 },
+      { vw: 820, vh: 1180, screenName: 'home', keys: [], minPx: 40.2 },
+      { vw: 1024, vh: 1366, screenName: 'home', keys: [], minPx: 51.2 },
       // 実測28.79px
       { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['6'], minPx: 27 },
     ]
@@ -939,7 +943,7 @@ async function checkTightScreenLabelsAndRing(chromium, port) {
       await context.close()
     }
     // ③ 最小セル(PR #124 レビュー S2): 320x568・特大・高コントラスト・緊急詳細5件+伝達(はい)のホーム。
-    // ホームは 10 セル(縦 2×5)でアイコン付き。ラベルは 13px 以上・1 行・枠の帯へ食い込まない
+    // ホームは 10 セル(モールス使用の 9 項目で縦 2×5)でアイコン付き。ラベルは 13px 以上・1 行・枠の帯へ食い込まない
     {
       const { context, page } = await open(
         { width: 320, height: 568 },
@@ -1071,7 +1075,7 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
       fivePath,
       true,
     ],
-    // ホームは #123 で 10 セル格子(縦 2×5)になり、320x480 の特大ではセルが低く 2 行モードにならない
+    // モールス使用のホームは 10 セル格子(縦 2×5)で、320x480 の特大ではセルが低く 2 行モードにならない
     // (実測: 遷移タイル 4 つ・2 行モード 0)。同じ狭さ・特大で 2 行モードになる 8 セルの不快画面で検査する
     // #134 の押し方の案内は 320px 幅で 2 行になり、格子が約 37px 低くなる。320x480 の特大(不快)と 320x568 の
     // ホームは 2 行モードの高さに届かず 1 行になる(「狭いときは1行」の仕様どおり)。元の寸法は重なりの検査を
@@ -1288,7 +1292,7 @@ async function checkMorseLegendFit(chromium, port) {
  * - #115: ホームの全タイルのアイコンが見えていて、色は文字と同じ
  * - #120: 履歴が 2 件になると矢印が見え(display:none でない)、押すと「過去に伝えたこと（1件前）」になる。
  *         矢印は見出しの文字(h1)と重ならず、44px 以上の押せる大きさがある
- * - #122: 好きな画像が「介助者用」ボタンの左に見え、ボタン・タイルと重ならず、ホームの 10 セルが画面内に収まる
+ * - #122: 好きな画像が「介助者用」ボタンの左に見え、ボタン・タイルと重ならず、ホームの全セルが画面内に収まる
  */
 async function checkRealDeviceFeedbackLayout(chromium, port) {
   const server = await startServer('plain', port)
@@ -1327,7 +1331,7 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
           // ---- 伝達 2 件(はい → いいえ)で、直前の伝達の枠と履歴の矢印を出す ----
           await page.keyboard.press('3') // はい(#123 で 3 番目)
           await page.waitForTimeout(700)
-          await page.keyboard.press('4') // いいえ(取り消しは いいえ の後ろなので 4 番目のまま)
+          await page.keyboard.press('4') // いいえ(4 番目)
           await page.waitForTimeout(700)
 
           const m = await page.evaluate(() => {
@@ -1927,6 +1931,202 @@ async function checkCaregiverTabReveal(chromium, port) {
   return failures
 }
 
+/**
+ * Issue #126/#127: ホームの格子を実描画で測る。
+ * - 通常の 8 項目は縦長 2列×4行 / 横長 4列×2行で空きマス無し。モールス使用の 9 項目は 2列×5行 / 5列×2行で空き 1 マス
+ * - 丸ごと空く行が無い
+ * - はい と いいえ は同じ段(上端・下端が一致)で、いいえ が はい のすぐ右に接する
+ * - 全タイルが画面内で、ラベルはタイルからはみ出さない
+ * - ラベルは下の予告に重ならない。アイコンはラベルの文字に重ならず、出ているときは通常の配色で文字の
+ *   0.98 倍以上、高コントラストで 0.85 倍以上(高さが足りないセルではアイコンを縮める。通常の配色では
+ *   ほぼ文字と同じ大きさが下限。高コントラストは標準より小さくならないよう文字だけが数 px 大きくなる(#34)
+ *   ぶん、アイコンは文字の約 0.87 倍まで下がる)
+ * 起動直後・伝達後・緊急中(詳細を伝えてホームへ戻った状態)× 文字サイズ 標準/大/特大 × 高コントラスト OFF/ON で確かめる
+ */
+async function checkHomeGrid(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  const viewports = [
+    [320, 568],
+    [390, 844],
+    [600, 600],
+    [600, 960],
+    [768, 1024],
+    [800, 1280],
+    [820, 1180],
+    [834, 1194],
+    [1024, 1366],
+    [568, 320],
+    [667, 375],
+    [844, 390],
+    [1024, 768],
+    [1280, 720],
+  ]
+  const looks = ['standard', 'large', 'xlarge'].flatMap((size) => [
+    [size, false],
+    [size, true],
+  ])
+  const states = [
+    ['起動直後', []],
+    ['伝達後', ['3']],
+    ['緊急中', ['1', '2', '3']], // 緊急 → 苦しい(詳細の 2 番目)でホームへ戻り、はい を伝える
+  ]
+  try {
+    for (const [width, height] of viewports) {
+      for (const morseEnabled of [false, true]) {
+        for (const [fontSize, highContrast] of looks) {
+          for (const [stateName, keys] of states) {
+            const name = `[home-grid ${width}x${height} ${morseEnabled ? 'モールス' : '通常'} ${fontSize}${highContrast ? ' 高コントラスト' : ''} ${stateName}]`
+            const context = await browser.newContext({ viewport: { width, height } })
+            const page = await context.newPage()
+            await page.addInitScript(
+              (value) => window.localStorage.setItem('libra', JSON.stringify(value)),
+              { intervalMs: 60000, debounceMs: 0, morseEnabled, fontSize, highContrast },
+            )
+            await page.goto(`http://localhost:${port}/?dev`)
+            await page.waitForTimeout(150)
+            for (const key of keys) {
+              await page.keyboard.press(key)
+              await page.waitForTimeout(100)
+            }
+            await page.evaluate(() => document.fonts.ready)
+            await page.waitForTimeout(100)
+            const m = await page.evaluate(() => {
+              const board = document.querySelector('.grid-board')
+              const style = getComputedStyle(board)
+              const read = (el) => {
+                const r = el.getBoundingClientRect()
+                const label = el.querySelector('.tile-label')
+                const range = document.createRange()
+                if (label) range.selectNodeContents(label)
+                const l = label ? range.getBoundingClientRect() : null
+                const preview = el.querySelector('.tile-preview')
+                const pr = preview ? preview.getBoundingClientRect() : null
+                // アイコンと、ラベルの文字(テキストノードの行矩形)の交差。縦横どちらも食い込んだ量を見る
+                const icon = el.querySelector('.tile-icon')
+                const shown = icon && getComputedStyle(icon).display !== 'none'
+                const ir = shown ? icon.getBoundingClientRect() : null
+                let iconOverlap = 0
+                if (ir && label) {
+                  const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT)
+                  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                    if (!n.textContent.trim()) continue
+                    const text = document.createRange()
+                    text.selectNodeContents(n)
+                    for (const x of text.getClientRects()) {
+                      iconOverlap = Math.max(
+                        iconOverlap,
+                        Math.min(
+                          Math.min(ir.right, x.right) - Math.max(ir.left, x.left),
+                          Math.min(ir.bottom, x.bottom) - Math.max(ir.top, x.top),
+                        ),
+                      )
+                    }
+                  }
+                }
+                return {
+                  iconOverlap,
+                  // 出ているアイコンの大きさ ÷ ラベルの文字の大きさ
+                  iconRatio: ir ? ir.height / parseFloat(getComputedStyle(label).fontSize) : null,
+                  previewOverlap: l && pr && pr.height > 0 ? l.bottom - pr.top : 0,
+                  text: label?.textContent ?? '',
+                  display: getComputedStyle(el).display,
+                  top: r.top,
+                  bottom: r.bottom,
+                  left: r.left,
+                  right: r.right,
+                  labelOut: l
+                    ? Math.max(r.left - l.left, l.right - r.right, r.top - l.top, l.bottom - r.bottom)
+                    : 0,
+                }
+              }
+              return {
+                crumb: document.querySelector('.screen-breadcrumb')?.textContent?.trim(),
+                emergency: Boolean(document.querySelector('.emergency-status')),
+                cols: style.gridTemplateColumns.split(' ').length,
+                rows: style.gridTemplateRows.split(' ').length,
+                scroll: board.scrollHeight - board.clientHeight,
+                tiles: [...board.querySelectorAll('.tile')].map(read),
+                empties: [...board.querySelectorAll('.tile-empty')].map(read),
+                vw: window.innerWidth,
+                vh: window.innerHeight,
+              }
+            })
+            await context.close()
+            const landscape = width > height
+            const count = morseEnabled ? 9 : 8
+            const expected = landscape
+              ? { cols: morseEnabled ? 5 : 4, rows: 2 }
+              : { cols: 2, rows: morseEnabled ? 5 : 4 }
+            if (m.crumb !== 'ホーム' || m.emergency !== (stateName === '緊急中')) {
+              failures.push(`${name} 想定の状態でない(${m.crumb} emergency=${m.emergency})`)
+              continue
+            }
+            if (m.tiles.length !== count) failures.push(`${name} 項目数 ${m.tiles.length}`)
+            if (m.cols !== expected.cols || m.rows !== expected.rows) {
+              failures.push(
+                `${name} 格子 ${m.cols}列×${m.rows}行(期待 ${expected.cols}列×${expected.rows}行)`,
+              )
+            }
+            const emptyExpected = morseEnabled ? 1 : 0
+            if (m.empties.length !== emptyExpected) {
+              failures.push(`${name} 空きマス ${m.empties.length}(期待 ${emptyExpected})`)
+            }
+            const rowTops = new Set(m.tiles.map((t) => Math.round(t.top)))
+            if (rowTops.size !== expected.rows) {
+              failures.push(`${name} タイルのある段が ${rowTops.size}(期待 ${expected.rows})`)
+            }
+            const yes = m.tiles.find((t) => t.text === 'はい')
+            const no = m.tiles.find((t) => t.text === 'いいえ')
+            if (
+              !yes ||
+              !no ||
+              Math.abs(yes.top - no.top) > 0.5 ||
+              Math.abs(yes.bottom - no.bottom) > 0.5 ||
+              Math.abs(no.left - yes.right) > 1
+            ) {
+              failures.push(
+                `${name} はい と いいえ が同じ段で隣り合っていない ${JSON.stringify({ yes, no })}`,
+              )
+            }
+            if (m.scroll > 1) failures.push(`${name} 格子がスクロールする(${m.scroll}px)`)
+            for (const t of m.tiles) {
+              if (t.display === 'none') failures.push(`${name} 「${t.text}」が非表示`)
+              if (t.left < -1 || t.top < -1 || t.right > m.vw + 1 || t.bottom > m.vh + 1) {
+                failures.push(`${name} 「${t.text}」が画面外`)
+              }
+              if (t.previewOverlap > 1) {
+                failures.push(
+                  `${name} 「${t.text}」のラベルと予告が ${t.previewOverlap.toFixed(1)}px 重なる`,
+                )
+              }
+              if (t.iconOverlap > 1) {
+                failures.push(
+                  `${name} 「${t.text}」のアイコンがラベルの文字に ${t.iconOverlap.toFixed(1)}px 重なる`,
+                )
+              }
+              const minIconRatio = highContrast ? 0.85 : 0.98
+              if (t.iconRatio !== null && t.iconRatio < minIconRatio) {
+                failures.push(
+                  `${name} 「${t.text}」のアイコンが小さすぎる(文字の ${t.iconRatio.toFixed(2)} 倍。下限 ${minIconRatio})`,
+                )
+              }
+              if (t.labelOut > 1) {
+                failures.push(`${name} 「${t.text}」のラベルがタイルから ${t.labelOut.toFixed(1)}px はみ出す`)
+              }
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
     { name: 'caregiver-choices', run: checkCaregiverChoices },
@@ -1942,6 +2142,7 @@ await runChecks(
     { name: 'morse-legend-fit', run: checkMorseLegendFit },
     { name: 'realdevice-feedback', run: checkRealDeviceFeedbackLayout },
     { name: 'repeat-pulse-reduced-motion', run: checkRepeatPulseReducedMotion },
+    { name: 'home-grid', run: checkHomeGrid },
   ],
   { basePort: 4740 },
 )
