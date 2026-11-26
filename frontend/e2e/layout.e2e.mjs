@@ -1062,7 +1062,7 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
     '痰を取ってほしい',
     '不快',
   ]
-  // [名前, viewport, 設定, 押すタイルの列, 最後に「戻る」でホームへ戻るか]
+  // [名前, viewport, 設定, 押すタイルの列, 最後に「戻る」でホームへ戻るか, 2行モードが無くてもよいか]
   const cases = [
     [
       '390x844 特大 高コントラスト 緊急詳細5件+伝達 ホーム',
@@ -1073,8 +1073,13 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
     ],
     // ホームは #123 で 10 セル格子(縦 2×5)になり、320x480 の特大ではセルが低く 2 行モードにならない
     // (実測: 遷移タイル 4 つ・2 行モード 0)。同じ狭さ・特大で 2 行モードになる 8 セルの不快画面で検査する
-    ['320x480 特大 不快', { width: 320, height: 480 }, { fontSize: 'xlarge' }, ['不快'], false],
-    ['320x568 標準 ホーム', { width: 320, height: 568 }, { fontSize: 'standard' }, [], false],
+    // #134 の押し方の案内は 320px 幅で 2 行になり、格子が約 37px 低くなる。320x480 の特大(不快)と 320x568 の
+    // ホームは 2 行モードの高さに届かず 1 行になる(「狭いときは1行」の仕様どおり)。元の寸法は重なりの検査を
+    // 続け(1 行でも検査する)、2 行モードの検査は、同じ幅で 2 行になる少し高い寸法で行う(空振りは失敗のまま)
+    ['320x480 特大 不快', { width: 320, height: 480 }, { fontSize: 'xlarge' }, ['不快'], false, true],
+    ['320x568 標準 ホーム', { width: 320, height: 568 }, { fontSize: 'standard' }, [], false, true],
+    ['320x520 特大 不快', { width: 320, height: 520 }, { fontSize: 'xlarge' }, ['不快'], false],
+    ['320x620 標準 ホーム', { width: 320, height: 620 }, { fontSize: 'standard' }, [], false],
     [
       '844x390 特大 高コントラスト 緊急詳細5件+伝達 不快',
       { width: 844, height: 390 },
@@ -1096,7 +1101,7 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
     await page.waitForTimeout(900)
   }
   try {
-    for (const [name, viewport, settings, path, goHome] of cases) {
+    for (const [name, viewport, settings, path, goHome, oneLineAllowed] of cases) {
       const context = await browser.newContext({ viewport })
       const page = await context.newPage()
       await page.addInitScript(
@@ -1157,7 +1162,8 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
         }
         return out
       })
-      if (result.twoLine === 0) {
+      console.log(`[preview-two-lines ${name}] 遷移タイル ${result.nav}・2行モード ${result.twoLine}`)
+      if (result.nav === 0 || (result.twoLine === 0 && !oneLineAllowed)) {
         failures.push(
           `[preview-two-lines ${name}] 2行モードの遷移タイルが無い(検査が空振り) ${JSON.stringify(result)}`,
         )

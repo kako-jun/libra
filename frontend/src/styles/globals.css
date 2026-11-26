@@ -1775,6 +1775,26 @@ h1[data-fit='single'] {
   overflow-wrap: anywhere;
 }
 
+/* Issue #134: 指示文と、押し方の短い案内。幅があれば同じ行に並べ、案内の分の高さを格子から奪わない */
+.screen-guide-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 1em;
+}
+
+.screen-guide-hint {
+  margin: 0;
+  color: var(--text-muted);
+  /* Issue #81: 本人が読む補助文字は 16px(1rem)未満にしない */
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.15;
+  word-break: auto-phrase;
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
 .screen-guide .message-panel-controls {
   /* Issue #58: 旧 grid-area 名(controls)が未定義のため、介助者ボタンが2段目に落ちて
      案内の枠が約44px高くなっていた。見出しと同じ行の右端に置く(モールス画面と同じ配置) */
@@ -2017,6 +2037,17 @@ h1[data-fit='single'] {
     padding-right: 8px;
     padding-left: 8px;
   }
+
+  /* 案内欄も同じ理由で詰める。左の余白と、文字と「介助者用」ボタンの間隔。詰めないと 390px 幅で
+     押し方の案内(全角17字 = 272px。Issue #134)が2行になり、格子が約18px低くなって2行の予告が消える。
+     ボタンの大きさと、ボタンの上・右・下の余白(Issue #109)は変えない */
+  .screen-guide {
+    padding-left: 8px;
+  }
+
+  .screen-guide .message-panel-controls {
+    margin-left: 4px;
+  }
 }
 
 .message-panel-body {
@@ -2215,7 +2246,7 @@ h1[data-fit='single'] {
 /* ===================================================================
    Issue #122: 利用者の好きな画像。本人が一番よく見る、案内欄の「介助者用」ボタンの左に出す。
    縦横比は保ち(切り抜かない)、高さは画面の高さに合わせる。低い画面では格子を優先して小さくする。
-   タップしても何も起きない(背景と同じ。タイルではない)。
+   ボタンではないので、押すと背景と同じく黄色のパネルを選ぶ(Issue #134。画像自体は pointer-events:none)。
    =================================================================== */
 .guide-photo {
   grid-column: 2;
