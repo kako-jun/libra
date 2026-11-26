@@ -33,7 +33,6 @@ export default function PhraseEditor(props: PhraseEditorProps) {
 
   // 編集中の一覧。編集が無いグループは既定値(編集した時点で既定のコピーから始める)
   const list = () => phrasesFor(group(), props.settings.phrases)
-  const isCustomized = () => props.settings.phrases[group()] !== undefined
 
   const save = (next: Phrase[]) =>
     props.updateSettings({ phrases: { ...props.settings.phrases, [group()]: next } })
@@ -58,12 +57,6 @@ export default function PhraseEditor(props: PhraseEditorProps) {
     const items = editable()
     if (items.length >= MAX_PHRASES_PER_GROUP) return
     save([...items, { id: newPhraseId(items), label: '', text: '' }])
-  }
-
-  const resetGroup = () => {
-    const rest = { ...props.settings.phrases }
-    delete rest[group()]
-    props.updateSettings({ phrases: rest })
   }
 
   return (
@@ -177,14 +170,6 @@ export default function PhraseEditor(props: PhraseEditorProps) {
           disabled={editable().length >= MAX_PHRASES_PER_GROUP}
         >
           フレーズを追加
-        </button>
-        <button
-          type="button"
-          class="caregiver-action"
-          onClick={resetGroup}
-          disabled={!isCustomized()}
-        >
-          この画面を初期値に戻す
         </button>
       </div>
     </section>

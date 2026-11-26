@@ -552,7 +552,7 @@ async function checkFontSizeMonotonicity(chromium, port) {
             await page.waitForTimeout(80)
           }
           await page.waitForTimeout(150)
-          // BIZ UDPGothic(日本語, 数百KB〜1.7MB)の読み込み前はフォールバックフォントで
+          // BIZ UDGothic(1ウェイト約2.2MB)の読み込み前はフォールバックフォントで
           // 描画され、行送り・折返しが変わってラベル/見出しの高さが一時的にずれることが
           // ある。document.fonts.ready を待たないと、この読み込みタイミングのブレだけで
           // 誤って「文字サイズを上げたら縮んだ」と判定してしまう(実際のUIロジックの
@@ -1110,7 +1110,7 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
       await page.waitForTimeout(300)
       for (const label of path) await hold(page, label)
       if (goHome) await hold(page, '戻る')
-      // BIZ UDPGothic の読み込み前は代替フォントで折り返しが変わるので、測定の直前に待つ
+      // BIZ UDGothic の読み込み前は代替フォントで折り返しが変わるので、測定の直前に待つ
       await page.evaluate(() => document.fonts.ready)
       const result = await page.evaluate(() => {
         // 見えている行だけ: 要素の箱の外(-webkit-line-clamp で隠れた行)は除き、箱でクリップする
@@ -1563,7 +1563,9 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
               size: s.fontSize,
             }
           })
-          for (const key of ['bg', 'color', 'radius', 'weight', 'size']) {
+          // 面・文字色・角丸は同じ。文字の大きさと太さは Issue #163 で分けた(本人画面は 18px の太字のまま、
+          // メニュー内の「閉じる」は通常の 16px)。それぞれの値は下で固定する
+          for (const key of ['bg', 'color', 'radius']) {
             if (m.buttonStyle[key] !== close[key]) {
               failures.push(
                 `[realdevice ${label}] #109 「介助者用」と「閉じる」の ${key} が違う(${m.buttonStyle[key]} / ${close[key]})`,
@@ -1575,6 +1577,11 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
           }
           if (Number(m.buttonStyle.weight) < 700) {
             failures.push(`[realdevice ${label}] #109 太字でない(${m.buttonStyle.weight})`)
+          }
+          if (close.size !== '16px' || close.weight !== '400') {
+            failures.push(
+              `[realdevice ${label}] #163 「閉じる」が 16px の通常の太さでない(${close.size} ${close.weight})`,
+            )
           }
           if (m.buttonStyle.size !== '18px') {
             failures.push(
@@ -1641,7 +1648,9 @@ async function checkRepeatPulseReducedMotion(chromium, port) {
       const second = await panelStyle()
       const name = `[repeat-pulse ${reducedMotion}]`
       if (!first.pulse || !second.pulse || first.pulse === second.pulse) {
-        failures.push(`${name} 偶奇のクラスが切り替わっていない ${JSON.stringify({ first, second })}`)
+        failures.push(
+          `${name} 偶奇のクラスが切り替わっていない ${JSON.stringify({ first, second })}`,
+        )
       }
       if (reducedMotion === 'reduce') {
         if (first.animation !== 'none' || second.animation !== 'none') {
