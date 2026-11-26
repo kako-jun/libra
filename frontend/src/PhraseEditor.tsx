@@ -22,6 +22,73 @@ import {
 } from './lib/phrases'
 import { exportSettingsJson, parseSettingsJson, type Settings } from './lib/settings'
 
+/**
+ * 編集先の一覧(Issue #145)。ホームからのパネルの階層を字下げで示す。name は実際のパネル名で、
+ * group が無いもの(快)は、編集できるフレーズが無いので見出しだけ。上から読む順は PHRASE_GROUPS と同じ
+ */
+interface PhraseTargetNode {
+  name: string
+  group?: PhraseGroup
+  children?: PhraseTargetNode[]
+}
+
+export const PHRASE_TARGET_TREE: PhraseTargetNode[] = [
+  { name: '快', children: [{ name: '気分', group: 'feelings' }] },
+  {
+    name: '不快',
+    group: 'discomfort',
+    children: [
+      { name: '痛い', group: 'painLocation' },
+      { name: 'その他', group: 'discomfortOther' },
+    ],
+  },
+  { name: '要望', group: 'moodRequest' },
+]
+
+function PhraseTargetList(props: {
+  nodes: PhraseTargetNode[]
+  selected: PhraseGroup
+  onSelect: (group: PhraseGroup) => void
+}) {
+  return (
+    <ul>
+      <For each={props.nodes}>
+        {(node) => (
+          <li>
+            <Show
+              when={node.group}
+              fallback={<span class="phrase-target-parent">{node.name}</span>}
+            >
+              {(target) => (
+                <label class="phrase-target-option">
+                  <input
+                    type="radio"
+                    name="phrase-target"
+                    value={target()}
+                    aria-label={PHRASE_GROUP_LABELS[target()]}
+                    checked={props.selected === target()}
+                    onChange={() => props.onSelect(target())}
+                  />
+                  <span>{node.name}</span>
+                </label>
+              )}
+            </Show>
+            <Show when={node.children}>
+              {(children) => (
+                <PhraseTargetList
+                  nodes={children()}
+                  selected={props.selected}
+                  onSelect={props.onSelect}
+                />
+              )}
+            </Show>
+          </li>
+        )}
+      </For>
+    </ul>
+  )
+}
+
 interface PhraseEditorProps {
   settings: Settings
   updateSettings: (patch: Partial<Settings>) => void
@@ -66,14 +133,11 @@ export default function PhraseEditor(props: PhraseEditorProps) {
         の位置と内容は変えられません。ここで編集できるのは下のフレーズだけです。
       </p>
 
-      <div class="caregiver-choice-options">
-        <For each={PHRASE_GROUPS}>
-          {(g) => (
-            <button type="button" classList={{ active: group() === g }} onClick={() => setGroup(g)}>
-              {PHRASE_GROUP_LABELS[g]}
-            </button>
-          )}
-        </For>
+      <div class="phrase-target">
+        <span id="phrase-target-label">編集する画面</span>
+        <div role="radiogroup" aria-labelledby="phrase-target-label">
+          <PhraseTargetList nodes={PHRASE_TARGET_TREE} selected={group()} onSelect={setGroup} />
+        </div>
       </div>
 
       <Show when={group() === 'painLocation'}>

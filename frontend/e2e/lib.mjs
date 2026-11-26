@@ -90,10 +90,13 @@ export async function runChecks(checks, { basePort }) {
   }
   const { chromium } = await import('playwright')
   const allFailures = []
-  let port = basePort
+  // E2E_PORT を指定すると、全検査をそのポート 1 つで順に実行する(並行して別の作業ツリーで e2e を
+  // 回すときの衝突を避ける。各検査はサーバーを閉じてから次へ進む)
+  const fixedPort = Number(process.env.E2E_PORT) || 0
+  let port = fixedPort || basePort
   for (const { name, run } of checks) {
     if (only && !only.includes(name)) {
-      port += 1
+      if (!fixedPort) port += 1
       continue
     }
     console.log(`--- checking: ${name} (port ${port}) ---`)
@@ -105,7 +108,7 @@ export async function runChecks(checks, { basePort }) {
       failures.forEach((f) => console.error(f))
     }
     allFailures.push(...failures)
-    port += 1
+    if (!fixedPort) port += 1
   }
   if (allFailures.length > 0) {
     console.error(`\n${allFailures.length} 件失敗した`)

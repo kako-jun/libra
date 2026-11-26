@@ -1,6 +1,6 @@
 // 画面に組み込んだ部分の結合テスト(lib の単体は photo.test.ts / appInfo.test.ts / settings.test.ts)。
 //   Issue #122 好きな画像   | 表示・未設定・壊れた保存値 / 選ぶ(成功・読めない・保存できない) / 消す / 表示タブの初期値に戻す / 触れても何も伝えない / 書き出しに入らない
-//   Issue #118 このアプリ   | リンク(別画面・noopener) / 利用回数(失敗=取得できません・成功=桁区切り) / 取得は起動時 1 回だけ・本番以外は get / バージョン
+//   Issue #118 このアプリ   | リンク(別画面・noopener) / 利用回数(失敗=取得できません・成功=桁区切り) / 取得は起動時 1 回だけ・本番以外は get / バージョン(日付だけ #146) / 使い方の本文は無い(#149)
 //   Issue #112 開いた直後   | 開いたタップの click が「閉じる」に届いても閉じない。別のポインター・次のタップ・キーボードの click は閉じる
 //   Issue #113 / #115 アイコン | パンくず先頭「ホーム」の家アイコン / ホームの全項目・戻るのアイコン / フレーズ項目には無い / 読み上げ名・文字は変えない
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +8,7 @@ import { fireEvent, render, waitFor } from '@solidjs/testing-library'
 import App from '../App'
 import * as photoModule from '../lib/photo'
 import { PHOTO_STORAGE_KEY } from '../lib/photo'
-import { AUTHOR_SITE_URL, FEEDBACK_BBS_URL, USER_GUIDE_URL } from '../lib/appInfo'
+import { AUTHOR_SITE_URL, FEEDBACK_BBS_URL, FONT_LICENSE_URL, USER_GUIDE_URL } from '../lib/appInfo'
 import { exportSettingsJson, loadSettings } from '../lib/settings'
 import {
   buttonByText,
@@ -194,13 +194,20 @@ describe('Issue #118: 「このアプリ」タブ', () => {
     expect(tabs.at(-1)).toBe('このアプリ')
   })
 
-  it('3 つのリンクは仕様の行き先で、別の画面で開き、開いた先へ参照元を渡さない', () => {
+  it('4 つのリンクは仕様の行き先で、別の画面で開き、開いた先へ参照元を渡さない', () => {
     const { container } = render(() => <App />)
     const panel = openAbout(container)
     const links = Object.fromEntries(
       Array.from(panel.querySelectorAll('a')).map((a) => [a.textContent?.trim(), a]),
     )
-    expect(links['くわしい使い方']?.getAttribute('href')).toBe(USER_GUIDE_URL)
+    expect(Object.keys(links)).toEqual([
+      '利用ガイド',
+      'ご意見・ご感想の掲示板',
+      '作者サイト',
+      'フォントのライセンス',
+    ])
+    expect(links['利用ガイド']?.getAttribute('href')).toBe(USER_GUIDE_URL)
+    expect(links['フォントのライセンス']?.getAttribute('href')).toBe(FONT_LICENSE_URL)
     expect(links['ご意見・ご感想の掲示板']?.getAttribute('href')).toBe(FEEDBACK_BBS_URL)
     expect(links['作者サイト']?.getAttribute('href')).toBe(AUTHOR_SITE_URL)
     for (const a of Object.values(links)) {
@@ -211,23 +218,28 @@ describe('Issue #118: 「このアプリ」タブ', () => {
     }
   })
 
-  it('リンクの案内は、開いている間はスイッチと画面の消灯防止が効かず、戻る必要があることを伝える', () => {
+  // Issue #149: 使い方の本文はアプリ内に置かず、利用ガイドへのリンクだけにする
+  it('使い方の本文・見出し・リンク下の注意書きは無い', () => {
     const { container } = render(() => <App />)
     const panel = openAbout(container)
-    const warning = panel.querySelector('.app-links-warning')?.textContent ?? ''
-    expect(warning).toContain('通信が必要')
-    expect(warning).toContain('スイッチの操作')
-    expect(warning).toContain('画面が消えないようにする働き')
-    expect(warning).toContain('必ずこの画面に戻ってください')
+    expect(panel.querySelector('h3, ul, ol, p')).toBeNull()
+    for (const word of ['スイッチ', 'もう一度', '緊急を解除', '見終わったら']) {
+      expect(panel.textContent).not.toContain(word)
+    }
   })
 
-  it('「使い方」は見出しで、本人・緊急・もう一度・履歴の要点を含む', () => {
-    const { container } = render(() => <App />)
-    const panel = openAbout(container)
-    expect(panel.querySelector('h3')?.textContent).toBe('使い方')
-    const text = panel.textContent ?? ''
-    for (const word of ['スイッチ', '緊急 → 緊急を解除 → 解除する', 'もう一度', '矢印']) {
-      expect(text).toContain(word)
+  // 画面から外した注意(開いている間はスイッチと消灯防止が効かない)は、利用ガイドに書く
+  it('リンク先を開いている間の注意は、利用ガイドに書いてある', async () => {
+    // @ts-expect-error node:fs の型定義は無い(実行時には存在する)
+    const fs = (await import('node:fs')) as { readFileSync: (path: string, enc: string) => string }
+    const cwd = (globalThis as unknown as { process: { cwd: () => string } }).process.cwd()
+    const guide = fs.readFileSync(`${cwd}/../docs/user-guide.md`, 'utf8')
+    for (const words of [
+      'リンク先を開いている間の注意',
+      '本人のスイッチの操作も、画面が消えないようにする働きも効かない',
+      '必ずアプリの画面に戻る',
+    ]) {
+      expect(guide).toContain(words)
     }
   })
 
@@ -263,10 +275,10 @@ describe('Issue #118: 「このアプリ」タブ', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('バージョンとビルド日を出す(単体テストでは埋め込みが無いので dev)', () => {
+  it('バージョンは日付だけを出す(単体テストでは埋め込みが無いので dev)', () => {
     const { container } = render(() => <App />)
     const panel = openAbout(container)
-    expect(panel.querySelector('.app-version')?.textContent).toBe('dev（dev）')
+    expect(panel.querySelector('.app-version')?.textContent).toBe('dev')
   })
 
   it('「このアプリ」タブには初期値に戻すが無い', () => {

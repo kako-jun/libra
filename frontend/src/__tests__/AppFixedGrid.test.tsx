@@ -466,7 +466,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     it('標準 12px(= 4 + 6 + 2)、高コントラスト 15px(= 4 + 9 + 2)になる', () => {
       expect(css).toMatch(/--scan-ring-inset:\s*calc\(4px \+ var\(--scan-ring-width\) \+ 2px\)/)
       // Issue #65: 基底の枠の太さは @media の外の `:root` 単独ブロック(テーマ非依存)に1つだけ。
-      // テーマのブロックには持たない(ThemeColorsOnly.test.ts が検査)ので、明るい/夜間で同じ
+      // テーマのブロックには持たない(ThemeColorsOnly.test.ts が検査)ので、ライト/ダークで同じ
       const standard = ringWidth(
         /(?:^|\})\s*:root\s*\{[^}]*?--scan-ring-width:\s*(\d+)px/s,
         css.replace(/\/\*[\s\S]*?\*\//g, ''),
@@ -499,8 +499,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     })
 
     it('ラベルは縮めすぎない: 下限は max(13px, …) で、--ring-extra が上限項と下限項の両方に効く', () => {
-      const font =
-        css.match(/--tile-label-font:\s*clamp\(([\s\S]*?)\n {2}\);/)?.[1] ?? ''
+      const font = css.match(/--tile-label-font:\s*clamp\(([\s\S]*?)\n {2}\);/)?.[1] ?? ''
       expect(font).toMatch(/max\(13px,/)
       expect(font.match(/--ring-extra/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
     })

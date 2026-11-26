@@ -13,6 +13,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
+import { chooseRadio } from './appTestKit'
 import * as offlineReadyModule from '../lib/offlineReady'
 import { DEFAULT_SETTINGS } from '../lib/settings'
 
@@ -96,11 +97,6 @@ function setSlider(container: HTMLElement, labelStart: string, value: number) {
   const input = field?.querySelector('input[type="range"]') as HTMLInputElement
   expect(input).toBeTruthy()
   fireEvent.input(input, { target: { value: String(value) } })
-}
-function clickButtonText(container: HTMLElement, text: string) {
-  const b = Array.from(container.querySelectorAll('button')).find((x) => x.textContent === text)
-  expect(b).toBeTruthy()
-  fireEvent.click(b as HTMLElement)
 }
 function withSettings(settings: Record<string, unknown>) {
   window.localStorage.setItem('libra', JSON.stringify(settings))
@@ -326,7 +322,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       )
       changeSettingsViaMenu(container, () => {
         selectCaregiverTab(container, 'スキャン')
-        clickButtonText(container, '離した瞬間')
+        chooseRadio(container, '離した瞬間')
       })
       expect(readBehavior(container)).toContain(
         `0.7秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,

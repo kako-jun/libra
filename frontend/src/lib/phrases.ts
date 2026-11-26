@@ -8,11 +8,7 @@
 import type { ScreenId, Tone } from './menus'
 
 export type PhraseGroup =
-  | 'discomfort'
-  | 'discomfortOther'
-  | 'painLocation'
-  | 'moodRequest'
-  | 'feelings'
+  'discomfort' | 'discomfortOther' | 'painLocation' | 'moodRequest' | 'feelings'
 
 export interface Phrase {
   id: string
@@ -26,22 +22,24 @@ export interface Phrase {
 /** 介助者が編集した項目。キーが無いグループは既定値を使う */
 export type PhraseSets = Partial<Record<PhraseGroup, Phrase[]>>
 
+/** パネルの並びの順(Issue #145): 快 の下の 気分、不快、不快の下の 痛い と その他、要望 */
 export const PHRASE_GROUPS: PhraseGroup[] = [
-  'discomfort',
-  'discomfortOther',
-  'painLocation',
-  'moodRequest',
   'feelings',
+  'discomfort',
+  'painLocation',
+  'discomfortOther',
+  'moodRequest',
 ]
 
+/** フレーズの編集先の名前(Issue #145): ホームからの道順を、実際のパネル名で示す。警告などもこの名前を使う */
 export const PHRASE_GROUP_LABELS: Record<PhraseGroup, string> = {
+  feelings: '快 › 気分',
   discomfort: '不快',
-  discomfortOther: '不快・その他',
-  painLocation: '痛い場所',
+  painLocation: '不快 › 痛い',
+  discomfortOther: '不快 › その他',
   // 保存キー名 `moodRequest` は「要望」のフレーズグループ(画面ID `requests`)。保存済み設定を壊さないため
   // キー名は変えない(Issue #93 で画面ID `moodRequest` は `comfort`(快)へ改名した)。快の続けて/やめて/変えては編集できない固定項目
   moodRequest: '要望',
-  feelings: '気分',
 }
 
 /** 各フレーズの一覧を表示する画面 */
