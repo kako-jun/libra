@@ -203,6 +203,58 @@ describe('Issue #140 / #157: タブの並びと矢印キーの移動順', () => 
   })
 })
 
+describe('Issue #163: 介助者用メニューの文字(静的。計算後の値は実ブラウザで確認する)', () => {
+  let css = ''
+  beforeAll(async () => {
+    // @ts-expect-error node:fs の型定義は無い(実行時には存在する)
+    const fs = (await import('node:fs')) as { readFileSync: (path: string, enc: string) => string }
+    const cwd = (globalThis as unknown as { process: { cwd: () => string } }).process.cwd()
+    css = fs.readFileSync(`${cwd}/src/styles/globals.css`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  })
+  /** 介助者用メニュー内の規則(本人画面の .caregiver-button は含めない) */
+  const menuRules = () =>
+    [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .map((m) => ({ selectors: m[1].split(',').map((s) => s.trim()), body: m[2] }))
+      .filter((r) =>
+        r.selectors.some((s) =>
+          /^\.(caregiver-(?!button)|phrase-|settings-backup|app-(?!shell)|install-|photo-)/.test(s),
+        ),
+      )
+
+  it('パネルは 16px・通常の太さで、太くするのは見出し・選択中タブ・状態の印だけ(700)', () => {
+    const bold: Record<string, string> = {}
+    for (const rule of menuRules()) {
+      const weight = rule.body.match(/(?:^|[;\s])font-weight:\s*(\w+)/)?.[1]
+      if (weight) bold[rule.selectors.join(', ')] = weight
+    }
+    expect(bold).toEqual({
+      '.caregiver-panel': '400',
+      '.caregiver-panel h2': '700',
+      '.caregiver-panel h3': '700',
+      '.caregiver-tab.active': '700',
+      '.caregiver-status-mark': '700',
+    })
+    const panel = menuRules().find((r) => r.selectors.join() === '.caregiver-panel')
+    expect(panel?.body).toMatch(/(^|[;\s])font-size:\s*1rem/)
+  })
+
+  it('メニュー内の文字の大きさは 16px(1rem)を下回らず、見出しは 1.25rem', () => {
+    const sizes: string[] = []
+    for (const rule of menuRules()) {
+      const size = rule.body.match(/(?:^|[;\s])font-size:\s*([^;]+);/)?.[1]
+      if (size) sizes.push(`${rule.selectors.join(', ')} ${size.trim()}`)
+    }
+    for (const entry of sizes) {
+      expect(entry.endsWith(' 1rem') || entry === '.caregiver-panel h2 1.25rem', entry).toBe(true)
+    }
+  })
+
+  it('1 行のチェックボックスのラベルも 44px 以上', () => {
+    const rule = menuRules().find((r) => r.selectors.join() === '.caregiver-checkbox')
+    expect(rule?.body).toMatch(/min-height:\s*44px/)
+  })
+})
+
 describe('Issue #141 / #142 / #143: スタイル(静的。実寸は実ブラウザで確認する)', () => {
   let css = ''
   beforeAll(async () => {

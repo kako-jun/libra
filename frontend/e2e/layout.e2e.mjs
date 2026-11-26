@@ -1563,7 +1563,9 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
               size: s.fontSize,
             }
           })
-          for (const key of ['bg', 'color', 'radius', 'weight', 'size']) {
+          // 面・文字色・角丸は同じ。文字の大きさと太さは Issue #163 で分けた(本人画面は 18px の太字のまま、
+          // メニュー内の「閉じる」は通常の 16px)。それぞれの値は下で固定する
+          for (const key of ['bg', 'color', 'radius']) {
             if (m.buttonStyle[key] !== close[key]) {
               failures.push(
                 `[realdevice ${label}] #109 「介助者用」と「閉じる」の ${key} が違う(${m.buttonStyle[key]} / ${close[key]})`,
@@ -1575,6 +1577,11 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
           }
           if (Number(m.buttonStyle.weight) < 700) {
             failures.push(`[realdevice ${label}] #109 太字でない(${m.buttonStyle.weight})`)
+          }
+          if (close.size !== '16px' || close.weight !== '400') {
+            failures.push(
+              `[realdevice ${label}] #163 「閉じる」が 16px の通常の太さでない(${close.size} ${close.weight})`,
+            )
           }
           if (m.buttonStyle.size !== '18px') {
             failures.push(
@@ -1641,7 +1648,9 @@ async function checkRepeatPulseReducedMotion(chromium, port) {
       const second = await panelStyle()
       const name = `[repeat-pulse ${reducedMotion}]`
       if (!first.pulse || !second.pulse || first.pulse === second.pulse) {
-        failures.push(`${name} 偶奇のクラスが切り替わっていない ${JSON.stringify({ first, second })}`)
+        failures.push(
+          `${name} 偶奇のクラスが切り替わっていない ${JSON.stringify({ first, second })}`,
+        )
       }
       if (reducedMotion === 'reduce') {
         if (first.animation !== 'none' || second.animation !== 'none') {

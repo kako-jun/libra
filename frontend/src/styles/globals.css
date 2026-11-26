@@ -811,8 +811,8 @@ h1[data-fit='single'] {
    介助者 UI — 目立たないが介助者には分かる見た目。
    =================================================================== */
 .caregiver-button {
-  /* Issue #109: 介助者用メニューの「閉じる」(.caregiver-action.caregiver-close)と同じ見た目にする
-     (濃い緑の面・白文字・同じ角丸・太さ・文字の大きさ)。開く・閉じるが同じ位置・同じ形のボタンになる。
+  /* Issue #109: 介助者用メニューの「閉じる」(.caregiver-action.caregiver-close)と同じ面・文字色・角丸にする。
+     文字の大きさと太さは本人画面の値のまま(メニュー内は Issue #163 で通常の文字にした)。開く・閉じるが同じ位置・同じ形のボタンになる。
      案内欄(.screen-guide)の高さいっぱいに伸ばし、上・右・下の余白を同じ値(--guide-pad)にそろえる */
   z-index: 20;
   flex: 1 1 auto;
@@ -854,9 +854,12 @@ h1[data-fit='single'] {
   overflow: hidden;
   color: var(--text);
   background: var(--caregiver-panel-bg);
-  /* Issue #111: 介助者が読む説明と操作の文字を大きくする(本人画面の文字サイズ設定とは独立) */
-  font-size: 1.125rem;
-  line-height: 1.45;
+  /* Issue #163: 一般的なアプリの文字にする(本文 16px・通常の太さ。太くするのは見出しと、色だけに頼らないための
+     選択中タブと状態の印だけ)。本人画面の文字サイズ設定とは独立。入力欄はここから受け継ぐので 16px
+     (iOS が入力欄の拡大をしない大きさ)。押せる範囲は各ボタンの min-height で 44px 以上を保つ */
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
   /* Issue #5: 親(.app-shell)の touch-action:none / user-select:none を打ち消し、
      スライダー操作・チェックボックス・文言の選択など通常の介助者操作を妨げない */
   touch-action: auto;
@@ -871,8 +874,8 @@ h1[data-fit='single'] {
    Issue #152: 緊急解除はヘッダの左右の中央に置く。幅に余裕がある(ヘッダが 34em 以上)ときは 1 行
    [見出し | 緊急解除 | 閉じる](左右の列を同じ幅にして中央をそろえる)、足りないときは 1 行目
    [見出し | 閉じる]・2 行目 [緊急解除](中央)にする。緊急が無いときは緊急解除が無い(Issue #137)ので、
-   2 行目の余白は行の gap でなくボタンの margin で取る。この em は container の .caregiver-header の文字サイズ(.caregiver-panel の 1.125rem を受け継ぐ。
-   ブラウザ既定が 16px なら 18px)が基準で、34em はヘッダ幅 612px。rem 経由でブラウザ既定の文字サイズに追従する。
+   2 行目の余白は行の gap でなくボタンの margin で取る。この em は container の .caregiver-header の文字サイズ(.caregiver-panel の 1rem を受け継ぐ。
+   ブラウザ既定が 16px なら 16px)が基準で、34em はヘッダ幅 544px。rem 経由でブラウザ既定の文字サイズに追従する。
    アプリの文字サイズ設定は介助者用メニューに影響しないので、標準と特大で切替幅は同じ。
    「閉じる」は align-self: start で、見出しが折り返しても 1 行目の上端(パネルの右上の角)に固定する。 */
 .caregiver-header {
@@ -978,7 +981,6 @@ h1[data-fit='single'] {
   border: 2px solid transparent;
   border-bottom: none;
   border-radius: 8px 8px 0 0;
-  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -999,7 +1001,7 @@ h1[data-fit='single'] {
   color: var(--caregiver-action-text);
   background: var(--caregiver-action-bg);
   border-color: var(--caregiver-action-bg);
-  font-weight: 800;
+  font-weight: 700;
   box-shadow: inset 0 -4px 0 var(--caregiver-status-ok-border);
 }
 
@@ -1061,7 +1063,6 @@ h1[data-fit='single'] {
 .caregiver-hint {
   margin: 0;
   font-size: 1rem;
-  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -1133,7 +1134,6 @@ h1[data-fit='single'] {
   margin: 0;
   padding-left: 1.3em;
   font-size: 1rem;
-  font-weight: 600;
 }
 
 /* 広い画面で中身が間延びしないよう、タブ内の子要素だけ読みやすい幅に抑える(パネル・ヘッダ・タブ列は全幅) */
@@ -1148,18 +1148,27 @@ h1[data-fit='single'] {
 
 .caregiver-panel h2 {
   margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* 見出し(「このアプリ」タブの「使い方」)だけ少し強くする。段落の .caregiver-lead は通常の太さ */
+.caregiver-panel h3 {
+  font-weight: 700;
 }
 
 .caregiver-field {
   display: grid;
   gap: 6px;
-  font-weight: 700;
 }
 
 .caregiver-checkbox {
   grid-auto-flow: column;
   justify-content: start;
   align-items: center;
+  align-content: center;
+  /* 押せる範囲(ラベル全体)を 1 行でも 44px 以上にする */
+  min-height: 44px;
   gap: 10px;
 }
 
@@ -1193,7 +1202,6 @@ h1[data-fit='single'] {
   background: var(--caregiver-status-ok-bg);
   border: 2px solid var(--caregiver-action-bg);
   border-radius: 8px;
-  font-weight: 800;
 }
 
 .caregiver-voice-options button.active,
@@ -1213,7 +1221,6 @@ h1[data-fit='single'] {
   margin: 0;
   padding: 2px 0 2px 12px;
   color: var(--text);
-  font-weight: 700;
 }
 
 .caregiver-status.warn {
@@ -1225,7 +1232,7 @@ h1[data-fit='single'] {
 
 .caregiver-status-mark {
   flex: none;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .caregiver-status-text {
@@ -1235,7 +1242,6 @@ h1[data-fit='single'] {
 }
 
 .caregiver-status-todo {
-  font-weight: 600;
 }
 
 .caregiver-action {
@@ -1245,7 +1251,6 @@ h1[data-fit='single'] {
   background: var(--caregiver-action-bg);
   border: none;
   border-radius: 8px;
-  font-weight: 800;
 }
 
 .caregiver-action:disabled {
@@ -1345,7 +1350,6 @@ h1[data-fit='single'] {
   margin: 0;
   color: var(--text-muted);
   font-size: 1rem;
-  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -1372,7 +1376,6 @@ h1[data-fit='single'] {
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   font-size: 1rem;
-  font-weight: 700;
 }
 
 .phrase-row input {
@@ -1408,7 +1411,6 @@ h1[data-fit='single'] {
   background: var(--surface);
   border: 1px solid var(--grid-line);
   border-radius: 6px;
-  font-weight: 800;
 }
 
 .phrase-row-actions button:disabled {
@@ -2223,7 +2225,6 @@ h1[data-fit='single'] {
   gap: 8px;
   margin: 0;
   padding-left: 1.3em;
-  font-weight: 600;
 }
 
 /* リンクもボタンと同じ大きさ・右寄せにする(Issue #111 の統一) */
@@ -2242,7 +2243,6 @@ h1[data-fit='single'] {
   color: var(--caregiver-action-text);
   background: var(--caregiver-action-bg);
   border-radius: 8px;
-  font-weight: 800;
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
@@ -2251,7 +2251,6 @@ h1[data-fit='single'] {
   display: grid;
   gap: 8px;
   margin: 0;
-  font-weight: 700;
 }
 
 .app-facts > div {
@@ -2262,11 +2261,9 @@ h1[data-fit='single'] {
 }
 
 .app-facts dt {
-  font-weight: 700;
 }
 
 .app-facts dd {
   margin: 0;
-  font-weight: 600;
   text-align: right;
 }
