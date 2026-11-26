@@ -7,7 +7,7 @@
 // - single-font: 本人画面・介助者用メニューの全タブ・入力欄(UA の shadow DOM の中の文字まで)が、
 //   同梱の BIZ UDGothic だけで描かれる
 // - offline-all-glyphs: オフラインの reload でも同じで、以前の同梱(japanese + latin 分割)に無かった字も
-//   同梱の書体で描かれる。書体に無い字(𠮷)は別の書体になる(この検査が代替を見つけられることの確認)
+//   同梱の書体で描かれる。別の書体を指定した欄は検出される(この検査が働くことの確認)
 
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
@@ -203,10 +203,15 @@ async function checkOfflineAllGlyphs(chromium, port) {
       }
     }
 
-    // 対照: 書体に無い字は代替される。これが検出できないなら、上の合格は意味を持たない
-    await input.fill('𠮷')
+    // 対照: 別の書体で描いた字を、この検査が見つけられること。見つけられないなら上の合格は意味を持たない。
+    // 書体に無い字を使う方法は取らない(その字を持つ書体が OS に無い環境では、同梱の書体の
+    // 代替字形で描かれ、別の書体にならない。CI の実行環境がそうだった)
+    await input.evaluate((el) => {
+      el.style.fontFamily = 'monospace'
+    })
+    await input.fill('abc')
     const control = await foreignFonts(page, cdp, `${label} 対照`)
-    if (control.length === 0) failures.push(`${label} 書体に無い字の代替を検出できていない`)
+    if (control.length === 0) failures.push(`${label} 別の書体で描いた字を検出できていない`)
 
     await input.fill(RARE)
     await page.reload()
