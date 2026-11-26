@@ -8,6 +8,7 @@ import {
   SCREEN_TITLES,
   type PainChoice,
   type ScreenId,
+  transmissionTone,
   type Tone,
 } from './lib/menus'
 import { advanceIdleSteps, UNDO_LAPS } from './lib/idleLaps'
@@ -862,7 +863,7 @@ export default function App() {
       case 'message': {
         // はい・いいえは、本人が他人の反応なしに区別できる専用の振動パターンで返す
         const event: FeedbackEvent = item.id === 'yes' ? 'yes' : item.id === 'no' ? 'no' : 'message'
-        completeTransmission(action.text, action.tone ?? 'neutral', event)
+        completeTransmission(action.text, transmissionTone(action), event)
         return
       }
       case 'painLocation': {
@@ -1619,8 +1620,8 @@ export default function App() {
         <For each={currentMenu()}>
           {(item, index) => (
             <div
-              // tile-{tone}(例 tile-urgent)は意味を示すだけのクラスで、CSS にルールは無い(見た目は変えない。#36)
-              class={`tile tile-${item.tone ?? 'neutral'}`}
+              // tile-urgent は「押すと伝達欄が赤くなるパネル」。伝達欄と同じ transmissionTone から決める(#136)
+              class={`tile tile-${transmissionTone(item.action)}`}
               classList={{
                 scanning: scanState().index === index(),
                 'tile-nav': item.action.type === 'navigate',

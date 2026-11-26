@@ -71,6 +71,15 @@ export interface MenuItem {
   preview?: string
 }
 
+/**
+ * パネルを押したときの伝達欄の色調。urgent になるのは、伝える項目(message)の tone が urgent のときだけ。
+ * 画面遷移(胸などの痛い場所を含む)・緊急・緊急の詳細は伝達欄の色を変えないので neutral。
+ * 伝達欄の色(App.tsx の完了処理)とパネルの色(.tile-urgent)は、必ずこの関数から決める(Issue #136)。
+ */
+export function transmissionTone(action: ActionId): Tone {
+  return action.type === 'message' ? (action.tone ?? 'neutral') : 'neutral'
+}
+
 /** 下位画面の「戻る」の遷移先。画面ツリーに従う（painLocation は discomfort の子）。 */
 export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   urgentDetail: 'home',
