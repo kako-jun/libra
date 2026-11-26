@@ -177,11 +177,9 @@
   --hold-progress-fill: #ffd54a;
   color: var(--text);
   background: var(--bg);
-  /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
-     Linux 等で中国語フォントへ落ちうるため、日本語書体より前に置かない。 */
-  font-family:
-    'BIZ UDPGothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Yu Gothic',
-    'Noto Sans JP', sans-serif;
+  /* Issue #156: フォントは同梱の BIZ UDGothic(fonts.css)の1種類だけ。予備フォントは指定しない。
+     書体に無い文字だけはブラウザが OS の書体で描く(CSS では止められない) */
+  font-family: 'BIZ UDGothic';
 }
 
 * {
@@ -235,10 +233,25 @@ button {
   font: inherit;
 }
 
+/* Issue #156: 入力欄・選択部品・ボタンはブラウザの既定で独自の書体を持つので、全部を親の書体に
+   そろえる(textarea の既定は等幅) */
+button,
+input,
+textarea,
+select,
+optgroup {
+  font-family: inherit;
+}
+
+input::file-selector-button {
+  font-family: inherit;
+}
+
 /* Issue #3: 見出し・ラベル類の文節改行。対応ブラウザでは意味の区切りで折り返し、
    語の途中(「ゆっく/り」等)での改行を避ける。未対応ブラウザでは overflow-wrap が
    安全弁になる（タイル自体の余裕はコンテナクエリで確保する）。 */
 .message-panel h1,
+.emergency-status-message,
 .emergency-details,
 .tile-label {
   word-break: auto-phrase;
@@ -2013,6 +2026,28 @@ h1[data-fit='single'] {
   display: flex;
   align-items: stretch;
   gap: 10px;
+}
+
+/* Issue #156: BIZ UDGothic は仮名が全角幅なので、狭い画面では左右の余白と矢印との間隔を詰めて
+   本文の幅を確保する。詰めないと 390px 幅で「痰を取ってほしいです。」が下限の大きさでも1行に収まらず、
+   最大の大きさの2行になって枠が伸び、タイルが縮む */
+@media (max-width: 480px) {
+  .message-panel {
+    gap: 6px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  /* 案内欄も同じ理由で詰める。左の余白と、文字と「介助者用」ボタンの間隔。詰めないと 390px 幅で
+     押し方の案内(全角17字 = 272px。Issue #134)が2行になり、格子が約18px低くなって2行の予告が消える。
+     ボタンの大きさと、ボタンの上・右・下の余白(Issue #109)は変えない */
+  .screen-guide {
+    padding-left: 8px;
+  }
+
+  .screen-guide .message-panel-controls {
+    margin-left: 4px;
+  }
 }
 
 .message-panel-body {

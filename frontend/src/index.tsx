@@ -2,12 +2,8 @@
 import { render } from 'solid-js/web'
 import App from './App'
 import { initInstallCapture } from './lib/install'
-// BIZ UDPGothic を同梱してオフラインでも動くようにする（requirements.md §8）。
-// 日本語+ラテンの unicode-range 分割版のみを読み込み、他言語の字形サブセットは含めない。
-import '@fontsource/biz-udpgothic/japanese-400.css'
-import '@fontsource/biz-udpgothic/japanese-700.css'
-import '@fontsource/biz-udpgothic/latin-400.css'
-import '@fontsource/biz-udpgothic/latin-700.css'
+// BIZ UDGothic(全字)を同梱してオフラインでも動くようにする（requirements.md §8、Issue #156）。
+import './styles/fonts.css'
 import './styles/globals.css'
 
 // Issue #158: beforeinstallprompt は起動直後に 1 回出て、取り直せないので、描画より前に預かる

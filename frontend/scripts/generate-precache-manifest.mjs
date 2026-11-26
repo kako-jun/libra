@@ -20,11 +20,6 @@ import { fileURLToPath } from 'node:url'
  *   そのまま precache すると壊れたエントリになる(PR #11 must-1)。`/` へのリクエストは
  *   通常リダイレクトされないため、これを precache キー・ナビゲーションのフォールバック
  *   先の両方に使う
- * - `.woff2` が1つでもあれば `.woff` は全て対象外にする。ビルドツール(@fontsource/vite)は
- *   フォント1つにつき `.woff2` と、非対応ブラウザ用の `.woff` フォールバックの両方を出力
- *   するが、ファイル名のハッシュ部分が形式ごとに異なり同名判定はできない。evergreen
- *   ブラウザは `.woff2` に対応しているため、フォールバック用の `.woff` は precache しない
- *   (含めるとサイズが倍近くに膨らむ)。
  * @param {string} distDir
  * @returns {string[]}
  */
@@ -48,9 +43,7 @@ export function collectPrecacheUrls(distDir) {
 
   walk(distDir, '/')
 
-  const hasWoff2 = urls.some((url) => url.endsWith('.woff2'))
-  const filtered = urls.filter((url) => !(hasWoff2 && url.endsWith('.woff')))
-  const withRootKey = filtered.map((url) => (url === '/index.html' ? '/' : url))
+  const withRootKey = urls.map((url) => (url === '/index.html' ? '/' : url))
   return withRootKey.sort()
 }
 

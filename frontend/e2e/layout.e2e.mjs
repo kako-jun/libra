@@ -555,7 +555,7 @@ async function checkFontSizeMonotonicity(chromium, port) {
             await page.waitForTimeout(80)
           }
           await page.waitForTimeout(150)
-          // BIZ UDPGothic(日本語, 数百KB〜1.7MB)の読み込み前はフォールバックフォントで
+          // BIZ UDGothic(1ウェイト約2.2MB)の読み込み前はフォールバックフォントで
           // 描画され、行送り・折返しが変わってラベル/見出しの高さが一時的にずれることが
           // ある。document.fonts.ready を待たないと、この読み込みタイミングのブレだけで
           // 誤って「文字サイズを上げたら縮んだ」と判定してしまう(実際のUIロジックの
@@ -1119,7 +1119,7 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
       await page.waitForTimeout(300)
       for (const label of path) await hold(page, label)
       if (goHome) await hold(page, '戻る')
-      // BIZ UDPGothic の読み込み前は代替フォントで折り返しが変わるので、測定の直前に待つ
+      // BIZ UDGothic の読み込み前は代替フォントで折り返しが変わるので、測定の直前に待つ
       await page.evaluate(() => document.fonts.ready)
       const result = await page.evaluate(() => {
         // 見えている行だけ: 要素の箱の外(-webkit-line-clamp で隠れた行)は除き、箱でクリップする

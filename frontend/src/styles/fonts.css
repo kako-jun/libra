@@ -1,0 +1,20 @@
+/* Issue #156: 全ての文字を BIZ UDGothic の1種類にする。書体が持つ全 11741 字を1ファイル/ウェイトで
+   同梱する(unicode-range の分割はしない。分割版の配布物は全部合わせても欠ける字があった)。
+   ファイルの出所・版・作り直し方は DESIGN.md §3、ライセンス(OFL 1.1)は ../assets/fonts/OFL.txt。
+   local() は使わない(端末に入っている別の版ではなく、常に同梱の版で描く)。
+   font-display: swap は、読み込み中も文字(緊急など)を消さないため */
+@font-face {
+  font-family: 'BIZ UDGothic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/BIZUDGothic-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'BIZ UDGothic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/BIZUDGothic-Bold.woff2') format('woff2');
+}

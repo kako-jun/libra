@@ -12,10 +12,10 @@
     "e2e:offline": "node e2e/offline.e2e.mjs",
     "e2e:navigation": "node e2e/navigation.e2e.mjs",
     "e2e:layout": "node e2e/layout.e2e.mjs",
-    "e2e:theme": "node e2e/theme.e2e.mjs"
+    "e2e:theme": "node e2e/theme.e2e.mjs",
+    "e2e:font": "node e2e/font.e2e.mjs"
   },
   "dependencies": {
-    "@fontsource/biz-udpgothic": "^5.3.0",
     "solid-js": "^1.9.0"
   },
   "devDependencies": {
