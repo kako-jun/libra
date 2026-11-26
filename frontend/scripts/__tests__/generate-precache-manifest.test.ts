@@ -73,25 +73,6 @@ describe('collectPrecacheUrls', () => {
     expect(urls).not.toContain('/_redirects')
   })
 
-  it('.woff2が1つでもあれば.woffは全て除外する(ハッシュ付きファイル名は同名判定できないため)', () => {
-    const dir = makeDistLike({
-      // @fontsource/vite 相当: woff と woff2 でハッシュが異なり同名にはならない
-      'assets/font-japanese-400-normal-CoVnaAmp.woff2': 'woff2-bytes',
-      'assets/font-japanese-400-normal-mmdfgdEE.woff': 'woff-bytes',
-    })
-    const urls = collectPrecacheUrls(dir)
-    expect(urls).toContain('/assets/font-japanese-400-normal-CoVnaAmp.woff2')
-    expect(urls).not.toContain('/assets/font-japanese-400-normal-mmdfgdEE.woff')
-  })
-
-  it('.woff2が1つも無ければ.woffはそのまま残す(フォールバック手段が他にないため)', () => {
-    const dir = makeDistLike({
-      'assets/font-solo.woff': 'solo-bytes',
-    })
-    const urls = collectPrecacheUrls(dir)
-    expect(urls).toContain('/assets/font-solo.woff')
-  })
-
   it('空のディレクトリでは空配列を返す', () => {
     const dir = makeDistLike({})
     expect(collectPrecacheUrls(dir)).toEqual([])

@@ -1,11 +1,12 @@
 // Issue #156: フォントは同梱の BIZ UDGothic の1種類だけ。入力欄・ボタン・選択部品も同じ書体にし、
 // 予備フォントは指定しない。同梱するのは書体の全字(分割・間引きをしない)。
-// 実際に描かれた書体は e2e/font.e2e.mjs が実ブラウザで確かめる。ここはソースの規則を静的に縛る。
+// 同梱ファイルが書体の全字を持つことは、確認済みの版の SHA-256 をここで固定して保証する。
+// e2e/font.e2e.mjs が実ブラウザで確かめるのは「画面の字が別の書体で描かれていないこと」で、字の有無は
+// 保証しない(代わりの書体が OS に無い字は、同梱の書体の代替字形で描かれて合格する)。ほかはソースの規則を静的に縛る。
 import { beforeAll, describe, expect, it } from 'vitest'
 
 type Fs = {
   readFileSync: ((path: string, enc: string) => string) & ((path: string) => Uint8Array)
-  existsSync: (path: string) => boolean
 }
 type Crypto = {
   createHash: (a: string) => { update: (d: Uint8Array) => { digest: (e: string) => string } }
@@ -48,7 +49,13 @@ describe('Issue #156: フォントは BIZ UDGothic の1種類', () => {
       const bytes = fs.readFileSync(`${cwd}/src/assets/fonts/${name}`)
       expect(crypto.createHash('sha256').update(bytes).digest('hex'), name).toBe(sha)
     }
-    expect(fs.existsSync(`${cwd}/src/assets/fonts/OFL.txt`)).toBe(true)
+  })
+
+  it('ライセンスは配布元の OFL.txt の原本そのもの(配信物への写しは e2e/font.e2e.mjs が確かめる)', () => {
+    const bytes = fs.readFileSync(`${cwd}/src/assets/fonts/OFL.txt`)
+    expect(crypto.createHash('sha256').update(bytes).digest('hex')).toBe(
+      'e753d7155d53c747d037a445e584c8ecfca6dd79846db610417e282a736b28bc',
+    )
   })
 
   it('index.tsx が fonts.css を読み込み、外部のフォントの依存は無い', () => {

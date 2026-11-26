@@ -4,19 +4,49 @@
 //
 // 事前に `npm run build` で dist/ を作っておくこと。実行方法は docs/development.md 参照。
 //
-// - single-font: 本人画面・介助者用メニューの全タブ・入力欄(UA の shadow DOM の中の文字まで)が、
-//   同梱の BIZ UDGothic だけで描かれる
-// - offline-all-glyphs: オフラインの reload でも同じで、以前の同梱(japanese + latin 分割)に無かった字も
-//   同梱の書体で描かれる。別の書体を指定した欄は検出される(この検査が働くことの確認)
+// この e2e が保証するのは「確かめた画面の字が、別の書体で描かれていないこと」だけ。同梱の書体に字が
+// あることは保証しない(代わりの書体が OS に無い字は、同梱の書体の代替字形(豆腐)で描かれ、この検査を
+// 通る)。全字があることは、同梱ファイルの SHA-256 の固定(src/__tests__/SingleFont.test.ts)が担う。
+//
+// - single-font: 本人画面・介助者用メニューの全タブ・入力欄(UA の shadow DOM の中の文字まで)に、
+//   同梱の BIZ UDGothic 以外の書体で描かれた字が無い
+// - offline-all-glyphs: 2つのウェイトの woff2 が precache され、オフラインの reload でも同じ。以前の同梱
+//   (japanese + latin 分割)に無かった字を入れても別の書体にならない。ライセンス全文(OFL)も precache
+//   され、原本と一致する。最後に、monospace を指定した入力欄の字を検出できること(この検査が働くことの確認)
 
+import { readFileSync } from 'node:fs'
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
 const FAMILY = 'BIZ UDGothic'
+const LICENSE_PATH = '/licenses/BIZUDGothic-OFL.txt'
+const LICENSE_SOURCE = new URL('../src/assets/fonts/OFL.txt', import.meta.url)
 // 以前の同梱に無かった字と、配布されている分割版(全分割の和)にも無い字(Ⅰ ⅰ ≒ ‾ α)
 // ラベルは20字までなので2つのフレーズに分ける
 const RARE = '→←⇒✓●○◎△※㎝㎖℃'
 const RARE_2 = '髙﨑頰剝吞瘙搔𠮟ⅠⅰΑα≒‾'
 const TABS = ['status', 'scan', 'input', 'feedback', 'display', 'phrases', 'backup', 'about']
+
+/** selector の要素とその中(UA の shadow DOM を含む)の字を描いた書体の一覧 */
+async function fontsInside(cdp, selector) {
+  const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true })
+  const matches = (node) => {
+    const attributes = node.attributes ?? []
+    return attributes.some((name, i) => i % 2 === 0 && name === selector)
+  }
+  const found = []
+  const walk = (node, inside) => {
+    const within = inside || matches(node)
+    const children = node.children ?? []
+    if (within && node.nodeType === 1 && children.some((c) => c.nodeType === 3)) found.push(node)
+    for (const child of [...children, ...(node.shadowRoots ?? [])]) walk(child, within)
+  }
+  walk(root, false)
+  const fonts = []
+  for (const node of found) {
+    fonts.push(...(await cdp.send('CSS.getPlatformFontsForNode', { nodeId: node.nodeId })).fonts)
+  }
+  return fonts
+}
 
 /** 文字を直接持つ全要素(shadow DOM を含む)の実描画書体を調べ、同梱以外で描いた字があれば返す */
 async function foreignFonts(page, cdp, where) {
@@ -167,12 +197,26 @@ async function checkOfflineAllGlyphs(chromium, port) {
       return urls.filter((url) => url.endsWith('.woff2'))
     })
     if (cached.length !== 2) failures.push(`${label} precache の woff2 が2件でない: ${cached}`)
+    const licenseCached = await page.evaluate(
+      async (path) => !!(await caches.match(path)),
+      LICENSE_PATH,
+    )
+    if (!licenseCached) failures.push(`${label} ライセンス全文が precache に無い: ${LICENSE_PATH}`)
     // ブラウザの HTTP キャッシュではなく Service Worker から読むことを確かめるため、消してから切る
     const session = await context.newCDPSession(page)
     await session.send('Network.clearBrowserCache')
     await context.setOffline(true)
     await page.reload()
     await page.waitForTimeout(500)
+
+    // 配信されるライセンス全文は原本そのもの(オフラインでは Service Worker の precache から返る)
+    const license = await page.evaluate(async (path) => {
+      const response = await fetch(path)
+      return { status: response.status, text: await response.text() }
+    }, LICENSE_PATH)
+    if (license.status !== 200 || license.text !== readFileSync(LICENSE_SOURCE, 'utf8')) {
+      failures.push(`${label} 配信のライセンス全文が原本と一致しない(status ${license.status})`)
+    }
 
     let cdp = await attach(context, page)
     await tap(page, '不快')
@@ -207,11 +251,21 @@ async function checkOfflineAllGlyphs(chromium, port) {
     // 書体に無い字を使う方法は取らない(その字を持つ書体が OS に無い環境では、同梱の書体の
     // 代替字形で描かれ、別の書体にならない。CI の実行環境がそうだった)
     await input.evaluate((el) => {
+      el.setAttribute('data-font-control', '')
       el.style.fontFamily = 'monospace'
     })
     await input.fill('abc')
-    const control = await foreignFonts(page, cdp, `${label} 対照`)
-    if (control.length === 0) failures.push(`${label} 別の書体で描いた字を検出できていない`)
+    await page.waitForTimeout(200)
+    // 画面のほかの場所の字ではなく、この入力欄の中の字が別の書体として見えることだけを数える
+    const control = await fontsInside(cdp, 'data-font-control')
+    const detected = control
+      .filter((font) => font.familyName !== FAMILY || !font.isCustomFont)
+      .reduce((sum, font) => sum + font.glyphCount, 0)
+    if (detected !== 3) {
+      failures.push(
+        `${label} monospace を指定した入力欄の3字を別の書体として検出できていない: ${JSON.stringify(control)}`,
+      )
+    }
 
     await input.fill(RARE)
     await page.reload()

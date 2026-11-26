@@ -30,6 +30,9 @@ self.addEventListener('install', (event) => {
         // precache に入り、しかも旧キャッシュは activate 時に削除済みで復旧手段が無かった)。
         // should-A: 個々の fetch には60秒のタイムアウト(AbortController)を付け、繋がって
         // いるのに極端に遅い接続(lie-fi)で install が無期限に固まらないようにする。
+        // Issue #156: この60秒は応答ヘッダが届くまで(fetch が返った時点でタイマーを解除する)。大きい
+        // フォントの本文のダウンロードには掛からない。遅い回線で効くのは、ブラウザが install 全体に
+        // 設ける上限(Chromium で約5分。実測は docs/architecture.md)
         // should-2(a): 全URLで1つの AbortController を共有し、1件目が失敗(タイムアウト
         // 含む)した時点で残り全部の fetch を abort する。どの1件が失敗しても install は
         // どうせ失敗する(all-or-nothing)ため、既に失敗が確定した後に他のURLの取得を続けて
