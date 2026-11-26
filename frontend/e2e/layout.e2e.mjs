@@ -529,6 +529,8 @@ async function checkFontSizeMonotonicity(chromium, port) {
   const SCREENS = [
     ['home', []],
     ['home+undo', ['3']],
+    // 緊急中のホーム(緊急 → 詳細を1つ選んで戻った状態)
+    ['home+emergency', ['1', '3']],
     ['discomfort', ['6']],
     ['discomfortOther', ['6', '8']],
     ['comfort', ['5']],
@@ -590,7 +592,10 @@ async function checkFontSizeMonotonicity(chromium, port) {
           // 特大は標準の1.15倍以上になるべき(--label-ratio は標準0.8→特大1.0で
           // 1.25倍差になる設計。1.15はその下に余裕を持たせた下限値)
           if (font === 'xlarge' && size != null && standardSize != null) {
-            const atFloor = standardSize <= LABEL_FLOOR_PX + 0.5
+            // 320x568 のホームは下限に張り付いていても免除しない(以前は下限に固定され、特大にしても
+            // 文字が変わらなかった。ラベルが取れない場合も失敗にする)
+            const mustGrow = vw === 320 && vh === 568 && screenName.startsWith('home')
+            const atFloor = !mustGrow && standardSize <= LABEL_FLOOR_PX + 0.5
             // ホーム(10 セル格子 #123)・文字盤(15 セル格子 #121)も他の画面と同じ 1.15 倍を求める
             // (PR #124 レビュー S1。一時 1.05 倍に緩めていたのを、ラベルの式を直して戻した)
             const minRatio = 1.15
@@ -1076,21 +1081,27 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
     '痰を取ってほしい',
     '不快',
   ]
-  // [名前, viewport, 設定, 押すタイルの列, 最後に「戻る」でホームへ戻るか]
+  // [名前, viewport, 設定, 押すタイルの列, 最後に「戻る」でホームへ戻るか, 2行モードが無くてもよいか]
+  // 伝達欄が起動時から常に出る(#131)ことと、押し方の案内の行(#134)で格子が低くなり、いくつかの寸法は
+  // 2 行モードの高さに届かず 1 行になる(「狭いときは1行」の仕様どおり)。その寸法も重なりの検査は続け
+  // (1 行でも検査する)、2 行モードの検査は同じ幅で少し高い寸法で行う(空振りは失敗のまま)
+  const emergencySettings = { fontSize: 'xlarge', highContrast: true, ...maxNotes }
+  // ホームは #123 で 10 セル格子(縦 2×5)。特大で 2 行モードになりやすい 8 セルの不快画面でも検査する
+  const discomfort = { fontSize: 'xlarge' }
+  const standard = { fontSize: 'standard' }
+  const size = (width, height) => ({ width, height })
+  const emergencyHome = '特大 高コントラスト 緊急詳細5件+伝達 ホーム'
   const cases = [
-    [
-      '390x844 特大 高コントラスト 緊急詳細5件+伝達 ホーム',
-      { width: 390, height: 844 },
-      { fontSize: 'xlarge', highContrast: true, ...maxNotes },
-      fivePath,
-      true,
-    ],
-    // ホームは #123 で 10 セル格子(縦 2×5)になり、320x480 の特大ではセルが低く 2 行モードにならない
-    // (実測: 遷移タイル 4 つ・2 行モード 0)。同じ狭さ・特大で 2 行モードになる 8 セルの不快画面で検査する
-    // #131 で伝達欄が起動時から常に出るので、320x480 の不快と 320x568 のホームはセルが低くなり 2 行モードに
-    // ならない。同じ幅 320 のまま、2 行モードになる高さで重なりを検査する
-    ['320x568 特大 不快', { width: 320, height: 568 }, { fontSize: 'xlarge' }, ['不快'], false],
-    ['320x667 標準 ホーム', { width: 320, height: 667 }, { fontSize: 'standard' }, [], false],
+    [`390x844 ${emergencyHome}`, size(390, 844), emergencySettings, fivePath, true, true],
+    [`390x960 ${emergencyHome}`, size(390, 960), emergencySettings, fivePath, true],
+    ['320x480 特大 不快', size(320, 480), discomfort, ['不快'], false, true],
+    ['320x520 特大 不快', size(320, 520), discomfort, ['不快'], false, true],
+    ['320x568 特大 不快', size(320, 568), discomfort, ['不快'], false, true],
+    ['320x640 特大 不快', size(320, 640), discomfort, ['不快'], false],
+    ['320x568 標準 ホーム', size(320, 568), standard, [], false, true],
+    ['320x620 標準 ホーム', size(320, 620), standard, [], false, true],
+    ['320x667 標準 ホーム', size(320, 667), standard, [], false, true],
+    ['320x740 標準 ホーム', size(320, 740), standard, [], false],
     [
       '844x390 特大 高コントラスト 緊急詳細5件+伝達 不快',
       { width: 844, height: 390 },
@@ -1112,7 +1123,7 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
     await page.waitForTimeout(900)
   }
   try {
-    for (const [name, viewport, settings, path, goHome] of cases) {
+    for (const [name, viewport, settings, path, goHome, oneLineAllowed] of cases) {
       const context = await browser.newContext({ viewport })
       const page = await context.newPage()
       await page.addInitScript(
@@ -1173,7 +1184,10 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
         }
         return out
       })
-      if (result.twoLine === 0) {
+      console.log(
+        `[preview-two-lines ${name}] 遷移タイル ${result.nav}・2行モード ${result.twoLine}`,
+      )
+      if (result.nav === 0 || (result.twoLine === 0 && !oneLineAllowed)) {
         failures.push(
           `[preview-two-lines ${name}] 2行モードの遷移タイルが無い(検査が空振り) ${JSON.stringify(result)}`,
         )

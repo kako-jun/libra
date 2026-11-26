@@ -32,8 +32,7 @@ function selectByLabel(container: HTMLElement, label: string) {
   fireEvent.keyDown(window, { key: ' ' })
 }
 
-const crumb = (container: HTMLElement) =>
-  container.querySelector('.screen-breadcrumb') as HTMLElement
+const crumb = (container: HTMLElement) => container.querySelector('.screen-breadcrumb') as HTMLElement
 const crumbButtons = (container: HTMLElement) =>
   Array.from(crumb(container).querySelectorAll<HTMLButtonElement>('button.breadcrumb-link'))
 const crumbButton = (container: HTMLElement, title: string) => {
@@ -43,8 +42,7 @@ const crumbButton = (container: HTMLElement, title: string) => {
 }
 const tileLabels = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('.tile-label')).map((el) => el.textContent ?? '')
-const guideTitle = (container: HTMLElement) =>
-  container.querySelector('.screen-guide h2')?.textContent
+const guideTitle = (container: HTMLElement) => container.querySelector('.screen-guide h2')?.textContent
 
 describe('buildScreenBreadcrumb: 移動先(screen)', () => {
   const screens = Object.keys(PARENT_SCREEN).concat('home') as ScreenId[]
@@ -52,7 +50,7 @@ describe('buildScreenBreadcrumb: 移動先(screen)', () => {
   it('全ScreenIdで、screen を持つ要素は PARENT_SCREEN の祖先チェーンと一致し、現在地は screen を持たない', () => {
     for (const screen of screens) {
       const chain: ScreenId[] = []
-      for (let c = screen; c !== 'home';) {
+      for (let c = screen; c !== 'home'; ) {
         c = PARENT_SCREEN[c]
         chain.unshift(c)
       }
@@ -244,13 +242,7 @@ describe('globals.css: .breadcrumb-link(静的)', () => {
   const bodies = (selector: string): string => {
     const out: string[] = []
     for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      if (
-        m[1]
-          .split(',')
-          .map((s) => s.trim())
-          .includes(selector)
-      )
-        out.push(m[2])
+      if (m[1].split(',').map((s) => s.trim()).includes(selector)) out.push(m[2])
     }
     return out.join('\n')
   }
@@ -262,8 +254,6 @@ describe('globals.css: .breadcrumb-link(静的)', () => {
   })
 
   it(':focus-visible の outline を持つ', () => {
-    expect(bodies('.screen-breadcrumb .breadcrumb-link:focus-visible')).toMatch(
-      /outline:\s*\d+px solid/,
-    )
+    expect(bodies('.screen-breadcrumb .breadcrumb-link:focus-visible')).toMatch(/outline:\s*\d+px solid/)
   })
 })

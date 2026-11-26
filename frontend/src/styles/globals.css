@@ -1656,8 +1656,11 @@ h1[data-fit='wrap'] {
 
 .breadcrumb-separator {
   flex: none;
+  /* 項目が 2 行に折り返したら、区切りは最後の行の高さに置いてその行の中央に合わせる(2 行の間に浮かせない)。
+     高さは行の高さ(1.15em)なので、1 行の項目では上下中央と同じ位置 */
+  align-self: flex-end;
   width: 0.625em;
-  height: 1em;
+  height: 1.15em;
   margin-left: 0.25em;
   fill: none;
   stroke: var(--text-muted);
@@ -1706,6 +1709,26 @@ h1[data-fit='wrap'] {
 .screen-guide h2 {
   margin: 0;
   font-size: clamp(1.05rem, 3.2vh, 2rem);
+  line-height: 1.15;
+  word-break: auto-phrase;
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+/* Issue #134: 指示文と、押し方の短い案内。幅があれば同じ行に並べ、案内の分の高さを格子から奪わない */
+.screen-guide-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 1em;
+}
+
+.screen-guide-hint {
+  margin: 0;
+  color: var(--text-muted);
+  /* Issue #81: 本人が読む補助文字は 16px(1rem)未満にしない */
+  font-size: 1rem;
+  font-weight: 700;
   line-height: 1.15;
   word-break: auto-phrase;
   line-break: strict;
@@ -1926,7 +1949,9 @@ h1[data-fit='wrap'] {
   overflow: hidden;
   /* 見出し(h1)の上限を伝達欄の幅基準(cqi)にする */
   container-type: inline-size;
-  padding: 10px 18px;
+  /* 下の余白は小さくする: 欄の高さを変えずに、本文を置く高さを増やす(上の余白は変えないので、
+     見出しと本文の位置は変わらない) */
+  padding: 10px 18px 4px;
   color: var(--message-text);
   background: var(--message-bg);
   border-bottom: var(--grid-line-width) solid var(--grid-line);
@@ -1976,6 +2001,11 @@ h1[data-fit='wrap'] {
   width: 44px;
 }
 
+.history-gap {
+  width: 44px;
+  height: 44px;
+}
+
 .history-nav {
   display: grid;
   place-items: center;
@@ -2003,7 +2033,7 @@ h1[data-fit='wrap'] {
 @media (max-width: 480px), (max-height: 500px) {
   .message-panel {
     gap: 4px;
-    padding: 6px;
+    padding: 6px 6px 2px;
   }
 
   .message-panel-label {
@@ -2033,7 +2063,7 @@ h1[data-fit='wrap'] {
   .message-panel {
     height: clamp(54px, 12vh, 76px);
     height: clamp(54px, 12dvh, 76px);
-    padding-block: 3px;
+    padding-block: 3px 1px;
   }
 }
 
@@ -2142,7 +2172,23 @@ h1[data-fit='wrap'] {
 .grid-board.grid-home .tile {
   --label-fit-chars: 5.3;
   --label-cqi-min: 19;
-  --label-cqb-min: 29;
+  /* 30: 伝達欄(#131)と押し方の案内(#134)が重なる 390x844 で、標準のラベルを 27px 以上に保つ */
+  --label-cqb-min: 30;
+}
+
+/* 低いセル(320x568 のホームなど。中身の高さ 72px 未満 = 予告が 2 行にならない高さ。上の 2 行モードの
+   余白と重ねない): 2 行を想定した下限(content 高さ / 2.4)に
+   張り付いて、文字サイズを特大にしてもラベルが変わらなかった。ホームのラベルは 1 行なので、高さの係数を
+   上げて下限より上で文字サイズ設定が効くようにする。遷移タイルのラベルが予告を避ける下の余白も、
+   予告 1 行ぶんまで詰める(詰めないと、大きくしたラベルが上のスキャン枠の帯に入る) */
+@container not (min-height: 72px) {
+  .grid-board.grid-home .tile > * {
+    --label-cqb-min: 48;
+  }
+
+  .grid-board.grid-home .tile-nav .tile-label {
+    margin-bottom: calc(1.1 * var(--tile-preview-font));
+  }
 }
 
 @container (min-height: 150px) {
@@ -2178,7 +2224,7 @@ h1[data-fit='wrap'] {
 /* ===================================================================
    Issue #122: 利用者の好きな画像。本人が一番よく見る、案内欄の「介助者用」ボタンの左に出す。
    縦横比は保ち(切り抜かない)、高さは画面の高さに合わせる。低い画面では格子を優先して小さくする。
-   タップしても何も起きない(背景と同じ。タイルではない)。
+   ボタンではないので、押すと背景と同じく黄色のパネルを選ぶ(Issue #134。画像自体は pointer-events:none)。
    =================================================================== */
 .guide-photo {
   grid-column: 2;

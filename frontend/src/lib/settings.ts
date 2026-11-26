@@ -18,7 +18,7 @@ export interface Settings {
   intervalMs: number
   /** 先頭待機の倍率（先頭待機 = intervalMs * headHoldMultiplier）。既定 4/3(間隔 1.5 秒で 2.0 秒。Issue #92)、範囲 1〜5 */
   headHoldMultiplier: number
-  /** 連打無視(ms)。既定 500、範囲 0〜3000 */
+  /** 連打無視(ms)。既定 500、範囲 DEBOUNCE_MS_MIN(100)〜3000 */
   debounceMs: number
   /** Issue #6: 押下時間の下限(ms)。この時間以上押し続けたときだけオン。既定 0、範囲 0〜2000 */
   minHoldMs: number
@@ -116,7 +116,8 @@ const INTERVAL_MS_MIN = 500
 const INTERVAL_MS_MAX = 5000
 const HEAD_HOLD_MULTIPLIER_MIN = 1
 const HEAD_HOLD_MULTIPLIER_MAX = 5
-const DEBOUNCE_MS_MIN = 0
+/** 連打無視の下限(ms。Issue #164)。0 にはできない。介助者用メニューのスライダーの下限もこれを使う */
+export const DEBOUNCE_MS_MIN = 100
 const DEBOUNCE_MS_MAX = 3000
 const MIN_HOLD_MS_MIN = 0
 const MIN_HOLD_MS_MAX = 2000
@@ -140,6 +141,11 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return value
 }
 
+/** 有限の数値なら min 以上に引き上げる。それ以外はそのまま返す */
+function atLeast(value: unknown, min: number): unknown {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(value, min) : value
+}
+
 /** 保存値・取り込みJSONのフレーズが、昇格済み(印が現行以上)か */
 function currentPhrasesMark(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -160,7 +166,13 @@ export function normalizeSettings(input: unknown, base: Settings = DEFAULT_SETTI
       HEAD_HOLD_MULTIPLIER_MAX,
       base.headHoldMultiplier,
     ),
-    debounceMs: clampNumber(raw.debounceMs, DEBOUNCE_MS_MIN, DEBOUNCE_MS_MAX, base.debounceMs),
+    // 下限未満の数値(以前の設定の 0 など)は、既定ではなく下限にする(Issue #164)。上限超えと数値でない値は base
+    debounceMs: clampNumber(
+      atLeast(raw.debounceMs, DEBOUNCE_MS_MIN),
+      DEBOUNCE_MS_MIN,
+      DEBOUNCE_MS_MAX,
+      base.debounceMs,
+    ),
     minHoldMs: clampNumber(raw.minHoldMs, MIN_HOLD_MS_MIN, MIN_HOLD_MS_MAX, base.minHoldMs),
     activateOn: ACTIVATE_ONS.includes(raw.activateOn as ActivateOn)
       ? (raw.activateOn as ActivateOn)
