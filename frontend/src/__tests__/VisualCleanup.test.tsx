@@ -493,7 +493,7 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     }
   })
 
-  it('メニュー定義: tone:urgent のタイルは(画面ごと)ラベルを持ち、緊急入口(action:emergency)だけが .tile-emergency の対象', () => {
+  it('メニュー定義: 緊急入口(action:emergency)は画面ごとに1つまでで、ほかのパネルに同じラベルは無い', () => {
     const screens: ScreenId[] = [
       'home',
       'urgentDetail',
@@ -512,8 +512,8 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
       const emergencyItems = items.filter((i) => i.action.type === 'emergency')
       for (const e of emergencyItems) expect(e.label).toBe('緊急')
       expect(emergencyItems.length).toBeLessThanOrEqual(1)
-      // 緊急以外の urgent タイルに、緊急入口と同じラベルは無い(色以外で区別できる)
-      for (const i of items.filter((x) => x.tone === 'urgent' && x.action.type !== 'emergency')) {
+      // 緊急以外のパネルに、緊急入口と同じラベルは無い(色以外で区別できる)
+      for (const i of items.filter((x) => x.action.type !== 'emergency')) {
         expect(i.label).not.toBe('緊急')
       }
     }

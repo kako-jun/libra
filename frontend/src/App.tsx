@@ -600,7 +600,7 @@ export default function App() {
       if (event.type === 'emergency') {
         // SOS(・・・－－－・・・)の連続9押下: 確定を待たず即緊急(モールス中でも緊急に届く)
         // 並び順に頼らず、緊急のアクションを直接実行する
-        runAction({ id: 'emergency', label: '緊急', tone: 'urgent', action: { type: 'emergency' } })
+        runAction({ id: 'emergency', label: '緊急', action: { type: 'emergency' } })
       } else if (event.type === 'exit') {
         goTo('home')
       } else {

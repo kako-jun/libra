@@ -64,7 +64,6 @@ export interface MenuItem {
   id: string
   label: string
   detail?: string
-  tone?: Tone
   action: ActionId
   /** 下位画面へ進むタイル(navigate)だけが持つ、遷移先の中身の予告(例:「痛い・苦しい・…」)。
    *  読み上げ対象外(ラベルのみ読む)。タイル表示でだけ使う。 */
@@ -167,7 +166,6 @@ export const SCREEN_GUIDANCE: Record<ScreenId, string> = {
 const EMERGENCY_ITEM: MenuItem = {
   id: 'emergency',
   label: '緊急',
-  tone: 'urgent',
   action: { type: 'emergency' },
 }
 
@@ -187,7 +185,7 @@ function subScreen(items: MenuItem[]): MenuItem[] {
 }
 
 function message(id: string, label: string, text: string, tone?: Tone): MenuItem {
-  return { id, label, tone, action: { type: 'message', text, tone } }
+  return { id, label, action: { type: 'message', text, tone } }
 }
 
 const PREVIEW_ITEM_COUNT = 6
@@ -224,7 +222,6 @@ function phraseItems(group: PhraseGroup, phrases?: PhraseSets): MenuItem[] {
         {
           id: p.id,
           label: p.label,
-          tone: p.tone,
           action: { type: 'painLocation', label: p.label, text: p.text, tone: p.tone },
         }
       : message(p.id, p.label, p.text, p.tone),
@@ -298,7 +295,6 @@ export function buildUrgentDetailMenu(selectedDetails: readonly string[] = []): 
       ({ id, label }) => ({
         id,
         label,
-        tone: 'urgent' as const,
         action: { type: 'emergencyDetail' as const, label },
       }),
     ),
