@@ -300,7 +300,7 @@ describe('Issue #91: 「閉じる」は右上の角に固定(静的)', () => {
     expect(wide).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\) auto minmax\(0, 1fr\)/)
   })
 
-  it('広い幅への切替は、ブラウザ既定の文字サイズに追従する container query(em。アプリの文字サイズ設定は介助者メニューに影響しない)で、container は .caregiver-header', () => {
+  it('広い幅への切替は em の container query(基準は container の文字サイズ。パネルの rem 指定を通じてブラウザ既定の文字サイズに追従し、アプリの文字サイズ設定は影響しない)で、container は .caregiver-header', () => {
     expect(ruleBody('.caregiver-header')).toMatch(/container-type:\s*inline-size/)
     expect(css).toMatch(/@container\s*\(min-width:\s*[\d.]+em\)/)
   })

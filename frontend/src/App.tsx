@@ -78,6 +78,9 @@ export const emergencyReleasedMessage = (details: readonly string[]) =>
     : `緊急（${details.join('・')}）を解除しました。`
 /** 緊急の詳細を伝達履歴に積むときの文(読み上げと同じ、緊急の主文(EMERGENCY_MESSAGE)＋詳細) */
 const emergencyDetailHistoryText = (label: string) => `${EMERGENCY_MESSAGE}${label}`
+/** 語の区切りのスライダーで選べる下限。文字の確定より余白ぶん長い値を、100ms の目盛りへ切り上げる */
+const wordGapFloor = (letterGapMs: number) =>
+  Math.max(1500, Math.ceil((letterGapMs + MORSE_WORD_GAP_MARGIN_MS) / 100) * 100)
 /** 振り返れる伝達の件数の上限(Issue #120)。古いものから捨てる */
 const HISTORY_MAX = 50
 /** 介助者用メニューのカテゴリタブ(Issue #31)。重要なものほど左、関係の近いものは隣(Issue #140)。矢印キーの移動順もこの並び */
@@ -1946,6 +1949,7 @@ export default function App() {
                       min={1500}
                       max={8000}
                       step={100}
+                      floor={wordGapFloor(settings().morseLetterGapMs)}
                       value={settings().morseWordGapMs}
                       onValue={(morseWordGapMs) => updateSettings({ morseWordGapMs })}
                     >

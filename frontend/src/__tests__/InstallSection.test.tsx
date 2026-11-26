@@ -53,10 +53,38 @@ describe('Issue #158: インストール欄', () => {
     fireEvent.click(button(c) as HTMLElement)
     expect(event.prompt).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(0)
-    // 使ったイベントはもう使えないので、押しても反応しないボタンは残さない
+    // 承諾した直後は appinstalled がまだ無い。手順もボタンも出さない(欄ごと無い)
+    expect(section(c)).toBeNull()
+    expect(c.querySelector('.install-steps')).toBeNull()
+    expect(menuOpen(c)).toBe(true)
+    window.dispatchEvent(new Event('appinstalled'))
+    expect(section(c).textContent).toContain('アプリはインストール済みです。')
+    expect(steps(c)).toEqual([])
+  })
+
+  it('確認画面を出している間は何も出さず、メニューを開き直しても手順を出さない', () => {
+    const event = installEvent()
+    event.userChoice = new Promise(() => {})
+    window.dispatchEvent(event)
+    const c = open()
+    fireEvent.click(button(c) as HTMLElement)
+    expect(section(c)).toBeNull()
+    fireEvent.click(c.querySelector('.caregiver-close') as HTMLElement)
+    fireEvent.click(c.querySelector('.caregiver-button') as HTMLElement)
+    expect(menuOpen(c)).toBe(true)
+    expect(section(c)).toBeNull()
+  })
+
+  it('確認画面で断ったら、使えないボタンは残さず手順にする。次のイベントでボタンに戻る', async () => {
+    const event = installEvent('dismissed')
+    window.dispatchEvent(event)
+    const c = open()
+    fireEvent.click(button(c) as HTMLElement)
+    await vi.advanceTimersByTimeAsync(0)
     expect(button(c)).toBeNull()
     expect(steps(c).length).toBeGreaterThan(0)
-    expect(menuOpen(c)).toBe(true)
+    window.dispatchEvent(installEvent())
+    expect(button(c)).not.toBeNull()
   })
 
   it('メニューを開いた後に届いても、ボタンに切り替わる', () => {
@@ -147,6 +175,50 @@ describe('Issue #158: インストール欄', () => {
       expect(section(c).textContent).toContain('アプリはインストール済みです。')
     } finally {
       delete (window.navigator as unknown as { standalone?: boolean }).standalone
+    }
+  })
+
+  const UA = {
+    macSafari:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+    macChrome:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+    linuxFirefox: 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0',
+    macFirefox:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:140.0) Gecko/20100101 Firefox/140.0',
+    androidFirefox: 'Mozilla/5.0 (Android 15; Mobile; rv:140.0) Gecko/140.0 Firefox/140.0',
+    androidChrome:
+      'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36',
+  }
+  const MAC = [
+    '「ファイル」メニューを開きます。',
+    '「Dockに追加」を選びます。',
+    '「追加」を押します。',
+  ]
+  const FIREFOX = [
+    'Chrome か Edge でこのページを開きます。',
+    '開いた画面で、この欄の案内に従います。',
+  ]
+  const BROWSER = [
+    'ブラウザのメニューを開きます。',
+    '「インストール」か「ホーム画面に追加」を選びます。',
+  ]
+  it.each([
+    ['Mac の Safari', UA.macSafari, MAC],
+    ['Mac の Chrome', UA.macChrome, BROWSER],
+    ['Linux の Firefox', UA.linuxFirefox, FIREFOX],
+    ['Mac の Firefox', UA.macFirefox, FIREFOX],
+    ['Android の Firefox', UA.androidFirefox, BROWSER],
+    ['Android の Chrome', UA.androidChrome, BROWSER],
+  ])('%s の手順', (_name, userAgent, expected) => {
+    Object.defineProperty(window.navigator, 'userAgent', { value: userAgent, configurable: true })
+    try {
+      const c = open()
+      expect(steps(c)).toEqual(expected)
+      expect(section(c).querySelector('button')).toBeNull()
+      expect(section(c).textContent).not.toMatch(/[（）()]/)
+    } finally {
+      delete (window.navigator as unknown as Record<string, unknown>).userAgent
     }
   })
 

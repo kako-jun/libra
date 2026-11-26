@@ -39,7 +39,6 @@
   --caregiver-status-ok-bg: #ecfdf5;
   --caregiver-status-ok-border: #86efac;
   --caregiver-status-warn-bg: #fff7ed;
-  --caregiver-status-warn-border: #f59e0b;
   --caregiver-status-warn-text: #7f1d1d;
   --caregiver-action-bg: #065f46;
   --caregiver-action-text: #ffffff;
@@ -70,7 +69,6 @@
   --caregiver-status-ok-bg: #123a29;
   --caregiver-status-ok-border: #4ade80;
   --caregiver-status-warn-bg: #3a2408;
-  --caregiver-status-warn-border: #f59e0b;
   --caregiver-status-warn-text: #ffd9a8;
   --caregiver-action-bg: #1a4a32;
   --caregiver-action-text: #eafaf1;
@@ -873,7 +871,9 @@ h1[data-fit='single'] {
    Issue #152: 緊急解除はヘッダの左右の中央に置く。幅に余裕がある(ヘッダが 34em 以上)ときは 1 行
    [見出し | 緊急解除 | 閉じる](左右の列を同じ幅にして中央をそろえる)、足りないときは 1 行目
    [見出し | 閉じる]・2 行目 [緊急解除](中央)にする。緊急が無いときは緊急解除が無い(Issue #137)ので、
-   2 行目の余白は行の gap でなくボタンの margin で取る。em はブラウザ既定の文字サイズに追従する(アプリの文字サイズ設定は介助者用メニューに影響しないので、標準と特大で切替幅は同じ)。
+   2 行目の余白は行の gap でなくボタンの margin で取る。この em は container の .caregiver-header の文字サイズ(.caregiver-panel の 1.125rem を受け継ぐ。
+   ブラウザ既定が 16px なら 18px)が基準で、34em はヘッダ幅 612px。rem 経由でブラウザ既定の文字サイズに追従する。
+   アプリの文字サイズ設定は介助者用メニューに影響しないので、標準と特大で切替幅は同じ。
    「閉じる」は align-self: start で、見出しが折り返しても 1 行目の上端(パネルの右上の角)に固定する。 */
 .caregiver-header {
   flex: none;
@@ -1204,7 +1204,8 @@ h1[data-fit='single'] {
 }
 
 /* Issue #111: 状態・結果の表示。操作できないので、ボタンに見える囲み(枠・角丸)にしない。
-   左の太い線と印(✓ / !)で、問題なし・対応が必要を示す */
+   印(✓ / !)と文で問題なし・対応が必要を示し、対応が必要な表示には背景も付ける。左の線は引かない
+   (Issue #142)。左の余白は、背景のある表示と無い表示で印の位置をそろえるため両方に取る */
 .caregiver-status {
   display: flex;
   align-items: baseline;
@@ -1212,14 +1213,12 @@ h1[data-fit='single'] {
   margin: 0;
   padding: 2px 0 2px 12px;
   color: var(--text);
-  border-left: 6px solid var(--caregiver-status-ok-border);
   font-weight: 700;
 }
 
 .caregiver-status.warn {
   color: var(--caregiver-status-warn-text);
   background: var(--caregiver-status-warn-bg);
-  border-left-color: var(--caregiver-status-warn-border);
   padding-block: 8px;
   padding-right: 10px;
 }
@@ -1337,6 +1336,8 @@ h1[data-fit='single'] {
 .phrase-editor,
 .settings-backup {
   display: grid;
+  /* 列を親の幅に合わせる。指定が無いと入力欄の既定の最小幅で列が広がり、320 幅で横にはみ出す */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -1350,6 +1351,7 @@ h1[data-fit='single'] {
 
 .phrase-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin: 0;
   padding: 0;
@@ -1358,6 +1360,7 @@ h1[data-fit='single'] {
 
 .phrase-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   padding: 10px;
   border: 1px solid var(--grid-line);
@@ -1366,9 +1369,16 @@ h1[data-fit='single'] {
 
 .phrase-row label {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   font-size: 1rem;
   font-weight: 700;
+}
+
+.phrase-row input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 
 .phrase-row input,

@@ -12,14 +12,21 @@ interface BeforeInstallPromptEvent extends Event {
   readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-/** installed: インストール済み / prompt: ボタンから端末の確認画面を出せる / manual: 手順を示す */
-export type InstallState = 'installed' | 'prompt' | 'manual'
+/**
+ * installed: インストール済み / prompt: ボタンから端末の確認画面を出せる / manual: 手順を示す /
+ * waiting: 確認画面を出している間と、承諾してから appinstalled が届くまで(何も出さない)
+ */
+export type InstallState = 'installed' | 'waiting' | 'prompt' | 'manual'
+
+/** 手順の出し分け。ブラウザによってメニューの場所と、インストールできるかが違う */
+export type InstallGuide = 'ios' | 'macSafari' | 'desktopFirefox' | 'browser'
 
 // manifest の display は fullscreen(非対応環境では standalone)。minimal-ui はブラウザ側の代替
 const INSTALLED_DISPLAY_MODES = ['fullscreen', 'standalone', 'minimal-ui']
 
 let deferred: BeforeInstallPromptEvent | null = null
 let installedNow = false
+let waiting = false
 const listeners = new Set<() => void>()
 const notify = () => listeners.forEach((listener) => listener())
 
@@ -33,13 +40,23 @@ function openedAsInstalledApp(): boolean {
 
 export function getInstallState(): InstallState {
   if (installedNow || openedAsInstalledApp()) return 'installed'
+  if (waiting) return 'waiting'
   return deferred ? 'prompt' : 'manual'
 }
 
-/** iPhone / iPad か(iPadOS はデスクトップの Mac を名乗るので、タッチ点数で見分ける) */
-export function isIos(): boolean {
+export function getInstallGuide(): InstallGuide {
   const { userAgent, platform, maxTouchPoints } = window.navigator
-  return /iPhone|iPad|iPod/.test(userAgent) || (platform === 'MacIntel' && maxTouchPoints > 1)
+  // iPadOS はデスクトップの Mac を名乗るので、タッチ点数で見分ける
+  if (/iPhone|iPad|iPod/.test(userAgent) || (platform === 'MacIntel' && maxTouchPoints > 1)) {
+    return 'ios'
+  }
+  // Mac の Safari だけが Version/ と Safari/ を持つ(Chrome・Edge は Version/ を持たない)
+  if (/Macintosh/.test(userAgent) && /Version\/[\d.]+ Safari\//.test(userAgent)) return 'macSafari'
+  // Android の Firefox はメニューから追加できるので、ほかのブラウザと同じ手順にする
+  if (/Firefox\//.test(userAgent) && !/Android|Mobile|Tablet/.test(userAgent)) {
+    return 'desktopFirefox'
+  }
+  return 'browser'
 }
 
 /** 状態が変わりうるとき(イベントが届いた・確認画面を使った)に呼ばれる。戻り値で購読をやめる */
@@ -55,11 +72,16 @@ export async function promptInstall(): Promise<void> {
   const event = deferred
   if (!event) return
   deferred = null
+  waiting = true
+  notify()
   try {
     await event.prompt()
-    await event.userChoice
+    const choice = await event.userChoice
+    // 承諾されたら appinstalled を待つ。その間に手順を出すと、まだ操作が要るように見える
+    if (choice.outcome !== 'accepted') waiting = false
   } catch {
     // 確認画面を出せなくても、手順の表示に切り替わるだけで伝達には影響しない
+    waiting = false
   } finally {
     notify()
   }
@@ -72,10 +94,12 @@ export function initInstallCapture(): () => void {
     event.preventDefault()
     deferred = event as BeforeInstallPromptEvent
     installedNow = false
+    waiting = false
     notify()
   }
   const onInstalled = () => {
     deferred = null
+    waiting = false
     installedNow = true
     notify()
   }
@@ -86,5 +110,6 @@ export function initInstallCapture(): () => void {
     window.removeEventListener('appinstalled', onInstalled)
     deferred = null
     installedNow = false
+    waiting = false
   }
 }

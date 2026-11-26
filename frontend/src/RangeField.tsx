@@ -7,6 +7,8 @@ interface RangeFieldProps {
   max: number
   step: number
   value: number
+  /** 実際に選べる下限(min より大きいとき。例: 語の区切りは文字の確定より長い)。目盛りの値で渡す */
+  floor?: number
   onValue: (value: number) => void
   /** 見出し(設定名と現在の値) */
   children: JSX.Element
@@ -20,8 +22,13 @@ interface RangeFieldProps {
  */
 export default function RangeField(props: RangeFieldProps) {
   const id = createUniqueId()
-  const stepBy = (direction: -1 | 1) =>
-    props.onValue(Math.min(props.max, Math.max(props.min, props.value + direction * props.step)))
+  const lowest = () => props.floor ?? props.min
+  const clamp = (value: number) => Math.min(props.max, Math.max(lowest(), value))
+  // 目盛りに無い値(取り込んだ設定など)は、つまみが出ている目盛り(四捨五入)から 1 段階動かす
+  const stepBy = (direction: -1 | 1) => {
+    const index = Math.round((props.value - props.min) / props.step)
+    props.onValue(clamp(props.min + (index + direction) * props.step))
+  }
 
   return (
     <div class="caregiver-field caregiver-range">
@@ -31,7 +38,7 @@ export default function RangeField(props: RangeFieldProps) {
           type="button"
           class="caregiver-range-step"
           aria-label={`${props.name}を減らす`}
-          disabled={props.value <= props.min}
+          disabled={props.value <= lowest()}
           onClick={() => stepBy(-1)}
         >
           <svg viewBox="0 0 20 24" aria-hidden="true">
@@ -45,7 +52,12 @@ export default function RangeField(props: RangeFieldProps) {
           max={props.max}
           step={props.step}
           value={props.value}
-          onInput={(event) => props.onValue(Number(event.currentTarget.value))}
+          onInput={(event) => {
+            const input = event.currentTarget
+            props.onValue(clamp(Number(input.value)))
+            // 下限より下へ引いても値が変わらないと描き直されないので、つまみを保存値へ戻す
+            input.value = String(props.value)
+          }}
         />
         <button
           type="button"

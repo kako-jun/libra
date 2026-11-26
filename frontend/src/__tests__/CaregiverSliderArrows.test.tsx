@@ -71,7 +71,8 @@ describe('Issue #141: スライダーの矢印', () => {
   it.each(SLIDERS)(
     '%s「%s」: 1 回で 1 段階。下限・上限では外側の矢印が押せない状態になる',
     (tab, name, key, min, max, step, scale) => {
-      setSettings({ morseEnabled: true })
+      // 語の区切りの下限は文字の確定で決まるので、最短(500ms → 下限 1500ms = min)にして端を見る
+      setSettings({ morseEnabled: true, morseLetterGapMs: 500 })
       const c = open(tab)
       const slider = () => sliderOf(c, name)
       const value = () => Number(slider().value)
@@ -112,6 +113,52 @@ describe('Issue #141: スライダーの矢印', () => {
     expect(stored().morseLetterGapMs).toBe(2100)
     expect(stored().morseWordGapMs).toBe(2600)
   })
+
+  it.each([
+    // [保存値, 矢印, 結果]。つまみは目盛り(四捨五入)に出るので、そこから 1 段階
+    [1540, '増やす', 1600],
+    [1540, '減らす', 1400],
+    [1550, '増やす', 1700],
+    [1550, '減らす', 1500],
+    [520, '減らす', 500],
+    [4980, '増やす', 5000],
+  ] as const)(
+    '目盛りに無い値 %i で「%s」を押すと目盛りの %i になり、つまみと表示がそろう',
+    (stored_, direction, expected) => {
+      setSettings({ intervalMs: stored_ })
+      const c = open('スキャン')
+      fireEvent.click(arrow(c, 'スキャン間隔', direction))
+      expect(stored().intervalMs).toBe(expected)
+      expect(Number(sliderOf(c, 'スキャン間隔').value)).toBe(expected)
+      expect(c.textContent).toContain(`スキャン間隔: ${(expected / 1000).toFixed(1)} 秒`)
+    },
+  )
+
+  it.each([
+    [1500, 2000],
+    [1550, 2100],
+    [500, 1500],
+    [3000, 3500],
+  ])(
+    '文字の確定 %i ms のとき、語の区切りは矢印でもつまみでも %i ms より下がらない',
+    (letter, floor) => {
+      setSettings({ morseEnabled: true, morseLetterGapMs: letter, morseWordGapMs: floor + 100 })
+      const c = open('モールス')
+      const name = '語の区切りまでの無入力'
+      fireEvent.click(arrow(c, name, '減らす'))
+      expect(stored().morseWordGapMs).toBe(floor)
+      expect(arrow(c, name, '減らす').disabled).toBe(true)
+      fireEvent.click(arrow(c, name, '減らす'))
+      expect(stored().morseWordGapMs).toBe(floor)
+      // つまみで下限より下へ引くと、保存値もつまみも下限に戻る(同じ値が続いても戻る)
+      for (let i = 0; i < 2; i += 1) {
+        fireEvent.input(sliderOf(c, name), { target: { value: '1500' } })
+        expect(stored().morseWordGapMs).toBe(floor)
+        expect(Number(sliderOf(c, name).value)).toBe(floor)
+      }
+      expect(stored().morseWordGapMs).toBeGreaterThanOrEqual(letter + 500)
+    },
+  )
 
   it('矢印の押下(pointerdown)で、自動で閉じるまでの 60 秒を数え直す', () => {
     const c = open('スキャン')
@@ -193,6 +240,25 @@ describe('Issue #141 / #142 / #143: スタイル(静的。実寸は実ブラウ�
     expect(bodies('.caregiver-sub')).toMatch(/padding-left:\s*30px/)
     // 上の項目との区切りの横線(border-top)は対象外。左の線だけを見る
     expect(bodies('.caregiver-sub')).not.toMatch(/border-(left|inline)|(^|[;\s])border:/)
+  })
+
+  it('状態表示・注意表示にも左の線を引かず、印の位置は同じ余白でそろえる', () => {
+    for (const selector of ['.caregiver-status', '.caregiver-status.warn']) {
+      expect(bodies(selector), selector).not.toMatch(/border/)
+    }
+    expect(css).not.toMatch(/border-(left|inline-start)[^;{}]*caregiver-status/)
+    expect(bodies('.caregiver-status')).toMatch(/padding:\s*2px 0 2px 12px/)
+    // 対応が必要な表示は、背景と文字色でも区別する(印と文は App 側)
+    expect(bodies('.caregiver-status.warn')).toMatch(
+      /background:\s*var\(--caregiver-status-warn-bg\)/,
+    )
+  })
+
+  it('フレーズ編集の列は入力欄の最小幅で広がらない(320 幅で横にはみ出さない)', () => {
+    for (const selector of ['.phrase-editor', '.phrase-list', '.phrase-row', '.phrase-row label']) {
+      expect(bodies(selector), selector).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/)
+    }
+    expect(bodies('.phrase-row input')).toMatch(/(^|[;\s])width:\s*100%/)
   })
 
   it('文字サイズの見本は中央に置き、高さは固定', () => {
