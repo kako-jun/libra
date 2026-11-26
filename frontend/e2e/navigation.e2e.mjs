@@ -316,12 +316,12 @@ async function checkPressAnywhere(chromium, port) {
           }
         }
       }
-      const load = async () => {
+      const load = async (settings = {}) => {
         await page.goto(`http://localhost:${port}/`)
-        await page.evaluate(() => {
+        await page.evaluate((extra) => {
           localStorage.clear()
-          localStorage.setItem('libra', JSON.stringify({ intervalMs: 2000 }))
-        })
+          localStorage.setItem('libra', JSON.stringify({ intervalMs: 2000, ...extra }))
+        }, settings)
         await page.reload()
         await page.waitForSelector('.tile.scanning')
         await page.evaluate(() => document.fonts.ready)
@@ -384,6 +384,66 @@ async function checkPressAnywhere(chromium, port) {
         path: 'ホーム',
         message: null,
       })
+
+      // 2 本の指。2 本目は連打無視の下限(0.1 秒)より後に着く(同時刻だと連打無視が防ぎ、接触の対策を検査できない)
+      if (mode === 'touch') {
+        const cdp = await context.newCDPSession(page)
+        const touch = (type, touchPoints) =>
+          cdp.send('Input.dispatchTouchEvent', { type, touchPoints })
+        const twoFingers = async (firstPoint, secondPoint) => {
+          const first = { ...firstPoint, id: 1 }
+          await touch('touchStart', [first])
+          await page.waitForTimeout(250)
+          await touch('touchStart', [first, { ...secondPoint, id: 2 }])
+          await page.waitForTimeout(150)
+          await touch('touchEnd', [])
+        }
+        const cases = [
+          ['背景と背景', 'background', 'background', {}, 'はい。'],
+          [
+            '背景と背景(離して決定)',
+            'background',
+            'background',
+            { activateOn: 'release' },
+            'はい。',
+          ],
+          ['背景を先にパネル', 'background', 'tile', {}, 'はい。'],
+          ['パネルを先に背景', 'tile', 'background', {}, 'いいえ。'],
+        ]
+        for (const [name, firstKind, secondKind, extra, message] of cases) {
+          await load({ debounceMs: 100, ...extra })
+          await page.evaluate(() => {
+            window.__vibrations = 0
+            navigator.vibrate = () => {
+              window.__vibrations += 1
+              return true
+            }
+          })
+          const points = {
+            background: await at('.screen-guide h2', 0.2),
+            tile: await at('.grid-board .tile[aria-label="いいえ"]'),
+          }
+          const other =
+            firstKind === secondKind ? await at('.screen-guide-hint', 0.7) : points[secondKind]
+          await waitYellow('はい')
+          await twoFingers(points[firstKind], other)
+          await expectState(`2 本の指(${name})は操作 1 つ`, {
+            message,
+            emergency: false,
+            path: 'ホーム',
+          })
+          // 受理と伝達の振動の 2 回だけ
+          const count = await page.evaluate(() => window.__vibrations)
+          if (count !== 2) {
+            failures.push(`[press-anywhere touch] 2 本の指(${name}): 振動 ${count} 回(期待 2)`)
+          }
+        }
+        // 全部離れた後の 1 本は効く
+        await page.waitForTimeout(600)
+        await waitYellow('はい')
+        await pressAt(await at('.screen-guide h2', 0.2))
+        await expectState('2 本の指の後の 1 本は効く', { message: 'はい。' })
+      }
       await context.close()
     }
   } catch (error) {

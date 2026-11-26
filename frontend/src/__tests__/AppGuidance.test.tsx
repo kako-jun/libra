@@ -274,7 +274,9 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       selectCaregiverTab(container, 'スキャン')
+      // 保存値の 0 は下限の 0.1 秒として読み込む(Issue #164)
       expect(behaviorNotes(container)).toEqual([
+        '0.1秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
         `0.8秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
       ])
     })
@@ -301,17 +303,20 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       }
     })
 
-    it('連打無視を 0 にし、他の設定も無ければ設定の下の説明ごと消える', () => {
+    it('連打無視は 0.1 秒より下げられない: スライダーを 0 にしても下限になり、その説明と保存値が残る(Issue #164)', () => {
       const { container } = render(() => <App />)
-      expect(readBehavior(container)).toContain('連打は数えません')
+      expect(readBehavior(container)).toContain('0.5秒以内の連打は数えません')
       changeSettingsViaMenu(container, () => {
         selectCaregiverTab(container, 'スキャン')
+        const slider = Array.from(container.querySelectorAll('.caregiver-field'))
+          .find((field) => field.textContent?.includes('連打無視'))
+          ?.querySelector('input') as HTMLInputElement
+        expect(slider.min).toBe('100')
+        expect(slider.max).toBe('3000')
         setSlider(container, '連打無視', 0)
       })
-      expect(readBehavior(container)).toBe('')
-      openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
-      expect(container.querySelector('.caregiver-behavior')).toBeNull()
+      expect(readBehavior(container)).toContain('0.1秒以内の連打は数えません')
+      expect(JSON.parse(window.localStorage.getItem('libra') as string).debounceMs).toBe(100)
     })
 
     it('押下時間の下限・決定のタイミングを変えると、押し方の行が追従する', () => {

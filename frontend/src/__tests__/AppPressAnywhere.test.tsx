@@ -13,6 +13,10 @@
 //   どこでも                          | 介助者用メニュー表示中 | 黄色は選ばない。閉じた押下の click は背後へ届かない
 //   背景の押下に続く click が別のボタンへ | 通常             | そのボタンは動かない
 //   背景                              | モールス             | 符号
+//   背景(別の指などが触れたまま)      | 通常・モールス       | 何もしない(全部離れた次の接触は効く)
+//   パネル(背景の押下中)              | 通常                 | 何もしない
+//   click の pointerId が違う          | 同じ位置・直後       | 同じ押下の続きとみなす(別のボタン・パネルは動かない)
+//   click の出なかった押下の記録       | pointerId の無い環境 | 次の click を止めない
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
@@ -385,6 +389,230 @@ describe('Issue #134: ボタン以外を押すと黄色のパネルを選ぶ', (
       symbol($(container, '.caregiver-button'), 100, 2)
       expect(menuOpen(container)).toBe(true)
       expect($(container, '.morse-code').textContent?.trim()).toBe('')
+    })
+  })
+
+  describe('複数の指が同時に触れても、操作は 1 つ', () => {
+    const finger = (pointerId: number, isPrimary = false) => ({
+      pointerId,
+      pointerType: 'touch',
+      isPrimary,
+    })
+    /** 下限の 0.1 秒を過ぎてから次の指が着くまでの時間。同時刻だと連打無視が防ぎ、接触の対策を検査できない */
+    const LATER_MS = 150
+    const later = () => vi.advanceTimersByTime(LATER_MS)
+    /** 連打無視を下限にして、黄色を「はい」にする */
+    function renderMinDebounce(extra: object = {}) {
+      setSettings({ debounceMs: 100, ...extra })
+      const view = render(() => <App />)
+      scanToYes(view.container)
+      return view
+    }
+    const board = (c: HTMLElement) => $(c, '.grid-board')
+    const guide = (c: HTMLElement) => $(c, '.screen-guide h2')
+
+    it.each([2, 3, 5])('背景に %i 本: 黄色の「はい」だけ。続けて緊急を選ばない', (count) => {
+      const { container } = renderMinDebounce()
+      const before = vibrations().length
+      for (let i = 1; i <= count; i += 1) {
+        if (i > 1) later()
+        fireEvent.pointerDown(i % 2 ? board(container) : guide(container), finger(i, i === 1))
+      }
+      for (let i = 1; i <= count; i += 1) fireEvent.pointerUp(document.body, finger(i, i === 1))
+      expect(shownMessage(container)).toBe('はい。')
+      expect(isEmergency(container)).toBe(false)
+      expect(vibrations().length - before).toBe(2)
+    })
+
+    it('黄色が「不快」: 2 本触れても、開いた画面の「戻る」を続けて選ばない', () => {
+      setSettings({ debounceMs: 100 })
+      const { container } = render(() => <App />)
+      for (let i = 0; i < 400 && scanningLabel(container) !== '不快'; i += 1)
+        vi.advanceTimersByTime(100)
+      fireEvent.pointerDown(board(container), finger(1, true))
+      later()
+      fireEvent.pointerDown(guide(container), finger(2))
+      expect(breadcrumb(container)).toEqual(['ホーム', '不快'])
+    })
+
+    it('離して決定: 2 本目を離しても、1 本目を離しても、決定は 1 本目の 1 回だけ', () => {
+      const { container } = renderMinDebounce({ activateOn: 'release' })
+      const before = vibrations().length
+      fireEvent.pointerDown(board(container), finger(1, true))
+      later()
+      fireEvent.pointerDown(guide(container), finger(2))
+      fireEvent.pointerUp(document.body, finger(2))
+      expect(shownMessage(container)).toBeNull()
+      fireEvent.pointerUp(document.body, finger(1, true))
+      expect(shownMessage(container)).toBe('はい。')
+      expect(isEmergency(container)).toBe(false)
+      expect(vibrations().length - before).toBe(2)
+    })
+
+    it('1 本目を離しても、残った指がある間は次の背景の接触を数えない。全部離れれば効く', () => {
+      const { container } = renderMinDebounce()
+      fireEvent.pointerDown(board(container), finger(1, true))
+      later()
+      fireEvent.pointerDown(guide(container), finger(2))
+      fireEvent.pointerUp(document.body, finger(1, true))
+      later()
+      fireEvent.pointerDown(board(container), finger(3))
+      expect(isEmergency(container)).toBe(false)
+      fireEvent.pointerUp(document.body, finger(3))
+      fireEvent.pointerUp(document.body, finger(2))
+      later()
+      fireEvent.pointerDown(board(container), finger(4, true))
+      expect(isEmergency(container)).toBe(true)
+    })
+
+    it('下限付きの長押し中に着いた別の指は、背景もパネルも数えない', () => {
+      const { container } = renderMinDebounce({ minHoldMs: 500 })
+      const before = vibrations().length
+      fireEvent.pointerDown(board(container), finger(1, true))
+      later()
+      fireEvent.pointerDown(guide(container), finger(2))
+      fireEvent.pointerDown(tile(container, 'いいえ'), finger(3))
+      vi.advanceTimersByTime(1000)
+      fireEvent.pointerUp(document.body, finger(2))
+      fireEvent.pointerUp(document.body, finger(3))
+      fireEvent.pointerUp(document.body, finger(1, true))
+      expect(shownMessage(container)).toBe('はい。')
+      expect(isEmergency(container)).toBe(false)
+      // 受理と「はい」の振動の 2 回だけ(同じ「はい」を重ねて実行していない)
+      expect(vibrations().length - before).toBe(2)
+    })
+
+    it('背景の押下中に触れたパネルは実行しない。その click も実行しない', () => {
+      const { container } = renderMinDebounce()
+      fireEvent.pointerDown(board(container), finger(1, true))
+      const no = tile(container, 'いいえ')
+      later()
+      fireEvent.pointerDown(no, finger(2))
+      fireEvent.pointerUp(no, finger(2))
+      pointerClick(no, 2)
+      expect(shownMessage(container)).toBe('はい。')
+    })
+
+    it('パネルの押下中に触れた背景は黄色を選ばない', () => {
+      const { container } = renderMinDebounce()
+      fireEvent.pointerDown(tile(container, 'いいえ'), finger(1, true))
+      later()
+      fireEvent.pointerDown(guide(container), finger(2))
+      expect(shownMessage(container)).toBe('いいえ。')
+      expect(isEmergency(container)).toBe(false)
+    })
+
+    it('メニューを閉じた指が触れたままなら、別の指の背景は黄色(緊急)を選ばない', () => {
+      setSettings({ debounceMs: 100 })
+      const { container } = render(() => <App />)
+      openCaregiverMenu(container)
+      fireEvent.pointerDown($(container, '.caregiver-overlay'), finger(1, true))
+      later()
+      fireEvent.pointerDown(document.body, finger(2))
+      expect(menuOpen(container)).toBe(false)
+      expect(isEmergency(container)).toBe(false)
+    })
+
+    it('背景の押下中でも「介助者用」は開ける', () => {
+      const { container } = renderMinDebounce({ activateOn: 'release' })
+      fireEvent.pointerDown(board(container), finger(1, true))
+      later()
+      fireEvent.pointerDown($(container, '.caregiver-button'), finger(2))
+      expect(menuOpen(container)).toBe(true)
+    })
+
+    it.each([
+      ['同じ種類の最初の接触が始まる', () => {}, true],
+      ['時間が経つ(10 秒超)', () => vi.advanceTimersByTime(10001), false],
+      ['画面からフォーカスが外れる', () => fireEvent.blur(window), false],
+      ['pointercancel', () => fireEvent.pointerCancel(window, { pointerId: 1 }), false],
+    ])(
+      '離した通知を取りこぼしても、背景は効かないままにならない: %s',
+      (_name, recover, primary) => {
+        const { container } = renderMinDebounce()
+        // 主ボタンでない押下で、離さないままの接触だけを残す
+        fireEvent.pointerDown(board(container), { ...finger(1, true), button: 2 })
+        recover()
+        for (let i = 0; i < 400 && scanningLabel(container) !== 'はい'; i += 1)
+          vi.advanceTimersByTime(100)
+        later()
+        fireEvent.pointerDown(board(container), finger(7, primary))
+        expect(shownMessage(container)).toBe('はい。')
+      },
+    )
+
+    it('モールス: 2 本目の背景は符号にならない', () => {
+      setSettings({ morseEnabled: true })
+      const { container } = render(() => <App />)
+      press(tile(container, 'モールス'))
+      const panel = $(container, '.morse-panel')
+      later()
+      fireEvent.pointerDown(panel, finger(2, true))
+      later()
+      fireEvent.pointerDown(panel, finger(3))
+      vi.advanceTimersByTime(100)
+      fireEvent.pointerUp(panel, finger(3))
+      fireEvent.pointerUp(panel, finger(2, true))
+      expect($(container, '.morse-code').textContent?.trim()).toBe('・')
+    })
+  })
+
+  describe('click の pointerId と、click の出ない押下', () => {
+    const at = { clientX: 40, clientY: 50 }
+    const clickAs = (el: Element, init: PointerEventInit) =>
+      fireEvent(el, new PointerEvent('click', { bubbles: true, cancelable: true, ...init }))
+    function backgroundToDiscomfort(c: HTMLElement) {
+      for (let i = 0; i < 400 && scanningLabel(c) !== '不快'; i += 1) vi.advanceTimersByTime(100)
+      fireEvent.pointerDown($(c, '.grid-board'), { pointerId: 1, ...at })
+      fireEvent.pointerUp(document.body, { pointerId: 1, ...at })
+      expect(breadcrumb(c)).toEqual(['ホーム', '不快'])
+    }
+
+    it('pointerId が違っても、直後・同じ位置の実際の click は現れたリンクを動かさない', () => {
+      const { container } = render(() => <App />)
+      backgroundToDiscomfort(container)
+      clickAs($(container, '.breadcrumb-link'), { pointerId: 99, detail: 1, ...at })
+      expect(breadcrumb(container)).toEqual(['ホーム', '不快'])
+    })
+
+    it('pointerId が違うパネルの click で、重ねて実行しない', () => {
+      setSettings({ debounceMs: 100 })
+      const { container } = render(() => <App />)
+      const yes = tile(container, 'はい')
+      fireEvent.pointerDown(yes, { pointerId: 1, ...at })
+      fireEvent.pointerUp(document.body, { pointerId: 1, ...at })
+      const before = vibrations().length
+      vi.advanceTimersByTime(150) // 連打無視を過ぎても重ねて実行しない
+      clickAs(tile(container, 'いいえ'), { pointerId: 99, detail: 1, ...at })
+      expect(vibrations().length).toBe(before)
+      expect(shownMessage(container)).toBe('はい。')
+    })
+
+    it.each([
+      ['キー操作・プログラムの click(detail=0)', { detail: 0, ...at }, 0],
+      ['離れた位置', { detail: 1, clientX: 200, clientY: 50 }, 0],
+      ['時間が経った', { detail: 1, ...at }, 800],
+    ])('同じ押下とみなさない click は止めない: %s', (_name, init, wait) => {
+      const { container } = render(() => <App />)
+      backgroundToDiscomfort(container)
+      vi.advanceTimersByTime(wait)
+      clickAs($(container, '.breadcrumb-link'), { pointerId: 99, ...init })
+      expect(breadcrumb(container)).toEqual(['ホーム'])
+    })
+
+    it('pointerId の無い環境: click の出なかった押下の記録は、次の押下の click を止めない', () => {
+      const { container } = render(() => <App />)
+      tap(container, '不快')
+      vi.advanceTimersByTime(600)
+      // click が出ない背景のタップ(主ボタン以外なので何も選ばない)
+      fireEvent.pointerDown($(container, '.screen-guide'), { pointerId: 5, button: 2 })
+      fireEvent.pointerUp(document.body, { pointerId: 5, button: 2 })
+      vi.advanceTimersByTime(100)
+      const link = $(container, '.breadcrumb-link')
+      fireEvent.pointerDown(link, { pointerId: 6 })
+      fireEvent.pointerUp(link, { pointerId: 6 })
+      fireEvent.click(link) // pointerId の無い click
+      expect(breadcrumb(container)).toEqual(['ホーム'])
     })
   })
 
