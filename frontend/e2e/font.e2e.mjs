@@ -15,7 +15,7 @@ const FAMILY = 'BIZ UDGothic'
 // 以前の同梱に無かった字と、配布されている分割版(全分割の和)にも無い字(Ⅰ ⅰ ≒ ‾ α)
 // ラベルは20字までなので2つのフレーズに分ける
 const RARE = '→←⇒✓●○◎△※㎝㎖℃'
-const RARE_2 = '髙﨑頰剝吞瘙搔ⅠⅰΑα≒‾'
+const RARE_2 = '髙﨑頰剝吞瘙搔𠮟ⅠⅰΑα≒‾'
 const TABS = ['status', 'scan', 'input', 'feedback', 'display', 'phrases', 'backup', 'about']
 
 /** 文字を直接持つ全要素(shadow DOM を含む)の実描画書体を調べ、同梱以外で描いた字があれば返す */
