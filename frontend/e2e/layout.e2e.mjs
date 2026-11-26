@@ -3,18 +3,23 @@
 //
 // 事前に `npm run build` で dist/ を作っておくこと。実行方法は docs/development.md 参照。
 //
-// - letters-scroll: 横向き小画面で文字盤のスキャン対象が下段に来ても document がスクロールせず、h1 と対象が画面内にある
+// - letters-scroll: 文字盤(14 項目)が 15 セル固定格子でスクロールせず、全項目・h1・緊急が画面内に収まる(#121)
 // - no-overlap: 案内領域・「介助者用」ボタンがタイルと重ならない
 // - heading-fit / xlarge-fit / font-size-monotonic: 見出し・ラベルが収まり、文字サイズが単調に効く
 // - issue37-small-viewport / tight-labels-and-ring / preview-two-lines-overlap / morse-legend-fit: 狭い画面・緊急・プレビューの崩れ
+// - repeat-pulse-reduced-motion: 「もう一度」の点滅が動きを減らす設定で止まり、続けて押すと枠の太さが変わる
 
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
 /**
- * PR#11 再レビュー must-C: orientation:any(縦横両対応)の横向き小画面で、文字盤画面の
- * スキャン対象が下段に来ても、document 自体はスクロールせず(window.scrollY===0)、
- * メッセージパネル(h1、緊急表示を含む)がビューポート内にあり続け、かつスキャン対象の
- * タイル自体もビューポート内にあることを確認する。
+ * 文字盤の行段階(14 項目)は、スクロールさせず 15 セルの固定格子(縦長 3x5 / 横長 5x3)に全項目を
+ * 収める(Issue #121。旧仕様の「下段へ進むと document がスクロールする / 緊急タイルが sticky で残る」
+ * 検査(PR#11 再レビュー must-C)は、スクロール自体が無くなったので同等の検査へ書き換えた)。
+ * 横向き小画面・縦長の狭い画面でも次を確認する:
+ * - document も grid-board もスクロールしない(window.scrollY===0、board の scrollHeight<=clientHeight)
+ * - 全タイル(14 項目)とメッセージパネル(h1)がビューポート内にあり、タイル同士が重ならない
+ * - 緊急タイルが画面内にあり、末尾の確定へカーソルが進んでもカーソルのタイルが画面内に見える
+ * - ラベルは 13px 以上(Issue #34)
  */
 async function checkLettersScrollLayout(chromium, port) {
   const base = `http://localhost:${port}/`
@@ -31,92 +36,118 @@ async function checkLettersScrollLayout(chromium, port) {
     for (const [name, width, height] of viewports) {
       const context = await browser.newContext({ viewport: { width, height } })
       const page = await context.newPage()
+      await page.addInitScript(() =>
+        window.localStorage.setItem(
+          'libra',
+          JSON.stringify({ intervalMs: 500, headHoldMultiplier: 1 }),
+        ),
+      )
       await page.goto(base)
       await page.waitForTimeout(300)
 
-      // home: index6 = 文字盤(先頭待機2000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(2000 + 5 * 1500 + 150)
-      await page.keyboard.press('Space')
-      await page.waitForTimeout(200)
-
-      // letters screen(2 段階文字盤の行段階): 戻る,緊急,あ〜わ行,確定,1字消す(Issue #95 で はい・いいえ を削除)。
-      // 確定は末尾ではないので、ラベルから位置を引く
-      const commitIndex = await page.evaluate(() =>
-        [...document.querySelectorAll('.grid-board .tile')].findIndex(
-          (tile) => tile.querySelector('.tile-label')?.textContent === '確定',
-        ),
-      )
-      await page.waitForTimeout(2000 + (commitIndex - 1) * 1500 + 150)
+      const waitForCursor = (label) =>
+        page.waitForFunction(
+          (expected) =>
+            document.querySelector('.tile.scanning .tile-label')?.textContent === expected,
+          label,
+          { timeout: 15000 },
+        )
+      try {
+        // ホームは位置でなくカーソルのラベルで待つ(ホームの項目数が変わってもタイミングに依存しない)
+        await waitForCursor('文字盤')
+        await page.keyboard.press('Space')
+        await page.waitForTimeout(200)
+        // letters 画面(2 段階文字盤の行段階): 戻る,緊急,1字消す,あ〜わ行,確定(14 項目)。末尾の確定までカーソルを進める
+        await waitForCursor('確定')
+      } catch (error) {
+        failures.push(
+          `[letters-scroll ${name}] 確定へカーソルが進まない: ${error.message.split('\n')[0]}`,
+        )
+        await context.close()
+        continue
+      }
 
       const info = await page.evaluate(() => {
-        // kako-jun 追加指示で app-shell の余白を0にし、グリッドが端から端まで隙間なく
-        // 埋まるようになった結果、fr/minmax の分割計算にサブピクセルの端数が出ることがある
-        // (実測で 0.3px 程度)。ビューポート境界判定に 1px の許容誤差を持たせる
+        // app-shell の余白は 0 で、fr/minmax の分割計算にサブピクセルの端数(実測 0.3px 程度)が出る。
+        // ビューポート境界判定に 1px の許容誤差を持たせる
         const EPSILON = 1
+        const inViewport = (r) =>
+          r.top >= -EPSILON &&
+          r.bottom <= window.innerHeight + EPSILON &&
+          r.left >= -EPSILON &&
+          r.right <= window.innerWidth + EPSILON
         const scanning = document.querySelector('.tile.scanning')
         const h1 = document.querySelector('h1')
         const board = document.querySelector('.grid-board')
-        // #40: 緊急タイルは通常下位画面で2番目になるため、DOM順ではなく意味クラスで参照する
-        const emergencyTile = board?.querySelector('.tile-emergency')
-        const scanningRect = scanning?.getBoundingClientRect()
-        const h1Rect = h1?.getBoundingClientRect()
-        const emergencyRect = emergencyTile?.getBoundingClientRect()
-        const boardRect = board?.getBoundingClientRect()
+        const tiles = [...board.querySelectorAll('.tile')]
+        const rects = tiles.map((t) => t.getBoundingClientRect())
+        let overlaps = 0
+        for (let i = 0; i < rects.length; i += 1) {
+          for (let j = i + 1; j < rects.length; j += 1) {
+            const a = rects[i]
+            const b = rects[j]
+            if (
+              Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+              Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1
+            )
+              overlaps += 1
+          }
+        }
+        const emergencyTile = board.querySelector('.tile-emergency')
         return {
           scrollY: window.scrollY,
+          docOverflow: document.documentElement.scrollHeight - window.innerHeight,
+          boardOverflow: board.scrollHeight - board.clientHeight,
           scanningLabel: scanning?.querySelector('.tile-label')?.textContent,
-          scanningInViewport: scanningRect
-            ? scanningRect.top >= -EPSILON &&
-              scanningRect.bottom <= window.innerHeight + EPSILON &&
-              scanningRect.left >= -EPSILON &&
-              scanningRect.right <= window.innerWidth + EPSILON
-            : false,
-          h1InViewport: h1Rect
-            ? h1Rect.top >= -EPSILON &&
-              h1Rect.bottom <= window.innerHeight + EPSILON &&
-              h1Rect.left >= -EPSILON &&
-              h1Rect.right <= window.innerWidth + EPSILON
-            : false,
+          scanningInViewport: scanning ? inViewport(scanning.getBoundingClientRect()) : false,
+          h1InViewport: h1 ? inViewport(h1.getBoundingClientRect()) : false,
+          tileCount: tiles.length,
+          outside: tiles
+            .filter((t) => !inViewport(t.getBoundingClientRect()))
+            .map((t) => t.querySelector('.tile-label')?.textContent),
+          overlaps,
           emergencyLabel: emergencyTile?.querySelector('.tile-label')?.textContent,
-          // 9項目以上(文字盤)のスクロールモードでも、緊急タイルは sticky で可視範囲内に残る
-          emergencyInBoardViewport:
-            emergencyRect && boardRect
-              ? emergencyRect.bottom > boardRect.top + EPSILON &&
-                emergencyRect.top < boardRect.bottom - EPSILON
-              : false,
-          scanningOverlapsEmergency:
-            scanningRect && emergencyRect && scanning !== emergencyTile
-              ? scanningRect.left < emergencyRect.right &&
-                scanningRect.right > emergencyRect.left &&
-                scanningRect.top < emergencyRect.bottom &&
-                scanningRect.bottom > emergencyRect.top
-              : false,
+          emergencyInViewport: emergencyTile
+            ? inViewport(emergencyTile.getBoundingClientRect())
+            : false,
+          minLabelPx: Math.min(
+            ...tiles.map((t) =>
+              parseFloat(getComputedStyle(t.querySelector('.tile-label')).fontSize),
+            ),
+          ),
         }
       })
 
-      if (info.scrollY !== 0) {
-        failures.push(`[letters-scroll ${name}] window.scrollY が 0 ではない(${info.scrollY})`)
+      if (info.scrollY !== 0 || info.docOverflow > 0) {
+        failures.push(
+          `[letters-scroll ${name}] document がスクロールする(scrollY=${info.scrollY} overflow=${info.docOverflow})`,
+        )
+      }
+      if (info.boardOverflow > 1) {
+        failures.push(
+          `[letters-scroll ${name}] 文字盤がスクロールする(grid-board の scrollHeight-clientHeight=${info.boardOverflow}px。#121 で固定格子になった)`,
+        )
       }
       if (!info.h1InViewport) {
         failures.push(`[letters-scroll ${name}] メッセージパネル(h1)がビューポート外`)
       }
-      if (info.scanningLabel !== '確定') {
-        failures.push(
-          `[letters-scroll ${name}] タイミング計算がずれ、確定にカーソルが無い(${info.scanningLabel})`,
-        )
-      } else if (!info.scanningInViewport) {
-        failures.push(`[letters-scroll ${name}] スキャン対象(確定)がビューポート外`)
+      if (info.tileCount !== 14) {
+        failures.push(`[letters-scroll ${name}] 項目が 14 でない(${info.tileCount})`)
       }
-      if (info.emergencyLabel !== '緊急') {
-        failures.push(`[letters-scroll ${name}] 緊急タイルが見つからない(${info.emergencyLabel})`)
-      } else if (!info.emergencyInBoardViewport) {
-        failures.push(
-          `[letters-scroll ${name}] スキャンが下の方(確定)まで進んだ際、緊急タイルが` +
-            `grid-board の可視範囲外に出ている(sticky が効いていない)`,
-        )
+      if (info.outside.length > 0) {
+        failures.push(`[letters-scroll ${name}] ビューポート外のタイル: ${info.outside.join(',')}`)
       }
-      if (info.scanningOverlapsEmergency) {
-        failures.push(`[letters-scroll ${name}] 緊急タイルがスキャン対象(確定)を覆っている`)
+      if (info.overlaps > 0) failures.push(`[letters-scroll ${name}] タイル同士が重なっている`)
+      if (info.scanningLabel !== '確定' || !info.scanningInViewport) {
+        failures.push(`[letters-scroll ${name}] スキャン対象(確定)が画面内に無い`)
+      }
+      if (info.emergencyLabel !== '緊急' || !info.emergencyInViewport) {
+        failures.push(`[letters-scroll ${name}] 緊急タイルが画面内に無い(${info.emergencyLabel})`)
+      }
+      if (info.minLabelPx < 13) {
+        failures.push(
+          `[letters-scroll ${name}] ラベル最小 ${info.minLabelPx.toFixed(2)}px(13px 未満)`,
+        )
       }
 
       await context.close()
@@ -182,13 +213,12 @@ async function checkNoOverlapWithFixedControls(chromium, port) {
     for (const [name, width, height] of viewports) {
       const context = await browser.newContext({ viewport: { width, height } })
       const page = await context.newPage()
-      await page.goto(base)
+      await page.goto(`${base}?dev`)
       await page.waitForTimeout(700)
       await checkScreen(page, name, 'home')
 
-      // home: index6 = 文字盤(先頭待機2000ms、以降intervalMs=1500ごとに進む)
-      await page.waitForTimeout(2000 + 5 * 1500 + 150)
-      await page.keyboard.press('Space')
+      // 文字盤へは数字キーで直接入る(?dev。ホームの 8 番目 = 文字盤。#123 で「もう一度」が 2 番目に入った)
+      await page.keyboard.press('8')
       await page.waitForTimeout(300)
       await checkScreen(page, name, 'letters')
 
@@ -256,7 +286,7 @@ async function checkHeadingFit(chromium, port) {
       const page = await context.newPage()
       await page.goto(`${base}?dev`)
       await page.waitForTimeout(300)
-      await page.keyboard.press('2') // 「はい」を伝達し、結果パネルを表示する
+      await page.keyboard.press('3') // 「はい」を伝達し、結果パネルを表示する(#123 で 2 番目が「もう一度」になり、はいは 3 番目)
       await settle(page)
 
       const checkNoOverflow = (label, info) => {
@@ -375,10 +405,14 @@ async function checkLabelsFitAtXlarge(chromium, port) {
       )
       await page.goto(base)
       await page.waitForTimeout(300)
-      // home: index4 = 不快(先頭待機は倍率1×intervalMs=5000ms、以降intervalMs=5000msごとに進む。
-      // addInitScriptで intervalMs を伸ばし、タイミングのブレでずれないようにしている。
+      // カーソルが不快に来るのを待って押す(ホームの項目数は #123 で変わったので、待ち時間の計算でなく
+      // カーソルのラベルで待つ。intervalMs を伸ばして、押す瞬間にカーソルが動かないようにしている。
       // 先頭待機は倍率の既定に依存させないため倍率1を明示する。Issue #92)
-      await page.waitForTimeout(5000 + 3 * 5000 + 200)
+      await page.waitForFunction(
+        () => document.querySelector('.tile.scanning .tile-label')?.textContent === '不快',
+        null,
+        { timeout: 60000 },
+      )
       await page.keyboard.press('Space')
       await page.waitForTimeout(300)
       // 押した項目が実際に不快で、不快画面を検査していること(別の画面を見ていないこと)
@@ -464,8 +498,8 @@ async function checkFontSizeMonotonicity(chromium, port) {
   const browser = await launchBrowser(chromium)
   const failures = []
 
-  // ホーム(緊急/はい/いいえ/快/不快/要望/文字盤)から数字キーで各画面へ直接ジャンプする。
-  // インデックスは menus.ts の並び(先頭は常に緊急)に対応する
+  // ホーム(緊急/もう一度/はい/いいえ/快/不快/要望/文字盤/モールス。#123 で「もう一度」が 2 番目に入った)
+  // から数字キーで各画面へ直接ジャンプする。インデックスは menus.ts の並び(先頭は常に緊急)に対応する
   const VPS = [
     [320, 568],
     [390, 844],
@@ -481,17 +515,17 @@ async function checkFontSizeMonotonicity(chromium, port) {
   const SCREENS = [
     ['home', []],
     ['home+undo', ['3']],
-    ['discomfort', ['5']],
-    ['discomfortOther', ['5', '8']],
-    ['comfort', ['4']],
-    ['requests', ['6']],
-    ['feelings', ['4', '6']],
-    ['pain', ['5', '3']],
-    ['painIntensity', ['5', '3', '4']],
+    ['discomfort', ['6']],
+    ['discomfortOther', ['6', '8']],
+    ['comfort', ['5']],
+    ['requests', ['7']],
+    ['feelings', ['5', '6']],
+    ['pain', ['6', '3']],
+    ['painIntensity', ['6', '3', '4']],
     ['urgentDetail', ['1']],
     ['emerg5(緊急中ホーム)', ['1', '3', '1', '4', '1', '5', '1', '6', '1', '7']],
-    ['letters', ['7']],
-    ['letters-a', ['7', '2']],
+    ['letters', ['8']],
+    ['letters-a', ['8', '4']],
   ]
   // PR#16 4巡目 must-F: --tile-label-font の絶対下限(clamp() の最小値、1.05rem)。
   // セルが小さすぎて label-ratio を上げても既にこの下限に張り付いている場合、
@@ -543,9 +577,12 @@ async function checkFontSizeMonotonicity(chromium, port) {
           // 1.25倍差になる設計。1.15はその下に余裕を持たせた下限値)
           if (font === 'xlarge' && size != null && standardSize != null) {
             const atFloor = standardSize <= LABEL_FLOOR_PX + 0.5
-            if (!atFloor && size < standardSize * 1.15 - 0.1) {
+            // ホーム(10 セル格子 #123)・文字盤(15 セル格子 #121)も他の画面と同じ 1.15 倍を求める
+            // (PR #124 レビュー S1。一時 1.05 倍に緩めていたのを、ラベルの式を直して戻した)
+            const minRatio = 1.15
+            if (!atFloor && size < standardSize * minRatio - 0.1) {
               failures.push(
-                `[ratio ${vw}x${vh} ${screenName}] 標準=${standardSize.toFixed(1)}px 特大=${size.toFixed(1)}px(1.15倍未満、セル上限張り付きでもない)`,
+                `[ratio ${vw}x${vh} ${screenName}] 標準=${standardSize.toFixed(1)}px 特大=${size.toFixed(1)}px(${minRatio}倍未満、セル上限張り付きでもない)`,
               )
             }
           }
@@ -609,12 +646,15 @@ async function checkFontSizeMonotonicity(chromium, port) {
       // 実測21.80px。Issue #47 で縦長が 2列×4行の固定格子になり(従来は項目数に応じて3行)、
       // Issue #34 でスキャン枠の厚みぶん余白を取るためセルが低くなった結果。
       // 4巡目の回帰値(22.0px)より下だが、固定格子の仕様上の値なので新しい実測を基準にする
-      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 21 },
-      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['5'], minPx: 21 },
-      // 実測41.17px
+      // ホーム(390x844)は 10 セル格子(#123、縦 2×5)。アイコンを同じ行に置き、セルの高さの係数を
+      // 引き上げた後の実測 28.39px を基準に 27(旧: 8 セルの実測 21.80px で 21)
+      { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 27 },
+      { vw: 390, vh: 844, screenName: 'discomfort', keys: ['6'], minPx: 21 },
+      // 旧実測41.17px(min 34)。タブレット縦のホームは 3×3(gridLayout.ts の HOME_WIDE_PORTRAIT_GRID)で、
+      // 実測 37.47px。下限は元の 34 のまま(PR #124 レビュー S1)
       { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
       // 実測28.79px
-      { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['5'], minPx: 27 },
+      { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['6'], minPx: 27 },
     ]
     for (const { vw, vh, screenName, keys, minPx } of standardLabelMinimums) {
       const context = await browser.newContext({ viewport: { width: vw, height: vh } })
@@ -898,6 +938,85 @@ async function checkTightScreenLabelsAndRing(chromium, port) {
       }
       await context.close()
     }
+    // ③ 最小セル(PR #124 レビュー S2): 320x568・特大・高コントラスト・緊急詳細5件+伝達(はい)のホーム。
+    // ホームは 10 セル(縦 2×5)でアイコン付き。ラベルは 13px 以上・1 行・枠の帯へ食い込まない
+    {
+      const { context, page } = await open(
+        { width: 320, height: 568 },
+        { fontSize: 'xlarge', highContrast: true, ...maxNotes },
+      )
+      for (const d of ['苦しい', '痛い', '息ができない', '吐きそう', '胸が痛い']) {
+        await hold(page, '緊急')
+        await hold(page, d)
+      }
+      await hold(page, 'はい')
+      const result = await page.evaluate(() => {
+        const ringW = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--scan-ring-width'),
+        )
+        const inset = 4 + ringW + 2
+        let worst = 0
+        let maxLines = 0
+        const tiles = [...document.querySelectorAll('.grid-board .tile')]
+        for (const tile of tiles) {
+          const tr = tile.getBoundingClientRect()
+          for (const sel of ['.tile-label', '.tile-preview', '.tile-chevron']) {
+            const el = tile.querySelector(sel)
+            if (!el) continue
+            const range = document.createRange()
+            range.selectNodeContents(el)
+            const r =
+              sel === '.tile-chevron' ? el.getBoundingClientRect() : range.getBoundingClientRect()
+            const left = sel === '.tile-preview' ? el.getBoundingClientRect().left : r.left
+            const right = sel === '.tile-preview' ? el.getBoundingClientRect().right : r.right
+            worst = Math.max(
+              worst,
+              tr.left + inset - left,
+              right - (tr.right - inset),
+              tr.top + inset - r.top,
+              r.bottom - (tr.bottom - inset),
+            )
+          }
+          // ラベルの文字の行数(アイコンは数えない)
+          const tops = new Set()
+          const walker = document.createTreeWalker(
+            tile.querySelector('.tile-label'),
+            NodeFilter.SHOW_TEXT,
+          )
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const range = document.createRange()
+            range.selectNodeContents(n)
+            for (const rect of range.getClientRects()) {
+              if (rect.width > 0) tops.add(Math.round(rect.top))
+            }
+          }
+          maxLines = Math.max(maxLines, tops.size)
+        }
+        const first = tiles[0]?.getBoundingClientRect()
+        return {
+          details: document.querySelectorAll('.emergency-details li').length,
+          sent: document.querySelector('.message-panel h1')?.textContent ?? '',
+          home: (document.querySelector('.screen-breadcrumb')?.textContent ?? '').trim(),
+          cell: first ? `${first.width.toFixed(1)}x${first.height.toFixed(1)}` : '',
+          worst,
+          maxLines,
+        }
+      })
+      const px = await labelMinPx(page)
+      const name = '[tight 320x568 特大 高コントラスト 緊急5件+伝達 ホーム]'
+      if (result.details !== 5 || result.sent !== 'はい。' || result.home !== 'ホーム') {
+        failures.push(`${name} 想定の状態に到達していない ${JSON.stringify(result)}`)
+      }
+      if (px < MIN_LABEL_PX) {
+        failures.push(`${name} ラベル最小 ${px.toFixed(2)}px(下限 ${MIN_LABEL_PX}px 未満)`)
+      }
+      if (result.maxLines > 1) failures.push(`${name} ラベルが ${result.maxLines} 行になった`)
+      if (result.worst > 0.5) {
+        failures.push(`${name} 文字が枠の帯へ ${result.worst.toFixed(1)}px 食い込んでいる`)
+      }
+      console.log(`${name} セル ${result.cell} ラベル最小 ${px.toFixed(2)}px`)
+      await context.close()
+    }
     // ②(390x844 は枠9px・幅で頭打ち、768x1024 は枠9px・高さで頭打ち。補正が無いと 0.8〜1.2px 以上小さくなる。
     // 高コントラストは区切り線が太くセルが約1px低くなるため、許容は 0.5px)
     for (const viewport of [
@@ -952,7 +1071,9 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
       fivePath,
       true,
     ],
-    ['320x480 特大 ホーム', { width: 320, height: 480 }, { fontSize: 'xlarge' }, [], false],
+    // ホームは #123 で 10 セル格子(縦 2×5)になり、320x480 の特大ではセルが低く 2 行モードにならない
+    // (実測: 遷移タイル 4 つ・2 行モード 0)。同じ狭さ・特大で 2 行モードになる 8 セルの不快画面で検査する
+    ['320x480 特大 不快', { width: 320, height: 480 }, { fontSize: 'xlarge' }, ['不快'], false],
     ['320x568 標準 ホーム', { width: 320, height: 568 }, { fontSize: 'standard' }, [], false],
     [
       '844x390 特大 高コントラスト 緊急詳細5件+伝達 不快',
@@ -1152,6 +1273,398 @@ async function checkMorseLegendFit(chromium, port) {
   return failures
 }
 
+/**
+ * 実機フィードバック(#108〜#123)のうち、実描画でしか確かめられない見た目を、計算済みスタイルと矩形で測る。
+ * - #114: 「直前に伝えたこと」の枠が、パンくず・案内欄より上にある
+ * - #109: 「介助者用」ボタンの上・右・下の余白が同じ(--guide-pad: 標準 10px / 狭い・低い画面 4px)で、
+ *         見た目(面の色・文字色・角丸 8px・太字・1.125rem)がメニュー内の「閉じる」と同じ
+ * - #113: パンくず先頭の家アイコンが文字と同じ色・高さ。パンくずと指示文の間隔が 10px(高さ 500px 以下は 4px)
+ * - #115: ホームの全タイルのアイコンが見えていて、色は文字と同じ
+ * - #120: 履歴が 2 件になると矢印が見え(display:none でない)、押すと「過去に伝えたこと（1件前）」になる。
+ *         矢印は見出しの文字(h1)と重ならず、44px 以上の押せる大きさがある
+ * - #122: 好きな画像が「介助者用」ボタンの左に見え、ボタン・タイルと重ならず、ホームの 10 セルが画面内に収まる
+ */
+async function checkRealDeviceFeedbackLayout(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  // 1x1 の PNG(縦横比 1:1。表示の高さは CSS の clamp で決まる)
+  const PHOTO =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+  const viewports = [
+    // [名前, 幅, 高さ, 期待する --guide-pad, 期待するパンくず→指示文の間隔]
+    ['1024x768', 1024, 768, 10, 10],
+    ['390x844', 390, 844, 4, 10],
+    ['844x390', 844, 390, 4, 4],
+    ['320x568', 320, 568, 4, 10],
+    ['568x320', 568, 320, 4, 4],
+  ]
+  const EPS = 1
+  try {
+    for (const [name, width, height, guidePad, crumbGap] of viewports) {
+      for (const withPhoto of [false, true]) {
+        const label = `${name}${withPhoto ? ' 画像あり' : ''}`
+        const context = await browser.newContext({ viewport: { width, height } })
+        const page = await context.newPage()
+        await page.addInitScript(
+          ({ photo }) => {
+            window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 60000 }))
+            if (photo) window.localStorage.setItem('libra:photo', photo)
+          },
+          { photo: withPhoto ? PHOTO : null },
+        )
+        try {
+          await page.goto(`http://localhost:${port}/?dev`)
+          await page.evaluate(() => document.fonts.ready)
+          await page.waitForTimeout(700)
+
+          // ---- 伝達 2 件(はい → いいえ)で、直前の伝達の枠と履歴の矢印を出す ----
+          await page.keyboard.press('3') // はい(#123 で 3 番目)
+          await page.waitForTimeout(700)
+          await page.keyboard.press('4') // いいえ(取り消しは いいえ の後ろなので 4 番目のまま)
+          await page.waitForTimeout(700)
+
+          const m = await page.evaluate(() => {
+            const rect = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
+            const cs = (el) => (el ? getComputedStyle(el) : null)
+            const guide = document.querySelector('.screen-guide')
+            const button = document.querySelector('.caregiver-button')
+            const panel = document.querySelector('.message-panel')
+            const crumbList = document.querySelector('.screen-breadcrumb')
+            const crumbFirst = document.querySelector('.screen-breadcrumb li')
+            const homeIcon = document.querySelector('.screen-breadcrumb .breadcrumb-home')
+            const h2 = document.querySelector('.screen-guide h2')
+            const h1 = document.querySelector('.message-panel h1')
+            const photo = document.querySelector('.guide-photo')
+            const arrows = [...document.querySelectorAll('.message-panel .history-nav')]
+            const tiles = [...document.querySelectorAll('.grid-board .tile')]
+            const buttonStyle = cs(button)
+            return {
+              guide: rect(guide),
+              guidePadVar: parseFloat(cs(guide).getPropertyValue('--guide-pad')),
+              button: rect(button),
+              buttonStyle: {
+                bg: buttonStyle.backgroundColor,
+                color: buttonStyle.color,
+                radius: buttonStyle.borderTopLeftRadius,
+                weight: buttonStyle.fontWeight,
+                size: buttonStyle.fontSize,
+              },
+              panel: rect(panel),
+              panelBeforeGuide: Boolean(
+                panel.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING,
+              ),
+              crumbList: rect(crumbList),
+              h2: rect(h2),
+              crumbColor: cs(crumbFirst).color,
+              crumbFont: parseFloat(cs(crumbFirst).fontSize),
+              homeIcon: rect(homeIcon),
+              homeIconDisplay: cs(homeIcon)?.display,
+              homeIconStroke: cs(homeIcon)?.stroke,
+              h1: rect(h1),
+              panelLabel: document.querySelector('.message-panel-label')?.textContent,
+              arrows: arrows.map((a) => ({
+                rect: rect(a),
+                display: cs(a).display,
+                visibility: cs(a).visibility,
+                disabled: a.disabled,
+                label: a.getAttribute('aria-label'),
+              })),
+              photo: rect(photo),
+              photoDisplay: cs(photo)?.display,
+              tiles: tiles.map((t) => ({
+                label: t.querySelector('.tile-label')?.textContent,
+                rect: rect(t),
+                labelColor: cs(t.querySelector('.tile-label')).color,
+                icon: rect(t.querySelector('.tile-icon')),
+                iconDisplay: cs(t.querySelector('.tile-icon'))?.display,
+                iconStroke: cs(t.querySelector('.tile-icon'))?.stroke,
+              })),
+              vw: window.innerWidth,
+              vh: window.innerHeight,
+              scrollY: window.scrollY,
+            }
+          })
+          const overlap = (a, b) =>
+            Math.min(a.right, b.right) - Math.max(a.left, b.left) > EPS &&
+            Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > EPS
+          const inViewport = (r) =>
+            r.top >= -EPS && r.left >= -EPS && r.bottom <= m.vh + EPS && r.right <= m.vw + EPS
+
+          // #114
+          if (!m.panelBeforeGuide || m.panel.bottom > m.guide.top + EPS) {
+            failures.push(
+              `[realdevice ${label}] #114 直前に伝えたことが案内欄より上にない(panel.bottom=${m.panel.bottom} guide.top=${m.guide.top})`,
+            )
+          }
+
+          // #109 余白
+          const gaps = {
+            top: m.button.top - m.guide.top,
+            right: m.guide.right - m.button.right,
+            bottom: m.guide.bottom - m.button.bottom,
+          }
+          // 案内欄の下の境界線(--grid-line-width)のぶん bottom は border を含むので、border を除いて比べる
+          const borderBottom = await page.evaluate(
+            () =>
+              parseFloat(
+                getComputedStyle(document.querySelector('.screen-guide')).borderBottomWidth,
+              ) || 0,
+          )
+          gaps.bottom -= borderBottom
+          if (!(Math.abs(m.guidePadVar - guidePad) <= 0.01)) {
+            failures.push(
+              `[realdevice ${label}] #109 --guide-pad=${m.guidePadVar}px(期待 ${guidePad}px)`,
+            )
+          }
+          for (const [side, gap] of Object.entries(gaps)) {
+            if (!(Math.abs(gap - guidePad) <= EPS)) {
+              failures.push(
+                `[realdevice ${label}] #109 「介助者用」ボタンの${side}の余白 ${gap.toFixed(1)}px(期待 ${guidePad}px)`,
+              )
+            }
+          }
+
+          // #113
+          const gapCrumb = m.h2.top - m.crumbList.bottom
+          if (!(Math.abs(gapCrumb - crumbGap) <= EPS)) {
+            failures.push(
+              `[realdevice ${label}] #113 パンくずと指示文の間隔 ${gapCrumb.toFixed(1)}px(期待 ${crumbGap}px)`,
+            )
+          }
+          if (!m.homeIcon || m.homeIconDisplay === 'none' || m.homeIcon.width < 1) {
+            failures.push(`[realdevice ${label}] #113 パンくずの家アイコンが見えない`)
+          } else {
+            if (!(Math.abs(m.homeIcon.height - m.crumbFont) <= 1)) {
+              failures.push(
+                `[realdevice ${label}] #113 家アイコンの高さ ${m.homeIcon.height}px が文字(${m.crumbFont}px)と違う`,
+              )
+            }
+            if (m.homeIconStroke !== m.crumbColor) {
+              failures.push(
+                `[realdevice ${label}] #113 家アイコンの色 ${m.homeIconStroke} が文字の色 ${m.crumbColor} と違う`,
+              )
+            }
+          }
+
+          // #115
+          for (const t of m.tiles) {
+            if (!t.icon || t.iconDisplay === 'none' || t.icon.width < 4 || t.icon.height < 4) {
+              failures.push(`[realdevice ${label}] #115 「${t.label}」のアイコンが見えない`)
+              continue
+            }
+            if (t.iconStroke !== t.labelColor) {
+              failures.push(
+                `[realdevice ${label}] #115 「${t.label}」のアイコンの色 ${t.iconStroke} が文字の色 ${t.labelColor} と違う`,
+              )
+            }
+            if (!(t.icon.left >= t.rect.left - EPS && t.icon.right <= t.rect.right + EPS)) {
+              failures.push(
+                `[realdevice ${label}] #115 「${t.label}」のアイコンがタイルからはみ出す`,
+              )
+            }
+          }
+
+          // #120 矢印
+          if (m.arrows.length !== 2) {
+            failures.push(`[realdevice ${label}] #120 履歴 2 件で矢印が ${m.arrows.length} 個`)
+          } else {
+            for (const a of m.arrows) {
+              if (a.display === 'none' || a.visibility === 'hidden' || a.rect.width < 1) {
+                failures.push(`[realdevice ${label}] #120 「${a.label}」が見えない`)
+              }
+              if (Math.min(a.rect.width, a.rect.height) < 44 - EPS) {
+                failures.push(
+                  `[realdevice ${label}] #120 「${a.label}」が小さい(${a.rect.width.toFixed(1)}x${a.rect.height.toFixed(1)})`,
+                )
+              }
+              if (m.h1 && overlap(a.rect, m.h1)) {
+                failures.push(`[realdevice ${label}] #120 「${a.label}」が見出しの文字と重なる`)
+              }
+              if (!inViewport(a.rect)) {
+                failures.push(`[realdevice ${label}] #120 「${a.label}」が画面外`)
+              }
+            }
+            const prev = m.arrows.find((a) => a.label === '前の伝達を表示')
+            const next = m.arrows.find((a) => a.label === '次の伝達を表示')
+            if (prev?.disabled !== false || next?.disabled !== true) {
+              failures.push(
+                `[realdevice ${label}] #120 最新表示中の矢印の押せる/押せないが違う(前=${prev?.disabled} 次=${next?.disabled})`,
+              )
+            }
+            // 実際にタップして、過去の表示に切り替わる(スキャン対象を実行しない)
+            await page.locator('.history-nav[aria-label="前の伝達を表示"]').click()
+            await page.waitForTimeout(200)
+            const after = await page.evaluate(() => ({
+              label: document.querySelector('.message-panel-label')?.textContent,
+              h1: document.querySelector('.message-panel h1')?.textContent,
+              crumb: [...document.querySelectorAll('.screen-breadcrumb li')].map(
+                (li) => li.textContent,
+              ),
+            }))
+            if (after.label !== '過去に伝えたこと（1件前）' || after.h1 !== 'はい。') {
+              failures.push(
+                `[realdevice ${label}] #120 前の伝達を押しても過去の表示にならない(${after.label} / ${after.h1})`,
+              )
+            }
+            if (after.crumb.join('>') !== 'ホーム') {
+              failures.push(
+                `[realdevice ${label}] #120 矢印のタップで画面が変わった(${after.crumb.join('>')})`,
+              )
+            }
+          }
+
+          // #122 画像
+          if (withPhoto) {
+            if (!m.photo || m.photoDisplay === 'none' || m.photo.width < 1) {
+              failures.push(`[realdevice ${label}] #122 好きな画像が見えない`)
+            } else {
+              if (m.photo.right > m.button.left + EPS) {
+                failures.push(`[realdevice ${label}] #122 画像が「介助者用」ボタンの左にない`)
+              }
+              if (overlap(m.photo, m.button)) {
+                failures.push(`[realdevice ${label}] #122 画像が「介助者用」ボタンと重なる`)
+              }
+              if (m.photo.height > 120 + EPS) {
+                failures.push(
+                  `[realdevice ${label}] #122 画像の高さ ${m.photo.height}px(上限 120px)`,
+                )
+              }
+              if (!(m.photo.top >= m.guide.top - EPS && m.photo.bottom <= m.guide.bottom + EPS)) {
+                failures.push(`[realdevice ${label}] #122 画像が案内欄からはみ出す`)
+              }
+              for (const t of m.tiles) {
+                if (overlap(m.photo, t.rect)) {
+                  failures.push(`[realdevice ${label}] #122 画像がタイル「${t.label}」と重なる`)
+                }
+              }
+            }
+          } else if (m.photo) {
+            failures.push(`[realdevice ${label}] #122 未設定なのに画像がある`)
+          }
+
+          // どの条件でも、ホームの全タイルが画面内でスクロールなし
+          if (m.scrollY !== 0) failures.push(`[realdevice ${label}] document がスクロールした`)
+          const outside = m.tiles.filter((t) => !inViewport(t.rect)).map((t) => t.label)
+          if (outside.length > 0) {
+            failures.push(`[realdevice ${label}] 画面外のタイル: ${outside.join(',')}`)
+          }
+
+          // #109 見た目を「閉じる」と比べる(メニューを開く)
+          await page.locator('.caregiver-button').click()
+          await page.waitForSelector('.caregiver-close', { timeout: 3000 })
+          const close = await page.evaluate(() => {
+            const s = getComputedStyle(document.querySelector('.caregiver-close'))
+            return {
+              bg: s.backgroundColor,
+              color: s.color,
+              radius: s.borderTopLeftRadius,
+              weight: s.fontWeight,
+              size: s.fontSize,
+            }
+          })
+          for (const key of ['bg', 'color', 'radius', 'weight', 'size']) {
+            if (m.buttonStyle[key] !== close[key]) {
+              failures.push(
+                `[realdevice ${label}] #109 「介助者用」と「閉じる」の ${key} が違う(${m.buttonStyle[key]} / ${close[key]})`,
+              )
+            }
+          }
+          if (m.buttonStyle.radius !== '8px') {
+            failures.push(`[realdevice ${label}] #109 角丸が 8px でない(${m.buttonStyle.radius})`)
+          }
+          if (Number(m.buttonStyle.weight) < 700) {
+            failures.push(`[realdevice ${label}] #109 太字でない(${m.buttonStyle.weight})`)
+          }
+          if (m.buttonStyle.size !== '18px') {
+            failures.push(
+              `[realdevice ${label}] #109 文字が 1.125rem でない(${m.buttonStyle.size})`,
+            )
+          }
+        } catch (error) {
+          failures.push(`[realdevice ${label}] ${error.message.split('\n')[0]}`)
+        }
+        await context.close()
+      }
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
+/**
+ * PR #124: 「もう一度」の点滅は、動きを減らす設定(prefers-reduced-motion: reduce)では止め、黄色の枠を
+ * 止めたまま出す。続けて押したときも見た目が変わるよう、回数の偶奇で枠の太さ(6px / 10px)が変わる。
+ * 通常の設定では従来どおりアニメーションする。computed style で確かめる
+ */
+async function checkRepeatPulseReducedMotion(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  try {
+    for (const reducedMotion of ['reduce', 'no-preference']) {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        reducedMotion,
+      })
+      const page = await context.newPage()
+      await page.addInitScript(() =>
+        window.localStorage.setItem('libra', JSON.stringify({ intervalMs: 5000 })),
+      )
+      await page.goto(`http://localhost:${port}/`)
+      await page.waitForTimeout(300)
+      const tap = async (label) => {
+        await page
+          .locator('.grid-board .tile')
+          .filter({ has: page.getByText(label, { exact: true }) })
+          .first()
+          .click()
+        // 画面が変わった直後のクリックは無視されるので、間を空ける
+        await page.waitForTimeout(800)
+      }
+      const panelStyle = () =>
+        page.evaluate(() => {
+          const panel = document.querySelector('.message-panel')
+          const style = getComputedStyle(panel)
+          return {
+            pulse: ['repeat-pulse-a', 'repeat-pulse-b'].find((c) => panel.classList.contains(c)),
+            animation: style.animationName,
+            shadow: style.boxShadow,
+          }
+        })
+      await tap('はい')
+      await tap('もう一度')
+      const first = await panelStyle()
+      await tap('もう一度')
+      const second = await panelStyle()
+      const name = `[repeat-pulse ${reducedMotion}]`
+      if (!first.pulse || !second.pulse || first.pulse === second.pulse) {
+        failures.push(`${name} 偶奇のクラスが切り替わっていない ${JSON.stringify({ first, second })}`)
+      }
+      if (reducedMotion === 'reduce') {
+        if (first.animation !== 'none' || second.animation !== 'none') {
+          failures.push(`${name} 動きを減らす設定なのにアニメーションしている`)
+        }
+        if (!/inset/.test(first.shadow) || !/inset/.test(second.shadow)) {
+          failures.push(`${name} 止めた枠が出ていない ${JSON.stringify({ first, second })}`)
+        }
+        if (first.shadow === second.shadow) {
+          failures.push(`${name} 続けて押しても枠の見た目が変わらない(${first.shadow})`)
+        }
+      } else if (first.animation === 'none' || second.animation === 'none') {
+        failures.push(`${name} 通常の設定でアニメーションしていない`)
+      }
+      await context.close()
+    }
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
     { name: 'letters-scroll', run: checkLettersScrollLayout },
@@ -1163,6 +1676,8 @@ await runChecks(
     { name: 'preview-two-lines-overlap', run: checkTilePreviewTwoLineOverlap },
     { name: 'tight-labels-and-ring', run: checkTightScreenLabelsAndRing },
     { name: 'morse-legend-fit', run: checkMorseLegendFit },
+    { name: 'realdevice-feedback', run: checkRealDeviceFeedbackLayout },
+    { name: 'repeat-pulse-reduced-motion', run: checkRepeatPulseReducedMotion },
   ],
   { basePort: 4740 },
 )

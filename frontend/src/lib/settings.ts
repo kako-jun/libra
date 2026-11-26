@@ -84,6 +84,34 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const STORAGE_KEY = 'libra'
 
+/** タブごとに初期値へ戻せる設定のまとまり(Issue #117)。介助者用メニューのタブ id と同じ名前 */
+export type SettingsSection = 'scan' | 'input' | 'feedback' | 'display' | 'phrases'
+
+/** 各まとまりに属する設定キー。全キーがどれか1つだけに属する(テストで検査しやすいよう一覧で持つ) */
+export const SETTINGS_SECTION_KEYS: Record<SettingsSection, readonly (keyof Settings)[]> = {
+  scan: ['intervalMs', 'headHoldMultiplier', 'debounceMs', 'minHoldMs', 'activateOn', 'auditoryScan'],
+  input: ['morseEnabled', 'morseDashMs', 'morseLetterGapMs', 'morseWordGapMs'],
+  feedback: [
+    'voiceMode',
+    'hapticsEnabled',
+    'hapticsStrength',
+    'hapticSoundWhenVoiceOff',
+    'hapticSoundAlso',
+  ],
+  display: ['fontSize', 'theme', 'highContrast'],
+  phrases: ['phrases', 'phrasesVersion'],
+}
+
+/** 指定したまとまりの設定だけを初期値に戻した設定を返す。ほかのまとまりは変えない */
+export function resetSettingsSection(settings: Settings, section: SettingsSection): Settings {
+  const next: Settings = { ...settings }
+  for (const key of SETTINGS_SECTION_KEYS[section]) {
+    ;(next as Record<keyof Settings, unknown>)[key] = DEFAULT_SETTINGS[key]
+  }
+  // normalizeSettings と同じ不変条件(語の区切りは文字の確定より長い)は、初期値どうしなので保たれる
+  return next
+}
+
 const INTERVAL_MS_MIN = 500
 const INTERVAL_MS_MAX = 5000
 const HEAD_HOLD_MULTIPLIER_MIN = 1

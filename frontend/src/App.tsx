@@ -12,7 +12,14 @@ import {
 } from './lib/menus'
 import { advanceIdleSteps, UNDO_LAPS } from './lib/idleLaps'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
-import { MORSE_WORD_GAP_MARGIN_MS, loadSettings, saveSettings, type Settings } from './lib/settings'
+import {
+  MORSE_WORD_GAP_MARGIN_MS,
+  loadSettings,
+  resetSettingsSection,
+  saveSettings,
+  type Settings,
+  type SettingsSection,
+} from './lib/settings'
 import { initToneVisibilityResume, resumeToneAudioContext } from './lib/tone'
 import { initWakeLock, type WakeLockStatus } from './lib/wakeLock'
 import {
@@ -23,6 +30,16 @@ import {
 import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
+import TileIcon, { hasTileIcon } from './TileIcon'
+import { clearPhoto, fileToPhotoDataUrl, loadPhoto, savePhoto } from './lib/photo'
+import {
+  APP_BUILD_DATE,
+  APP_VERSION,
+  AUTHOR_SITE_URL,
+  FEEDBACK_BBS_URL,
+  USER_GUIDE_URL,
+  fetchUsageCount,
+} from './lib/appInfo'
 import { createSwitchInput } from './lib/switchInput'
 import { EMERGENCY_MESSAGE } from './lib/phrases'
 import {
@@ -41,21 +58,34 @@ import {
   type MorseState,
   type MorseSymbol,
 } from './lib/morse'
-import { buildBehaviorNotes, buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
+import { buildBehaviorNoteMap, buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 /** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
 const COMPACT_NOTES_QUERY = '(max-height: 500px), (max-width: 480px)'
 const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます。'
-/** 介助者メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
+/** 本人が緊急を解除したときに伝達欄へ出す文(Issue #108) */
+const EMERGENCY_RELEASED_MESSAGE = '緊急を解除しました。'
+/**
+ * 本人が緊急を解除したときの伝達文。選んだ詳細があれば文に含め、解除した後も緊急の中身が分かるようにする
+ * (例「緊急（息ができない・痛い）を解除しました。」)。詳細が無ければ「緊急を解除しました。」
+ */
+export const emergencyReleasedMessage = (details: readonly string[]) =>
+  details.length === 0 ? EMERGENCY_RELEASED_MESSAGE : `緊急（${details.join('・')}）を解除しました。`
+/** 緊急の詳細を伝達履歴に積むときの文(読み上げと同じ、緊急の主文(EMERGENCY_MESSAGE)＋詳細) */
+const emergencyDetailHistoryText = (label: string) => `${EMERGENCY_MESSAGE}${label}`
+/** 振り返れる伝達の件数の上限(Issue #120)。古いものから捨てる */
+const HISTORY_MAX = 50
+/** 介助者用メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
 const CAREGIVER_TABS = [
-  { id: 'status', label: '状態' },
+  { id: 'status', label: '端末の状態' },
   { id: 'scan', label: 'スキャン' },
-  { id: 'input', label: '入力方式' },
-  { id: 'feedback', label: 'フィードバック' },
+  { id: 'input', label: 'モールス' },
+  { id: 'feedback', label: '音と振動' },
   { id: 'display', label: '表示' },
   { id: 'phrases', label: 'フレーズ' },
   { id: 'backup', label: 'データ' },
+  { id: 'about', label: 'このアプリ' },
 ] as const
 const CAREGIVER_TAB_NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
 /** タブ移動に使うキーか。Ctrl/Alt/Meta 付きはブラウザ/OS のショートカット(Alt+←=戻る等)なので対象外 */
@@ -65,7 +95,7 @@ function isCaregiverTabNavKey(event: KeyboardEvent): boolean {
 }
 type CaregiverTabId = (typeof CAREGIVER_TABS)[number]['id']
 
-/** 介助者メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
+/** 介助者用メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
 
 const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
@@ -77,7 +107,7 @@ const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
 
 const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
 
-// Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者メニューに表示する文言。
+// Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者用メニューに表示する文言。
 // 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
 export const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
   active: '画面スリープ防止: 有効',
@@ -87,10 +117,10 @@ export const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
 }
 
 // PR #11 レビュー対応(should-1): オフラインで動く準備(Service Worker がこのページを
-// 制御しているか)を Wake Lock と同じ扱いで介助者メニューに表示する。
+// 制御しているか)を Wake Lock と同じ扱いで介助者用メニューに表示する。
 export const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
   ready: 'オフライン準備: 完了',
-  'not-ready': 'オフライン準備: 未完了',
+  'not-ready': 'オフライン準備: 未完了 — 通信できる場所で、このページを開き直してください。',
 }
 
 function speak(mode: Settings['voiceMode'], text: string, shortText = text, legacyVibrate = false) {
@@ -163,6 +193,9 @@ const THEME_COLOR: Record<'light' | 'dark', string> = {
   dark: '#0a2318',
 }
 
+/** 伝達履歴の1件。emergency は緊急の呼び出し・詳細の記録(緊急中は帯に同じ中身が出ている) */
+type HistoryEntry = { text: string; emergency: boolean }
+
 export default function App() {
   // 開発補助: URL に ?dev を付けると番号バッジを表示する（既定は非表示）
   const showDevNumbers = new URLSearchParams(window.location.search).has('dev')
@@ -216,6 +249,58 @@ export default function App() {
   const [message, setMessage] = createSignal(restoredEmergency?.sub ?? DEFAULT_MESSAGE)
   const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
 
+  // Issue #120: 伝達の履歴(介助者が左右の矢印で振り返る)。端末のメモリ内だけに持ち、保存しない。
+  // historyBack は「何件前を表示しているか」(0 = 最新)。新しい伝達・緊急・取り消しで必ず 0 に戻し、
+  // 過去の表示が本人の新しい伝達を隠さないようにする
+  // emergency: 緊急の呼び出し・詳細の記録(緊急中は帯に同じ中身が出ている)。伝達欄の「最新」にはならない
+  const [history, setHistory] = createSignal<HistoryEntry[]>(
+    restoredEmergency?.sub ? [{ text: restoredEmergency.sub, emergency: false }] : [],
+  )
+  const [historyBack, setHistoryBack] = createSignal(0)
+  // Issue #123: 「もう一度」。直前の伝達の振動パターン(はい/いいえ等)を覚えておき、同じものを出し直す
+  let lastMessageEvent: FeedbackEvent = 'message'
+  // もう一度伝えた回数。伝達欄(緊急の再伝達なら緊急の帯)を点滅させ、音声が無くても周囲に分かるようにする
+  const [repeatPulse, setRepeatPulse] = createSignal(0)
+  const [repeatedMessage, setRepeatedMessage] = createSignal(false)
+  const [repeatedEmergency, setRepeatedEmergency] = createSignal(false)
+  const clearRepeatMarks = () => {
+    setRepeatedMessage(false)
+    setRepeatedEmergency(false)
+  }
+  const pushHistory = (text: string, emergency = false) => {
+    setHistory((items) => [...items, { text, emergency }].slice(-HISTORY_MAX))
+    setHistoryBack(0)
+  }
+  // 最新の表示(message)に当たる履歴の位置。取り消し・緊急の解除で最新が空のときは -1。
+  // 最新は緊急の記録ではない最後の伝達(緊急中は、直前の伝達の後に詳細の記録が続くことがある)
+  const liveIndex = createMemo(() =>
+    message() === DEFAULT_MESSAGE ? -1 : history().findLastIndex((entry) => !entry.emergency),
+  )
+  /** いまの最新を除いた、振り返れる伝達(古い順) */
+  const olderEntries = createMemo(() => history().filter((_, index) => index !== liveIndex()))
+  /** いまの最新より前にある伝達の件数(= 戻れる最大の件数) */
+  const olderCount = createMemo(() => olderEntries().length)
+  const pastEntry = createMemo(() => {
+    const back = historyBack()
+    if (back <= 0) return null
+    const items = olderEntries()
+    return items[items.length - back]?.text ?? null
+  })
+  /** 伝達欄を出さないか。緊急中、帯に出ている緊急の記録しか無いときも出さない(帯と同じ中身を重ねない) */
+  const messagePanelEmpty = createMemo(
+    () =>
+      message() === DEFAULT_MESSAGE &&
+      history().every((entry) => emergencyActive() && entry.emergency),
+  )
+  const displayedMessage = createMemo(() => pastEntry() ?? message())
+  /** 「もう一度」で伝え直せるものがあるか(直前の伝達、または緊急の呼び出し) */
+  const canRepeat = () => message() !== DEFAULT_MESSAGE || emergencyActive()
+  const stepHistory = (delta: -1 | 1) => {
+    // 介助者用メニュー表示中は、背後の矢印を押しても動かさない(パンくずと同じガード)
+    if (caregiverMenuOpen()) return
+    setHistoryBack((back) => Math.min(olderCount(), Math.max(0, back + delta)))
+  }
+
   // Issue #22: 上部メッセージ(h1)を 1 行に収まる最大サイズで表示する。再計算は
   // メッセージ変更・幅変化・回転/リサイズ・Web フォント読み込み後だけ(h1 は文字サイズ設定の対象外)
   // (rAF でまとめる。毎フレームの DOM 測定はしない)
@@ -229,7 +314,7 @@ export default function App() {
     })
   }
   createEffect(() => {
-    message()
+    displayedMessage()
     scheduleHeadingFit()
   })
   onMount(() => {
@@ -281,20 +366,8 @@ export default function App() {
   const [painChoice, setPainChoice] = createSignal<PainChoice | undefined>(undefined)
   // 文字盤の文字段階で表示している行(LETTER_ROWS の添字)
   const [letterRow, setLetterRow] = createSignal(0)
-  // Issue #5: 画面スリープ防止の状態。介助者メニューに表示する
+  // Issue #5: 画面スリープ防止の状態。介助者用メニューに表示する
   const [wakeLockStatus, setWakeLockStatus] = createSignal<WakeLockStatus>('unsupported')
-  const fullscreenSupported =
-    typeof document !== 'undefined' &&
-    typeof document.documentElement.requestFullscreen === 'function'
-  const [isFullscreen, setIsFullscreen] = createSignal(
-    typeof document !== 'undefined' && Boolean(document.fullscreenElement),
-  )
-  // nit-3: ホーム画面から起動した PWA が既に display-mode:fullscreen で立ち上がっている場合、
-  // Fullscreen API の document.fullscreenElement は null のままなので isFullscreen() だけでは
-  // 判定できない。matchMedia でも確認し、どちらか一方でも全画面なら「全画面にする」を隠す
-  const [isDisplayModeFullscreen, setIsDisplayModeFullscreen] = createSignal(
-    typeof window !== 'undefined' && window.matchMedia?.('(display-mode: fullscreen)').matches,
-  )
   // Issue #5 / PR#11 should-1: オフラインで動く準備(SWがこのページを制御しているか)
   const [offlineReadyStatus, setOfflineReadyStatus] = createSignal<OfflineReadyStatus>('not-ready')
 
@@ -350,6 +423,18 @@ export default function App() {
     compactQuery.addEventListener?.('change', onChange)
     onCleanup(() => compactQuery.removeEventListener?.('change', onChange))
   })
+  // 介助者用メニュー上部の案内を短縮形にするのは、高さが足りない画面だけ(Issue #111。縦長スマホは通常の文言)
+  const lowScreenQuery =
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(max-height: 500px)')
+      : null
+  const [lowScreen, setLowScreen] = createSignal(lowScreenQuery?.matches === true)
+  onMount(() => {
+    if (!lowScreenQuery) return
+    const onChange = () => setLowScreen(lowScreenQuery.matches)
+    lowScreenQuery.addEventListener?.('change', onChange)
+    onCleanup(() => lowScreenQuery.removeEventListener?.('change', onChange))
+  })
   // Issue #58/#79: 画面下の固定案内は緊急中の振動だけ。通常時は空で、帯ごと出さない
   const screenNotes = createMemo(() =>
     buildScreenNotes({
@@ -360,7 +445,7 @@ export default function App() {
       settings: settings(),
     }),
   )
-  const behaviorNotes = createMemo(() => buildBehaviorNotes({ settings: settings() }))
+  const behaviorNotes = createMemo(() => buildBehaviorNoteMap({ settings: settings() }))
   const currentScreenGuidance = createMemo(() => {
     if (screen() === 'painIntensity' && painChoice()) {
       return `${painChoice()?.label}の痛みの強さを選んでください。`
@@ -384,7 +469,12 @@ export default function App() {
       : { width: window.innerWidth, height: window.innerHeight }
   const [viewportSize, setViewportSize] = createSignal(readViewport())
   const gridLayout = createMemo(() =>
-    computeGridLayout(currentMenu().length, viewportSize().width, viewportSize().height),
+    computeGridLayout(
+      currentMenu().length,
+      viewportSize().width,
+      viewportSize().height,
+      screen() === 'home' ? 'home' : screen() === 'letters' ? 'letters' : 'standard',
+    ),
   )
   // 固定格子の空きセル数(項目数が格子より少ないぶん。非操作のセルとして描く)
   const emptyCellCount = createMemo(() => {
@@ -487,7 +577,7 @@ export default function App() {
   }
   const morseInput = createMorseInput({
     getConfig: morseConfig,
-    // 介助者メニューを開いている間は、裏で文字が確定したり復帰したりしないよう時間を止める
+    // 介助者用メニューを開いている間は、裏で文字が確定したり復帰したりしないよう時間を止める
     isPaused: caregiverMenuOpen,
     onHold: setMorseHold,
     onState: (state) => {
@@ -547,6 +637,9 @@ export default function App() {
 
   // 通常の伝達完了。緊急状態は専用領域に残したまま、後続伝達を別の結果領域へ出す。
   const completeTransmission = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
+    pushHistory(text)
+    clearRepeatMarks()
+    lastMessageEvent = event ?? (tone === 'urgent' ? 'urgentMessage' : 'message')
     if (emergencyActive()) {
       setEmergencySubMessage(text)
       setMessage(text)
@@ -569,6 +662,48 @@ export default function App() {
     setSettings(next)
   }
 
+  // Issue #118: 利用回数(Nostalgic カウンター)。起動時に 1 回だけ取りに行く。オフライン・失敗は null のままで、
+  // 伝達機能には一切影響させない(待たない・例外を出さない)
+  const [usageCount, setUsageCount] = createSignal<number | null>(null)
+  onMount(() => {
+    let disposed = false
+    void fetchUsageCount().then((count) => {
+      if (!disposed) setUsageCount(count)
+    })
+    onCleanup(() => {
+      disposed = true
+    })
+  })
+
+  // Issue #122: 「介助者用」ボタンの左に出す、利用者の好きな画像。端末内だけに保存する
+  const [photo, setPhoto] = createSignal<string | null>(loadPhoto())
+  const [photoStatus, setPhotoStatus] = createSignal('')
+  let photoInputEl: HTMLInputElement | undefined
+  const choosePhoto = async (file: File | undefined) => {
+    if (!file) return
+    try {
+      const dataUrl = await fileToPhotoDataUrl(file)
+      if (!savePhoto(dataUrl)) {
+        setPhotoStatus('保存できませんでした。もっと小さい画像を選んでください。')
+        return
+      }
+      setPhoto(dataUrl)
+      setPhotoStatus('画像を設定しました。')
+    } catch {
+      setPhotoStatus('この画像は読み込めませんでした。別の画像を選んでください。')
+    }
+  }
+  const removePhoto = () => {
+    clearPhoto()
+    setPhoto(null)
+    setPhotoStatus('画像を消しました。')
+  }
+
+  // Issue #117: 開いているタブの設定だけを初期値に戻す。ほかのタブの設定・緊急状態・スキャンには触れない
+  const resetSection = (section: SettingsSection) => {
+    replaceSettings(resetSettingsSection(settings(), section))
+  }
+
   const updateSettings = (patch: Partial<Settings>) => {
     setSettings((current) => {
       const next = { ...current, ...patch }
@@ -577,7 +712,7 @@ export default function App() {
     })
   }
 
-  // M3(a): 介助者メニュー内の操作が60秒ないと自動で閉じ、スキャンを再開する。
+  // M3(a): 介助者用メニュー内の操作が60秒ないと自動で閉じ、スキャンを再開する。
   // パネル内での操作(pointerdown)のたびに resetCaregiverIdleTimer を呼んで先延ばしする。
   let caregiverIdleTimer: number | undefined
 
@@ -600,6 +735,8 @@ export default function App() {
     setEmergencyDetails([])
     setEmergencySubMessage(null)
     feedback('cleared')
+    clearRepeatMarks()
+    setHistoryBack(0)
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
     document.documentElement.dataset.messageTone = 'neutral'
@@ -614,14 +751,6 @@ export default function App() {
     goTo('home')
   }
 
-  // Issue #5: 全画面化。誤操作防止(ダブルタップ拡大等)の効果を確実にするため、
-  // 常設運用では全画面での起動を推奨する。非対応環境ではボタン自体を出さない
-  const enterFullscreen = () => {
-    void document.documentElement.requestFullscreen?.().catch(() => {
-      // ユーザー操作起因でない・非対応等で失敗しても、通常表示のまま使い続けられる
-    })
-  }
-
   const runAction = (item: ReturnType<typeof currentMenu>[number]) => {
     const action = item.action
     switch (action.type) {
@@ -629,10 +758,14 @@ export default function App() {
         // S1: 緊急の再選択は詳細を消さない。緊急主文は専用領域に立てる
         const alreadyActive = emergencyActive()
         setEmergencyActive(true)
+        setHistoryBack(0)
+        clearRepeatMarks()
         // S2: 緊急発生時は取り消しの猶予を必ず終わらせる
         setShowUndo(false)
         undoLapsRemaining = 0
         if (!alreadyActive) {
+          // 緊急の呼び出しを伝達履歴に積む。本人が後で解除しても、後から来た介助者が矢印で振り返れる
+          pushHistory(EMERGENCY_MESSAGE, true)
           setEmergencyDetails([])
           setEmergencySubMessage(null)
           setMessage(DEFAULT_MESSAGE)
@@ -648,12 +781,33 @@ export default function App() {
       }
       case 'emergencyDetail': {
         // S1: 見出しは変えず、詳細を積み上げ式(重複なし)で見出し下に表示する
-        setEmergencyDetails((details) =>
-          details.includes(action.label) ? details : [...details, action.label],
-        )
+        if (!emergencyDetails().includes(action.label)) {
+          setEmergencyDetails((details) => [...details, action.label])
+          // 詳細も伝達履歴に積む(解除の後でも、何が起きたかを介助者が振り返れる)
+          pushHistory(emergencyDetailHistoryText(action.label), true)
+        }
+        clearRepeatMarks()
         feedback('urgentMessage')
         announce(`${EMERGENCY_MESSAGE}${action.label}`, action.label)
         setShowUndo(false)
+        goTo('home')
+        return
+      }
+      case 'emergencyRelease': {
+        // Issue #108: 本人による緊急の解除。緊急 → 緊急を解除 → 解除する の明示操作でだけ届く。
+        // 緊急の帯・保存状態・周期の振動を介助者の解除と同じ処理(clearEmergency)で止め、解除したことを
+        // 伝達欄と読み上げで本人と周囲に知らせる。取り消しは出さない(解除の取り消しは緊急を選び直す)
+        if (!emergencyActive()) {
+          goTo('home')
+          return
+        }
+        // 解除の文に選んだ詳細を含める(帯が消えても、何の緊急だったかが伝達欄と履歴に残る)
+        const releasedMessage = emergencyReleasedMessage(emergencyDetails())
+        clearEmergency()
+        pushHistory(releasedMessage)
+        lastMessageEvent = 'message'
+        setMessage(releasedMessage)
+        announce(releasedMessage)
         goTo('home')
         return
       }
@@ -662,12 +816,36 @@ export default function App() {
         // 数字キー等での直接実行に備えてここでも二重に防ぐ
         if (emergencyActive()) return
         // Issue #94: 取り消したら「直前に伝えたこと」自体を消し、何も伝えていない状態に戻す
-        // (1つ前の返事は復元しない。履歴も持たない)
+        // (1つ前の返事は最新として復元しない)。取り消した伝達は履歴(Issue #120)からも消す
+        const live = liveIndex()
+        if (live >= 0) setHistory((items) => items.filter((_, index) => index !== live))
+        setHistoryBack(0)
+        clearRepeatMarks()
         setMessage(DEFAULT_MESSAGE)
         setMessageTone('neutral')
         document.documentElement.dataset.messageTone = 'neutral'
         setShowUndo(false)
         undoLapsRemaining = 0
+        goTo('home')
+        return
+      }
+      case 'repeat': {
+        // Issue #123: 直前の伝達をもう一度伝える。新しい伝達ではないので、履歴・取り消しの猶予は変えない。
+        // 伝達が無く緊急中なら、緊急の呼び出しをもう一度伝える。どちらも無ければ何も伝えない
+        setHistoryBack(0)
+        if (message() !== DEFAULT_MESSAGE) {
+          feedback(lastMessageEvent)
+          announce(message())
+          setRepeatedMessage(true)
+          setRepeatedEmergency(false)
+          setRepeatPulse((n) => n + 1)
+        } else if (emergencyActive()) {
+          const details = emergencyDetails()
+          feedback('emergency')
+          announce(`${EMERGENCY_MESSAGE}${details.join('、')}`, EMERGENCY_MESSAGE)
+          setRepeatedEmergency(true)
+          setRepeatPulse((n) => n + 1)
+        }
         goTo('home')
         return
       }
@@ -750,8 +928,10 @@ export default function App() {
     const result = press(resynced, itemCount, now, scanConfig(), target?.index)
     setScanState(result.state)
     if (result.activatedIndex === null) return
-    // 入力が受理されたことを、まず軽い振動で返す。この後の伝達・緊急のパターンが置き換える
-    feedback('accepted')
+    // 入力が受理されたことを、まず軽い振動で返す。この後の伝達・緊急のパターンが置き換える。
+    // 押せない(伝えるものが無い)「もう一度」では振動させない(受け付けたと誤解させない)
+    const activated = currentMenu()[result.activatedIndex]
+    if (!(activated?.action.type === 'repeat' && !canRepeat())) feedback('accepted')
     activateIndex(result.activatedIndex)
   }
 
@@ -849,27 +1029,10 @@ export default function App() {
     onCleanup(stopWakeLock)
   })
 
-  // PR#11 should-1: オフラインで動く準備(SWの制御下にあるか)を介助者メニューに表示する
+  // PR#11 should-1: オフラインで動く準備(SWの制御下にあるか)を介助者用メニューに表示する
   onMount(() => {
     const stopOfflineReadyWatch = initOfflineReadyWatch(setOfflineReadyStatus)
     onCleanup(stopOfflineReadyWatch)
-  })
-
-  // nit-3: display-mode(ホーム画面追加で起動した際の全画面表示)の変化を追従する
-  onMount(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const query = window.matchMedia('(display-mode: fullscreen)')
-    const onChange = () => setIsDisplayModeFullscreen(query.matches)
-    query.addEventListener('change', onChange)
-    onCleanup(() => query.removeEventListener('change', onChange))
-  })
-
-  // Issue #5: 全画面状態の表示・介助者メニューからの解除操作にも追従させる
-  onMount(() => {
-    if (typeof document === 'undefined') return
-    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
-    document.addEventListener('fullscreenchange', onFullscreenChange)
-    onCleanup(() => document.removeEventListener('fullscreenchange', onFullscreenChange))
   })
 
   // スキャンの進行ループ。setTimeout を自己再スケジュールし、次に進めるべき時刻に合わせる。
@@ -939,8 +1102,13 @@ export default function App() {
   const POINTER_STALE_MS = 10000 // pointerup/pointercancel が届かなかった記録の破棄(保険)
   // 直近の click(capture で判定)が pointerdown に裏付けられていたか。タイルの click が読む
   let clickBackedByPointer = false
+  // 介助者用メニューを開いた pointerdown のポインター(Issue #112)。タッチでは、同じタップの click が
+  // 開いた直後のパネル(右上の「閉じる」は「介助者用」ボタンと同じ位置)へ届き、開いた瞬間に閉じていた。
+  // その 1 回の click だけをパネルへ届けない。次の押下が始まったら忘れる
+  let menuOpeningPointer: number | null = null
   onMount(() => {
     const onPointerDownCapture = (event: PointerEvent) => {
+      menuOpeningPointer = null
       pointerSeen.set(event.pointerId, { downAt: Date.now(), upAt: null })
       heldInputs.add(`pointer:${event.pointerId}`)
       idleSteps = 0
@@ -974,6 +1142,14 @@ export default function App() {
         }
       }
       clickBackedByPointer = consumed !== undefined
+      if (menuOpeningPointer !== null) {
+        const sameGesture = typeof pointerId === 'number' ? pointerId === menuOpeningPointer : true
+        menuOpeningPointer = null
+        if (sameGesture && caregiverMenuOpen()) {
+          event.stopPropagation()
+          event.preventDefault()
+        }
+      }
     }
     const onPointerDown = (event: PointerEvent) => {
       // M2: タッチでは pointerdown にユーザーアクティベーションが伴わないことがあるため、
@@ -983,7 +1159,7 @@ export default function App() {
 
       // 通常タップで開く介助者ボタン自身の pointerdown は、ボタンのハンドラだけで
       // 処理する。メニューを開いた直後にウィンドウ側が「パネル外タップ」として
-      // 閉じないよう、介助者メニュー表示中かどうかより先に除外する。
+      // 閉じないよう、介助者用メニュー表示中かどうかより先に除外する。
       if (target?.closest('.caregiver-button')) return
 
       if (caregiverMenuOpen()) {
@@ -1168,8 +1344,34 @@ export default function App() {
     nextTab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }
 
-  const openCaregiverMenu = () => {
+  // Issue #111: タブ列が横に続くとき、続きがある側の矢印だけを出す
+  let tablistEl: HTMLDivElement | undefined
+  const [tabScroll, setTabScroll] = createSignal({ left: false, right: false })
+  const updateTabScroll = () => {
+    const el = tablistEl
+    if (!el) return
+    const max = el.scrollWidth - el.clientWidth
+    // 端数(DPR・小数スクロール)で矢印が残らないよう 2px の余裕を見る
+    setTabScroll({ left: el.scrollLeft > 2, right: el.scrollLeft < max - 2 })
+  }
+  const scrollCaregiverTabs = (direction: -1 | 1) => {
+    const el = tablistEl
+    if (!el) return
+    const left = el.scrollLeft + direction * Math.max(120, el.clientWidth * 0.7)
+    if (typeof el.scrollTo === 'function') el.scrollTo({ left, behavior: 'smooth' })
+    else el.scrollLeft = left
+    updateTabScroll()
+  }
+  createEffect(() => {
+    if (!caregiverMenuOpen()) return
+    caregiverTab() // タブを選ぶと選んだタブへスクロールするので、矢印の出し分けを取り直す
+    viewportSize()
+    queueMicrotask(updateTabScroll)
+  })
+
+  const openCaregiverMenu = (openingPointerId?: number) => {
     if (caregiverMenuOpen()) return
+    menuOpeningPointer = openingPointerId ?? null
     idleSteps = 0
     input.cancelAll()
     setCaregiverTab('status')
@@ -1183,7 +1385,15 @@ export default function App() {
   return (
     <main class="app-shell" classList={{ 'is-morse': screen() === 'morse' }}>
       <Show when={emergencyActive()}>
-        <section class="emergency-status" role="status" aria-label="未解除の緊急状態">
+        <section
+          class="emergency-status"
+          classList={{
+            'repeat-pulse-a': repeatedEmergency() && repeatPulse() % 2 === 1,
+            'repeat-pulse-b': repeatedEmergency() && repeatPulse() % 2 === 0,
+          }}
+          role="status"
+          aria-label="未解除の緊急状態"
+        >
           <p class="emergency-status-message">{EMERGENCY_MESSAGE}</p>
           <Show when={emergencyDetails().length > 0}>
             <div class="emergency-detail-status">
@@ -1196,6 +1406,66 @@ export default function App() {
         </section>
       </Show>
 
+      {/* Issue #114: 「直前に伝えたこと」は現在地(パンくず)より上位の情報なので、案内欄より上に置く */}
+      <section
+        class="message-panel"
+        classList={{
+          'is-empty': messagePanelEmpty(),
+          'is-past': pastEntry() !== null,
+          'is-cleared': pastEntry() === null && message() === DEFAULT_MESSAGE,
+          'repeat-pulse-a': repeatedMessage() && repeatPulse() % 2 === 1,
+          'repeat-pulse-b': repeatedMessage() && repeatPulse() % 2 === 0,
+        }}
+        aria-live="polite"
+        aria-label="直前に伝えたこと"
+      >
+        {/* Issue #120: 介助者が過去の伝達を振り返る矢印。スキャン対象ではない(タップ / クリックだけ)。
+            data-caregiver-control は付けない: タップでフォーカスが残っても、続くキー(本人のスイッチ)は
+            矢印を押さず、いつもどおりスキャン対象を実行する */}
+        <Show when={olderCount() > 0 || historyBack() > 0}>
+          <button
+            type="button"
+            class="history-nav"
+            aria-label="前の伝達を表示"
+            disabled={historyBack() >= olderCount()}
+            onClick={() => stepHistory(1)}
+          >
+            <svg viewBox="0 0 20 24" aria-hidden="true">
+              <path d="M15 3 L5 12 L15 21" />
+            </svg>
+          </button>
+        </Show>
+        <div class="message-panel-body">
+          <p class="message-panel-label">
+            {pastEntry() !== null
+              ? `過去に伝えたこと（${historyBack()}件前）`
+              : repeatedMessage()
+                ? '直前に伝えたこと（もう一度）'
+                : '直前に伝えたこと'}
+          </p>
+          {/* h1 は常に DOM に置く(1 行に収める再計算が h1 の親を監視するため)。最新が空のときだけ隠す */}
+          <h1 ref={headingEl} hidden={pastEntry() === null && message() === DEFAULT_MESSAGE}>
+            {displayedMessage()}
+          </h1>
+          <Show when={pastEntry() === null && message() === DEFAULT_MESSAGE}>
+            <p class="message-panel-none">いまは、伝えたことがありません。</p>
+          </Show>
+        </div>
+        <Show when={olderCount() > 0 || historyBack() > 0}>
+          <button
+            type="button"
+            class="history-nav"
+            aria-label="次の伝達を表示"
+            disabled={historyBack() <= 0}
+            onClick={() => stepHistory(-1)}
+          >
+            <svg viewBox="0 0 20 24" aria-hidden="true">
+              <path d="M5 3 L15 12 L5 21" />
+            </svg>
+          </button>
+        </Show>
+      </section>
+
       <section class="screen-guide" aria-label="現在の画面">
         <div class="screen-guide-copy">
           <nav aria-label="現在地">
@@ -1207,19 +1477,32 @@ export default function App() {
                       index() === screenBreadcrumb().length - 1 ? 'location' : undefined
                     }
                   >
-                    <Show when={item.screen} fallback={item.title}>
+                    <Show
+                      when={item.screen}
+                      fallback={
+                        <>
+                          <Show when={index() === 0}>
+                            <HomeIcon />
+                          </Show>
+                          {item.title}
+                        </>
+                      }
+                    >
                       {(target) => (
                         <button
                           type="button"
                           class="breadcrumb-link"
                           data-breadcrumb-control
                           onClick={() => {
-                            // 介助者メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
+                            // 介助者用メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
                             if (caregiverMenuOpen()) return
                             idleSteps = 0
                             goTo(target())
                           }}
                         >
+                          <Show when={index() === 0}>
+                            <HomeIcon />
+                          </Show>
                           {item.title}
                         </button>
                       )}
@@ -1232,29 +1515,24 @@ export default function App() {
           <h2>{currentScreenGuidance()}</h2>
         </div>
 
+        {/* Issue #122: 介助者が選んだ好きな画像。未設定なら何も出さない(余白も増やさない) */}
+        <Show when={photo()}>
+          {(src) => <img class="guide-photo" src={src()} alt="好きな画像" draggable={false} />}
+        </Show>
+
         <div class="message-panel-controls">
           <button
             type="button"
             class="caregiver-button"
             data-caregiver-control
-            onPointerDown={openCaregiverMenu}
-            onClick={openCaregiverMenu}
+            onPointerDown={(event) => openCaregiverMenu(event.pointerId)}
+            onClick={() => openCaregiverMenu()}
             onContextMenu={(event) => event.preventDefault()}
-            aria-label="介助者メニューを開く"
+            aria-label="介助者用メニューを開く"
           >
             介助者用
           </button>
         </div>
-      </section>
-
-      <section
-        class="message-panel"
-        classList={{ 'is-empty': message() === DEFAULT_MESSAGE }}
-        aria-live="polite"
-        aria-label="直前に伝えたこと"
-      >
-        <p class="message-panel-label">直前に伝えたこと</p>
-        <h1 ref={headingEl}>{message()}</h1>
       </section>
 
       <Show when={holdProgress() !== null}>
@@ -1325,6 +1603,8 @@ export default function App() {
         classList={{
           'show-numbers': showDevNumbers,
           'grid-fill': gridLayout().fill,
+          'grid-home': screen() === 'home',
+          'grid-letters': screen() === 'letters',
           'is-hidden': screen() === 'morse',
         }}
         style={{
@@ -1345,14 +1625,23 @@ export default function App() {
                 scanning: scanState().index === index(),
                 'tile-nav': item.action.type === 'navigate',
                 'tile-emergency': item.action.type === 'emergency',
+                // Issue #123: もう一度伝えるものが無い間は薄く見せる(押しても何も伝えない)
+                'tile-unavailable': item.action.type === 'repeat' && !canRepeat(),
               }}
               role="button"
               aria-label={item.label}
+              aria-disabled={item.action.type === 'repeat' && !canRepeat() ? 'true' : undefined}
               onPointerDown={(event) => onTilePointerDown(event, index())}
               onClick={() => onTileClick(index())}
             >
               <span class="tile-number">{index() + 1}</span>
-              <span class="tile-label">{item.label}</span>
+              <span class="tile-label">
+                {/* Issue #115: ラベルの左にアイコンを併記する(同じ行。入りきらない幅ではアイコンが上の行に回る) */}
+                <Show when={hasTileIcon(item.id)}>
+                  <TileIcon itemId={item.id} />
+                </Show>
+                {item.label}
+              </span>
               <Show when={item.detail}>
                 <span class="tile-detail">{item.detail}</span>
               </Show>
@@ -1395,14 +1684,14 @@ export default function App() {
           <div class="caregiver-panel">
             <div class="caregiver-header">
               <div class="caregiver-header-grid">
-                <h2>介助者メニュー</h2>
+                <h2>介助者用メニュー</h2>
                 <button
                   type="button"
                   class="caregiver-action caregiver-emergency-clear"
                   onClick={clearEmergency}
                   disabled={!emergencyActive()}
                 >
-                  緊急解除{emergencyActive() ? '' : '（緊急なし）'}
+                  緊急を解除{emergencyActive() ? '' : '（緊急なし）'}
                 </button>
                 <button
                   type="button"
@@ -1414,36 +1703,69 @@ export default function App() {
               </div>
             </div>
 
-            <ul class="caregiver-notes" aria-label="介助者メニューの自動で起きること">
+            <ul class="caregiver-notes" aria-label="介助者用メニューの自動で起きること">
               <For
                 each={buildCaregiverMenuNotes(CAREGIVER_MENU_IDLE_TIMEOUT_MS, {
                   morseEnabled: settings().morseEnabled,
-                  compact: compactNotes(),
+                  compact: lowScreen(),
                 })}
               >
                 {(note) => <li>{note}</li>}
               </For>
             </ul>
 
-            <div class="caregiver-tablist" role="tablist" aria-label="設定カテゴリ">
-              <For each={CAREGIVER_TABS}>
-                {(tab) => (
-                  <button
-                    type="button"
-                    role="tab"
-                    class="caregiver-tab"
-                    id={`caregiver-tab-${tab.id}`}
-                    aria-selected={caregiverTab() === tab.id}
-                    aria-controls="caregiver-tabpanel"
-                    tabindex={caregiverTab() === tab.id ? 0 : -1}
-                    classList={{ active: caregiverTab() === tab.id }}
-                    onClick={() => setCaregiverTab(tab.id)}
-                    onKeyDown={onCaregiverTabKeyDown}
-                  >
-                    {tab.label}
-                  </button>
-                )}
-              </For>
+            {/* Issue #111: タブが横に続くときは、続きがある側にだけ矢印を出す。タップで表示範囲を動かす */}
+            <div class="caregiver-tabs">
+              <button
+                type="button"
+                class="caregiver-tab-scroll"
+                aria-label="前のタブを表示"
+                hidden={!tabScroll().left}
+                onClick={() => scrollCaregiverTabs(-1)}
+              >
+                <svg viewBox="0 0 20 24" aria-hidden="true">
+                  <path d="M15 3 L5 12 L15 21" />
+                </svg>
+              </button>
+              <div
+                class="caregiver-tablist"
+                role="tablist"
+                aria-label="設定カテゴリ"
+                ref={(el) => {
+                  tablistEl = el
+                }}
+                onScroll={updateTabScroll}
+              >
+                <For each={CAREGIVER_TABS}>
+                  {(tab) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      class="caregiver-tab"
+                      id={`caregiver-tab-${tab.id}`}
+                      aria-selected={caregiverTab() === tab.id}
+                      aria-controls="caregiver-tabpanel"
+                      tabindex={caregiverTab() === tab.id ? 0 : -1}
+                      classList={{ active: caregiverTab() === tab.id }}
+                      onClick={() => setCaregiverTab(tab.id)}
+                      onKeyDown={onCaregiverTabKeyDown}
+                    >
+                      {tab.label}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <button
+                type="button"
+                class="caregiver-tab-scroll"
+                aria-label="次のタブを表示"
+                hidden={!tabScroll().right}
+                onClick={() => scrollCaregiverTabs(1)}
+              >
+                <svg viewBox="0 0 20 24" aria-hidden="true">
+                  <path d="M5 3 L15 12 L5 21" />
+                </svg>
+              </button>
             </div>
 
             <Show when={caregiverTab() === 'status'}>
@@ -1454,28 +1776,18 @@ export default function App() {
                 aria-labelledby="caregiver-tab-status"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">動作状態</h3>
-                <p class="caregiver-status" classList={{ warn: wakeLockStatus() !== 'active' }}>
-                  {WAKE_LOCK_LABELS[wakeLockStatus()]}
+                {/* Issue #111: ここは端末の状態の表示だけ(操作できる設定は無い)。ボタンに見える囲みにしない */}
+                <p class="caregiver-lead">
+                  この端末のいまの状態です。ここで変える設定はありません。
                 </p>
-
-                <p class="caregiver-status" classList={{ warn: offlineReadyStatus() !== 'ready' }}>
-                  {OFFLINE_READY_LABELS[offlineReadyStatus()]}
-                </p>
-
-                <Show when={fullscreenSupported && !isFullscreen() && !isDisplayModeFullscreen()}>
-                  <button type="button" class="caregiver-action" onClick={enterFullscreen}>
-                    全画面にする
-                  </button>
-                </Show>
-
-                {/* Issue #79: 見ても分からない設定依存の挙動。現在の設定値で出し分ける */}
-                <Show when={behaviorNotes().length > 0}>
-                  <h3 class="caregiver-section-title">いまの動作</h3>
-                  <ul class="caregiver-behavior" aria-label="いまの動作">
-                    <For each={behaviorNotes()}>{(note) => <li>{note}</li>}</For>
-                  </ul>
-                </Show>
+                <StatusRow
+                  label={WAKE_LOCK_LABELS[wakeLockStatus()]}
+                  ok={wakeLockStatus() === 'active'}
+                />
+                <StatusRow
+                  label={OFFLINE_READY_LABELS[offlineReadyStatus()]}
+                  ok={offlineReadyStatus() === 'ready'}
+                />
               </div>
             </Show>
 
@@ -1487,7 +1799,6 @@ export default function App() {
                 aria-labelledby="caregiver-tab-scan"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">スイッチ入力とスキャン</h3>
                 <label class="caregiver-field">
                   <span>スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒</span>
                   <input
@@ -1521,50 +1832,82 @@ export default function App() {
                   />
                 </label>
 
-                <label class="caregiver-field">
-                  <span>連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="3000"
-                    step="100"
-                    value={settings().debounceMs}
-                    onInput={(event) =>
-                      updateSettings({ debounceMs: Number(event.currentTarget.value) })
-                    }
-                  />
-                </label>
-
-                <label class="caregiver-field">
-                  <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2000"
-                    step="100"
-                    value={settings().minHoldMs}
-                    onInput={(event) =>
-                      updateSettings({ minHoldMs: Number(event.currentTarget.value) })
-                    }
-                  />
-                </label>
-
-                <div class="caregiver-field">
-                  <span>決定のタイミング</span>
-                  <div class="caregiver-choice-options">
-                    <For each={ACTIVATE_ONS}>
-                      {(timing) => (
-                        <button
-                          type="button"
-                          classList={{ active: settings().activateOn === timing }}
-                          onClick={() => updateSettings({ activateOn: timing })}
-                        >
-                          {ACTIVATE_ON_LABELS[timing]}
-                        </button>
-                      )}
-                    </For>
-                  </div>
+                <div class="caregiver-item">
+                  <label class="caregiver-field">
+                    <span>連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="3000"
+                      step="100"
+                      value={settings().debounceMs}
+                      onInput={(event) =>
+                        updateSettings({ debounceMs: Number(event.currentTarget.value) })
+                      }
+                    />
+                  </label>
+                  <Show when={behaviorNotes().debounce}>
+                    {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
+                  </Show>
                 </div>
+
+                <div class="caregiver-item">
+                  <label class="caregiver-field">
+                    <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="2000"
+                      step="100"
+                      value={settings().minHoldMs}
+                      onInput={(event) =>
+                        updateSettings({ minHoldMs: Number(event.currentTarget.value) })
+                      }
+                    />
+                  </label>
+
+                  <div class="caregiver-field">
+                    <span>決定のタイミング</span>
+                    <div class="caregiver-choice-options">
+                      <For each={ACTIVATE_ONS}>
+                        {(timing) => (
+                          <button
+                            type="button"
+                            classList={{ active: settings().activateOn === timing }}
+                            onClick={() => updateSettings({ activateOn: timing })}
+                          >
+                            {ACTIVATE_ON_LABELS[timing]}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                  <Show when={behaviorNotes().hold}>
+                    {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
+                  </Show>
+                </div>
+
+                <div class="caregiver-item">
+                  <label class="caregiver-field caregiver-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={settings().auditoryScan}
+                      onChange={(event) =>
+                        updateSettings({ auditoryScan: event.currentTarget.checked })
+                      }
+                    />
+                    <span>聴覚スキャン（カーソルが進むたびに項目名を読み上げる）</span>
+                  </label>
+                  <Show when={behaviorNotes().speech}>
+                    {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
+                  </Show>
+                </div>
+
+                <TabReset
+                  tabLabel="スキャン"
+                  targets="スキャン間隔・先頭待機倍率・連打無視・押下時間の下限・決定のタイミング・聴覚スキャン"
+                  onReset={() => resetSection('scan')}
+                />
               </div>
             </Show>
 
@@ -1576,92 +1919,90 @@ export default function App() {
                 aria-labelledby="caregiver-tab-input"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">入力方式</h3>
-                <label class="caregiver-field caregiver-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings().auditoryScan}
-                    onChange={(event) =>
-                      updateSettings({ auditoryScan: event.currentTarget.checked })
-                    }
-                  />
-                  <span>聴覚スキャン</span>
-                </label>
-
-                <label class="caregiver-field caregiver-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings().morseEnabled}
-                    onChange={(event) =>
-                      updateSettings({ morseEnabled: event.currentTarget.checked })
-                    }
-                  />
-                  <span>
-                    モールス入力を使う（上級者向け。押下と解放を同時に送るシャッターでは長押しが使えず、緊急のSOS（・・・－－－・・・）も出せません）
-                  </span>
-                </label>
+                <div class="caregiver-item">
+                  <label class="caregiver-field caregiver-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={settings().morseEnabled}
+                      onChange={(event) =>
+                        updateSettings({ morseEnabled: event.currentTarget.checked })
+                      }
+                    />
+                    <span>モールス入力を使う（上級者向け）</span>
+                  </label>
+                  <p class="caregiver-hint">
+                    押下と解放を同時に送るシャッターでは長押しが使えず、緊急のSOS（・・・－－－・・・）も出せません。
+                  </p>
+                </div>
 
                 <Show when={settings().morseEnabled}>
-                  <label class="caregiver-field">
-                    <span>
-                      モールス: 長押し(－)の境目 {(settings().morseDashMs / 1000).toFixed(1)} 秒
-                      {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
-                      settings().morseDashMs
-                        ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
-                        : ''}
-                    </span>
-                    <input
-                      type="range"
-                      min="150"
-                      max="1500"
-                      step="50"
-                      value={settings().morseDashMs}
-                      onInput={(event) =>
-                        updateSettings({ morseDashMs: Number(event.currentTarget.value) })
-                      }
-                    />
-                  </label>
-                  <label class="caregiver-field">
-                    <span>
-                      モールス: 文字の確定までの無入力{' '}
-                      {(settings().morseLetterGapMs / 1000).toFixed(1)} 秒
-                    </span>
-                    <input
-                      type="range"
-                      min="500"
-                      max="3000"
-                      step="100"
-                      value={settings().morseLetterGapMs}
-                      onInput={(event) => {
-                        const letterGap = Number(event.currentTarget.value)
-                        // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
-                        updateSettings({
-                          morseLetterGapMs: letterGap,
-                          morseWordGapMs: Math.max(
-                            settings().morseWordGapMs,
-                            letterGap + MORSE_WORD_GAP_MARGIN_MS,
-                          ),
-                        })
-                      }}
-                    />
-                  </label>
-                  <label class="caregiver-field">
-                    <span>
-                      モールス: 語の区切りまでの無入力{' '}
-                      {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
-                    </span>
-                    <input
-                      type="range"
-                      min="1500"
-                      max="8000"
-                      step="100"
-                      value={settings().morseWordGapMs}
-                      onInput={(event) =>
-                        updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
-                      }
-                    />
-                  </label>
+                  <div class="caregiver-sub">
+                    <label class="caregiver-field">
+                      <span>
+                        長押し（－）の境目: {(settings().morseDashMs / 1000).toFixed(1)} 秒
+                        {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
+                        settings().morseDashMs
+                          ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
+                          : ''}
+                      </span>
+                      <input
+                        type="range"
+                        min="150"
+                        max="1500"
+                        step="50"
+                        value={settings().morseDashMs}
+                        onInput={(event) =>
+                          updateSettings({ morseDashMs: Number(event.currentTarget.value) })
+                        }
+                      />
+                    </label>
+                    <label class="caregiver-field">
+                      <span>
+                        文字の確定までの無入力: {(settings().morseLetterGapMs / 1000).toFixed(1)}{' '}
+                        秒
+                      </span>
+                      <input
+                        type="range"
+                        min="500"
+                        max="3000"
+                        step="100"
+                        value={settings().morseLetterGapMs}
+                        onInput={(event) => {
+                          const letterGap = Number(event.currentTarget.value)
+                          // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
+                          updateSettings({
+                            morseLetterGapMs: letterGap,
+                            morseWordGapMs: Math.max(
+                              settings().morseWordGapMs,
+                              letterGap + MORSE_WORD_GAP_MARGIN_MS,
+                            ),
+                          })
+                        }}
+                      />
+                    </label>
+                    <label class="caregiver-field">
+                      <span>
+                        語の区切りまでの無入力: {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
+                      </span>
+                      <input
+                        type="range"
+                        min="1500"
+                        max="8000"
+                        step="100"
+                        value={settings().morseWordGapMs}
+                        onInput={(event) =>
+                          updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
+                        }
+                      />
+                    </label>
+                  </div>
                 </Show>
+
+                <TabReset
+                  tabLabel="モールス"
+                  targets="モールス入力を使うかどうかと、長押しの境目・文字の確定・語の区切りの時間"
+                  onReset={() => resetSection('input')}
+                />
               </div>
             </Show>
 
@@ -1673,9 +2014,8 @@ export default function App() {
                 aria-labelledby="caregiver-tab-feedback"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">音声と振動</h3>
                 <div class="caregiver-field">
-                  <span>音声モード</span>
+                  <span>音声モード（伝えた内容の読み上げ）</span>
                   <div class="caregiver-voice-options">
                     <For each={VOICE_MODES}>
                       {(mode) => (
@@ -1699,51 +2039,59 @@ export default function App() {
                       updateSettings({ hapticsEnabled: event.currentTarget.checked })
                     }
                   />
-                  <span>本人への振動フィードバック（受理・はい/いいえ・緊急）</span>
+                  <span>本人に振動で知らせる（入力の受理・はい/いいえ・緊急）</span>
                 </label>
 
                 <Show when={settings().hapticsEnabled}>
-                  <div class="caregiver-field">
-                    <span>振動の強さ</span>
-                    <div class="caregiver-choice-options">
-                      <For each={HAPTIC_STRENGTHS}>
-                        {(strength) => (
-                          <button
-                            type="button"
-                            classList={{ active: settings().hapticsStrength === strength }}
-                            onClick={() => updateSettings({ hapticsStrength: strength })}
-                          >
-                            {HAPTIC_STRENGTH_LABELS[strength]}
-                          </button>
-                        )}
-                      </For>
+                  <div class="caregiver-sub">
+                    <div class="caregiver-field">
+                      <span>振動の強さ</span>
+                      <div class="caregiver-choice-options">
+                        <For each={HAPTIC_STRENGTHS}>
+                          {(strength) => (
+                            <button
+                              type="button"
+                              classList={{ active: settings().hapticsStrength === strength }}
+                              onClick={() => updateSettings({ hapticsStrength: strength })}
+                            >
+                              {HAPTIC_STRENGTH_LABELS[strength]}
+                            </button>
+                          )}
+                        </For>
+                      </div>
                     </div>
+
+                    <label class="caregiver-field caregiver-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={settings().hapticSoundAlso}
+                        onChange={(event) =>
+                          updateSettings({ hapticSoundAlso: event.currentTarget.checked })
+                        }
+                      />
+                      <span>
+                        振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
+                      </span>
+                    </label>
+
+                    <label class="caregiver-field caregiver-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={settings().hapticSoundWhenVoiceOff}
+                        onChange={(event) =>
+                          updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
+                        }
+                      />
+                      <span>振動できない端末では、音声モードが OFF でも短い効果音で知らせる</span>
+                    </label>
                   </div>
-
-                  <label class="caregiver-field caregiver-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={settings().hapticSoundAlso}
-                      onChange={(event) =>
-                        updateSettings({ hapticSoundAlso: event.currentTarget.checked })
-                      }
-                    />
-                    <span>
-                      振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
-                    </span>
-                  </label>
-
-                  <label class="caregiver-field caregiver-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={settings().hapticSoundWhenVoiceOff}
-                      onChange={(event) =>
-                        updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
-                      }
-                    />
-                    <span>振動できない端末では、音声OFFでも短い効果音で知らせる</span>
-                  </label>
                 </Show>
+
+                <TabReset
+                  tabLabel="音と振動"
+                  targets="音声モード・振動で知らせるかどうか・振動の強さ・効果音"
+                  onReset={() => resetSection('feedback')}
+                />
               </div>
             </Show>
 
@@ -1755,26 +2103,31 @@ export default function App() {
                 aria-labelledby="caregiver-tab-display"
                 tabindex="0"
               >
-                <h3 class="caregiver-section-title">表示</h3>
-                <div class="caregiver-field">
-                  <span>文字サイズ</span>
-                  <div class="caregiver-choice-options">
-                    <For each={FONT_SIZES}>
-                      {(size) => (
-                        <button
-                          type="button"
-                          classList={{ active: settings().fontSize === size }}
-                          onClick={() => updateSettings({ fontSize: size })}
-                        >
-                          {FONT_SIZE_LABELS[size]}
-                        </button>
-                      )}
-                    </For>
+                <div class="caregiver-item">
+                  <div class="caregiver-field">
+                    <span>文字サイズ（選ぶタイルの文字）</span>
+                    <div class="caregiver-choice-options">
+                      <For each={FONT_SIZES}>
+                        {(size) => (
+                          <button
+                            type="button"
+                            classList={{ active: settings().fontSize === size }}
+                            onClick={() => updateSettings({ fontSize: size })}
+                          >
+                            {FONT_SIZE_LABELS[size]}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                  {/* Issue #111: 文字サイズも明るさと同じくその場で分かるよう、本人画面のタイルと同じ式で描くサンプル */}
+                  <div class="font-size-sample" role="img" aria-label="文字サイズのサンプル">
+                    <span class="tile-label">はい</span>
                   </div>
                 </div>
 
                 <div class="caregiver-field">
-                  <span>表示</span>
+                  <span>明るさ</span>
                   <div class="caregiver-choice-options">
                     <For each={THEMES}>
                       {(theme) => (
@@ -1800,6 +2153,59 @@ export default function App() {
                   />
                   <span>高コントラスト</span>
                 </label>
+
+                <div class="caregiver-item">
+                  <div class="caregiver-field">
+                    <span>好きな画像（本人画面の「介助者用」ボタンの左に表示）</span>
+                    <div class="caregiver-choice-options">
+                      <button type="button" onClick={() => photoInputEl?.click()}>
+                        {photo() ? '画像を変える' : '画像を選ぶ'}
+                      </button>
+                      <Show when={photo()}>
+                        <button type="button" onClick={removePhoto}>
+                          画像を消す
+                        </button>
+                      </Show>
+                    </div>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="photo-input"
+                    hidden
+                    ref={(el) => {
+                      photoInputEl = el
+                    }}
+                    onChange={(event) => {
+                      const input = event.currentTarget
+                      void choosePhoto(input.files?.[0])
+                      // 同じファイルを選び直しても change が出るようにする
+                      input.value = ''
+                    }}
+                  />
+                  <Show when={photo()}>
+                    {(src) => <img class="photo-preview" src={src()} alt="いまの画像" />}
+                  </Show>
+                  <p class="caregiver-hint">
+                    画像はこの端末の中だけに保存します（外へは送りません）。設定の書き出しには含まれません。
+                  </p>
+                  <Show when={photoStatus()}>
+                    <p class="caregiver-status" role="status">
+                      <span class="caregiver-status-text">{photoStatus()}</span>
+                    </p>
+                  </Show>
+                </div>
+
+                <TabReset
+                  tabLabel="表示"
+                  targets="文字サイズ・明るさ・高コントラスト・好きな画像"
+                  onReset={() => {
+                    resetSection('display')
+                    clearPhoto()
+                    setPhoto(null)
+                    setPhotoStatus('')
+                  }}
+                />
               </div>
             </Show>
 
@@ -1812,6 +2218,12 @@ export default function App() {
                 tabindex="0"
               >
                 <PhraseEditor settings={settings()} updateSettings={updateSettings} />
+
+                <TabReset
+                  tabLabel="フレーズ"
+                  targets="全部の画面（不快・「不快・その他」・痛い場所・要望・気分）のフレーズ"
+                  onReset={() => resetSection('phrases')}
+                />
               </div>
             </Show>
 
@@ -1826,9 +2238,157 @@ export default function App() {
                 <SettingsBackup settings={settings()} replaceSettings={replaceSettings} />
               </div>
             </Show>
+
+            <Show when={caregiverTab() === 'about'}>
+              <div
+                class="caregiver-tabpanel"
+                role="tabpanel"
+                id="caregiver-tabpanel"
+                aria-labelledby="caregiver-tab-about"
+                tabindex="0"
+              >
+                {/* Issue #118: 使い方・作者サイト・掲示板・利用回数・バージョン。外部リンクはオフラインでは開けないだけで、
+                    伝達機能には影響しない */}
+                <div class="caregiver-item app-guide">
+                  <h3 class="caregiver-lead">使い方</h3>
+                  <ul>
+                    <li>
+                      本人は、黄色い枠（カーソル）が伝えたい項目に来たときに、スイッチ（キーや Bluetooth
+                      シャッター）を1回押します。タイルを直接タップしても選べます。
+                    </li>
+                    <li>
+                      急ぎのときは先頭の「緊急」を選びます。緊急の表示は、介助者がこのメニューの「緊急を解除」を押すか、本人が
+                      緊急 → 緊急を解除 → 解除する を選ぶまで残ります。
+                    </li>
+                    <li>
+                      聞き逃したときは「もう一度」で、直前の伝達をもう一度伝えられます。伝えた内容は、上の枠の左右の矢印で振り返れます。
+                    </li>
+                    <li>
+                      常設するときは、ホーム画面に追加（インストール）して開き、端末の自動ロックを切り、充電したまま使ってください。一度開いておけば、通信がなくても使えます。
+                    </li>
+                  </ul>
+                  <div class="app-links">
+                    <a href={USER_GUIDE_URL} target="_blank" rel="noopener noreferrer">
+                      くわしい使い方
+                    </a>
+                  </div>
+                </div>
+
+                <div class="caregiver-item">
+                  <div class="app-links">
+                    <a href={FEEDBACK_BBS_URL} target="_blank" rel="noopener noreferrer">
+                      ご意見・ご感想の掲示板
+                    </a>
+                    <a href={AUTHOR_SITE_URL} target="_blank" rel="noopener noreferrer">
+                      作者サイト
+                    </a>
+                  </div>
+                  {/* PR #124 レビュー: インストールしたアプリから開くと、リンク先は別の画面(ブラウザ)になり、
+                      その間はスイッチの入力も画面の自動消灯の防止(Wake Lock)も効かない。戻り忘れを防ぐため明記する */}
+                  <p class="caregiver-hint app-links-warning">
+                    リンクは別の画面（ブラウザ）で開きます（通信が必要です）。開いている間は、本人のスイッチの操作も、画面が消えないようにする働きも効きません。見終わったら、必ずこの画面に戻ってください。
+                  </p>
+                </div>
+
+                <dl class="app-facts">
+                  <div>
+                    <dt>利用回数</dt>
+                    <dd class="app-usage-count">
+                      {usageCount() === null
+                        ? '取得できません（通信がないときは表示されません）'
+                        : `${usageCount()?.toLocaleString('ja-JP')} 回`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>バージョン</dt>
+                    <dd class="app-version">
+                      {APP_VERSION}（{APP_BUILD_DATE}）
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            </Show>
           </div>
         </div>
       </Show>
     </main>
+  )
+}
+
+/** 介助者用メニュー「端末の状態」の1行。操作できない状態表示なので、ボタンに見える囲みにしない(Issue #111) */
+function StatusRow(props: { label: string; ok: boolean }) {
+  // 「項目: 値 — 必要な対応」を、状態と対応に分けて出す
+  const parts = () => props.label.split(' — ')
+  return (
+    <p class="caregiver-status" classList={{ warn: !props.ok }}>
+      <span class="caregiver-status-mark" aria-hidden="true">
+        {props.ok ? '✓' : '!'}
+      </span>
+      <span class="caregiver-status-text">
+        <span>{parts()[0]}</span>
+        <Show when={parts()[1]}>
+          <span class="caregiver-status-todo">{parts()[1]}</span>
+        </Show>
+      </span>
+    </p>
+  )
+}
+
+/**
+ * タブごとの「初期値に戻す」(Issue #117)。2 回押しで実行する。1 回目は、どのタブの何が戻るかを表示するだけ。
+ * タブ切替・メニューを閉じるとこのコンポーネントごと消えるので、確認状態も解除される。
+ */
+function TabReset(props: { tabLabel: string; targets: string; onReset: () => void }) {
+  const [armed, setArmed] = createSignal(false)
+  const [done, setDone] = createSignal(false)
+  const press = () => {
+    if (!armed()) {
+      setDone(false)
+      setArmed(true)
+      return
+    }
+    setArmed(false)
+    props.onReset()
+    setDone(true)
+  }
+  return (
+    <div class="caregiver-reset">
+      <Show when={armed()}>
+        <p class="caregiver-status warn" role="status">
+          <span class="caregiver-status-text">
+            「{props.tabLabel}」タブの設定（{props.targets}
+            ）が初期値に戻ります（元に戻せません）。ほかのタブの設定は変わりません。よければもう一度押してください。
+          </span>
+        </p>
+      </Show>
+      <Show when={done()}>
+        <p class="caregiver-status" role="status">
+          <span class="caregiver-status-text">
+            「{props.tabLabel}」タブの設定を初期値に戻しました。
+          </span>
+        </p>
+      </Show>
+      <div class="phrase-actions">
+        <Show when={armed()}>
+          <button type="button" class="caregiver-action caregiver-reset-cancel" onClick={() => setArmed(false)}>
+            やめる
+          </button>
+        </Show>
+        <button type="button" class="caregiver-action caregiver-reset-button" onClick={press}>
+          {armed() ? 'もう一度押すと初期値に戻す' : `「${props.tabLabel}」タブの設定を初期値に戻す`}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** パンくずの「ホーム」に付ける家アイコン(Issue #113)。文字と同じ色・大きさ。読み上げには含めない */
+function HomeIcon() {
+  return (
+    <svg class="breadcrumb-home" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5.5 10v10h13V10" />
+      <path d="M10 20v-6h4v6" />
+    </svg>
   )
 }

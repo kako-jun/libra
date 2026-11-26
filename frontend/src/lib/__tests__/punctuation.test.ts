@@ -434,7 +434,8 @@ describe('Issue #46 文言の規則(静的検査)', () => {
   it('設定バックアップ/リセットの状態文(PhraseEditor)は全て句点で終わる', () => {
     const src = read('PhraseEditor.tsx')
     const statuses = [...src.matchAll(/setBackupStatus\(\s*'([^']*)'\s*,?\s*\)/g)].map((m) => m[1])
-    expect(statuses.length).toBe(7)
+    // 設定全体の既定化(状態文2件)を廃止した(Issue #117)ため 5 件
+    expect(statuses.length).toBe(5)
     for (const s of statuses) expect(endsWithKuten(s), s).toBe(true)
   })
 })

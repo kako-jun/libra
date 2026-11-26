@@ -1,7 +1,7 @@
 // オフライン準備状態(Service Worker が実際にこのページをオフラインで動かせる状態にあるか)。
 // 正本: docs/requirements.md §8「バックエンドが落ちていても、すべての伝達機能はオフラインで
 // 動かなければならない」。PR #11 レビュー対応: Wake Lock の状態表示と同様、「本当にオフラインで
-// 動く準備ができているか」を介助者メニューで確認できるようにする。
+// 動く準備ができているか」を介助者用メニューで確認できるようにする。
 //
 // navigator.serviceWorker.controller の有無だけでは「SW がこのページを制御している」ことしか
 // 分からず、install が完了して必要なファイル(本体 HTML・JS・CSS)が実際にキャッシュに揃って
@@ -97,7 +97,7 @@ async function computeStatus(): Promise<OfflineReadyStatus> {
   }
 }
 
-// PR#11 3巡目 nit: computeStatus() は複数箇所(controllerchange・介助者メニューを開く・
+// PR#11 3巡目 nit: computeStatus() は複数箇所(controllerchange・介助者用メニューを開く・
 // 5分おきのタイマー)から重ねて呼ばれる。後から呼んだ方が先に解決するとは限らないため、
 // 世代カウンタで「自分より新しい呼び出しが既に始まっていたら、自分の結果は notify しない」
 // ようにし、古い結果が新しい結果を上書きしないようにする。
@@ -148,7 +148,7 @@ export function getOfflineReadyStatus(): Promise<OfflineReadyStatus> {
 }
 
 /**
- * オフライン準備状態を即時に再計算して通知する。should-B: 介助者メニューを開くたびに
+ * オフライン準備状態を即時に再計算して通知する。should-B: 介助者用メニューを開くたびに
  * App.tsx から呼ぶ。should-A: 結果が not-ready なら SW の更新チェックも試みる。
  */
 export function recheckOfflineReady(

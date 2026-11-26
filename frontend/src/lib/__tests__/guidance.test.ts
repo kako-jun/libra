@@ -10,12 +10,12 @@
 //    -   |  -       |  -   |   o      | T は出ない(緊急でない)
 //   compact は同じ行を短縮文言で出す(出る/出ないは不変)。画面(morse を含む)によらず同一(画面は引数に取らない)。
 //
-// 設定依存の挙動 buildBehaviorNotes(介助者メニュー「状態」タブの「いまの動作」)。順序: D → H → A
+// 設定依存の挙動 buildBehaviorNotes / buildBehaviorNoteMap(介助者用メニューの各設定の下に出す説明。Issue #111)。順序: D → H → A
 //   連打無視 0 / >0      | D は >0 のときだけ
 //   押下下限 0, press    | H なし
 //   押下下限 0, release  | H=「押して離すと決まります」
 //   押下下限>0, press    | H=「◯秒以上押し続けると」(いずれの H も末尾に「押下中に画面や項目の並びが変わると無効。モールス入力を除く」。D も末尾に「モールス入力を除く」)
-//   「いまの動作」は介助者メニュー(スクロールできる)に出すので短縮形を持たない
+//   これらは介助者用メニュー(スクロールできる)に出すので短縮形を持たない
 //   押下下限>0, release  | H=「◯秒以上押し続けて離すと」
 //   聴覚スキャン ON/OFF  | A は ON かつ音声モード short/full のときだけ(off/tone なら出ない)
 //   先頭待機・取り消し・緊急中の取り消しなしは、見れば分かるのでどこにも書かない
@@ -24,6 +24,7 @@ import { PATIENT_SCREEN_IDS, type ScreenId } from '../menus'
 import { DEFAULT_SETTINGS } from '../settings'
 import { EMERGENCY_REPEAT_MS } from '../feedback'
 import {
+  buildBehaviorNoteMap,
   buildBehaviorNotes,
   buildCaregiverMenuNotes,
   buildScreenNotes,
@@ -32,9 +33,9 @@ import {
   type ScreenNotesContext,
 } from '../guidance'
 
-const NO_VIBRATE = 'この端末は振動できません（緊急中の周期振動なし）。'
-const VIBRATION = '緊急中は3秒ごとに振動（呼び出し継続の合図。本人の入力直後は休む）。'
-const AWAIT_TOUCH = '再起動後は、画面に触れるかキーを押すまで振動しません。'
+const NO_VIBRATE = 'この端末は振動できません。'
+const VIBRATION = '緊急中は3秒ごとに振動します。'
+const AWAIT_TOUCH = '画面に触れるかキーを押すと、振動を再開します。'
 const DEBOUNCE_DEFAULT =
   '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。'
 const AUDITORY =
@@ -76,7 +77,7 @@ describe('buildScreenNotes: 状態の表引き', () => {
     }
   })
 
-  it('緊急中は周期振動の1行だけ(取り消しなし・押し方・先頭待機は出ない)。全画面共通', () => {
+  it('緊急中は周期振動の1行だけ(取り消しなし・押し方・先頭待機は出ない。呼び出し継続・入力直後の補足も書かない)。全画面共通', () => {
     for (const screen of PATIENT_SCREEN_IDS) {
       expect(notes(screen, { emergencyActive: true })).toEqual([VIBRATION])
     }
@@ -110,7 +111,7 @@ describe('buildScreenNotes: 状態の表引き', () => {
   it('緊急の振動間隔は EMERGENCY_REPEAT_MS(秒数)と一致する', () => {
     expect(EMERGENCY_REPEAT_MS).toBe(3000)
     expect(notes('home', { emergencyActive: true })).toContain(
-      `緊急中は${EMERGENCY_REPEAT_MS / 1000}秒ごとに振動（呼び出し継続の合図。本人の入力直後は休む）。`,
+      `緊急中は${EMERGENCY_REPEAT_MS / 1000}秒ごとに振動します。`,
     )
   })
 
@@ -145,7 +146,9 @@ describe('buildScreenNotes: 低い画面の短縮形・振動できない端末'
     expect(compact).toHaveLength(2)
     for (let i = 0; i < full.length; i += 1) expect(compact[i].length).toBeLessThan(full[i].length)
     expect(compact.join('\n')).toContain('3秒ごと')
-    expect(compact.join('\n')).toContain('入力直後は休む')
+    expect(compact.join('\n')).toContain('タッチかキーで振動を再開')
+    // 操作に要らない補足は、通常形にも短縮形にも書かない(Issue #110)
+    expect(`${full.join('')}${compact.join('')}`).not.toMatch(/入力直後|呼び出し継続/)
   })
 
   it('振動できない端末では、緊急中の振動案内を出さず「振動できません」という事実を出す', () => {
@@ -235,7 +238,23 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
     expect(behavior({ debounceMs: 0, activateOn: 'release' })[0]).toContain('モールス入力を除く')
   })
 
-  it('スクロールできる介助者メニュー用なので短縮形を持たない(理由の語も残る)', () => {
+  it('buildBehaviorNoteMap は原因の設定ごとに分けて持ち、該当しない項目は持たない(Issue #111)', () => {
+    const ctx = (o: BehaviorOverride) => ({ settings: { ...DEFAULT_SETTINGS, ...o } })
+    expect(buildBehaviorNoteMap(ctx({ debounceMs: 0, minHoldMs: 0, activateOn: 'press' }))).toEqual(
+      {},
+    )
+    expect(
+      buildBehaviorNoteMap(
+        ctx({ debounceMs: 300, minHoldMs: 400, activateOn: 'release', ...SPEAKING }),
+      ),
+    ).toEqual({
+      debounce: '0.3秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
+      hold: `0.4秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
+      speech: AUDITORY,
+    })
+  })
+
+  it('スクロールできる介助者用メニュー用なので短縮形を持たない(理由の語も残る)', () => {
     expect(behavior()[0]).toContain('誤作動防止')
   })
 })
@@ -243,10 +262,10 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
 describe('buildCaregiverMenuNotes', () => {
   it('所定の4行が固定順で出る(60秒タップ・キーで閉じる・スキャン停止・無入力でホームへ)', () => {
     expect(buildCaregiverMenuNotes(60000)).toEqual([
-      '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
-      'キー入力で閉じ、ホーム先頭から再開（入力欄・スライダー・チェックボックス操作中の文字/矢印/Home/Endキーと、タブ上の←/→/Home/Endは閉じません）。',
+      '60秒タップしないと、自動で閉じてホームに戻ります（キーを打っても延びません）。',
+      'キーやスイッチを押すと閉じて、ホームの先頭から再開します（文字の入力・スライダーの操作・タブ移動のキーを除く）。',
       '開いている間は、スキャンが止まります。',
-      '入力がないまま3周すると、ホームに戻ります（モールス入力・ホームを除く）。',
+      '本人の画面は、入力がないまま3周するとホームに戻ります（モールス入力・ホームを除く）。',
     ])
   })
 
@@ -261,8 +280,8 @@ describe('buildCaregiverMenuNotes', () => {
     const full = buildCaregiverMenuNotes(60000, { morseEnabled: true })
     const compact = buildCaregiverMenuNotes(60000, { morseEnabled: true, compact: true })
     expect(compact).toHaveLength(full.length)
-    expect(compact[0]).toContain('60秒タップ')
-    expect(compact[0]).toContain('打鍵では延びず')
+    expect(compact[0]).toContain('60秒タップしないと')
+    expect(compact[0]).toContain('キーでは延びません')
     expect(compact[1]).toContain('入力欄の編集')
     expect(compact[2]).toContain('モールス')
     expect(compact[3]).toContain('3周無入力でホームへ')
@@ -272,7 +291,9 @@ describe('buildCaregiverMenuNotes', () => {
   it('自動で閉じる秒数は引数に追従し、他の行は変わらない', () => {
     const a = buildCaregiverMenuNotes(60000)
     const b = buildCaregiverMenuNotes(30000)
-    expect(b[0]).toBe('30秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。')
+    expect(b[0]).toBe(
+      '30秒タップしないと、自動で閉じてホームに戻ります（キーを打っても延びません）。',
+    )
     expect(b.slice(1)).toEqual(a.slice(1))
   })
 
@@ -294,18 +315,18 @@ describe('formatSeconds', () => {
   })
 })
 
-describe('介助者メニューの短縮形(compact)', () => {
-  it('介助者メニュー: タップで延びる/打鍵では延びない/閉じるとホーム先頭から再開/停止するもの', () => {
+describe('介助者用メニューの短縮形(compact)', () => {
+  it('介助者用メニュー: タップで延びる/キーでは延びない/閉じるとホーム先頭から再開/停止するもの', () => {
     const [idle, outside, stops] = buildCaregiverMenuNotes(60000, {
       morseEnabled: true,
       compact: true,
     })
-    expect(idle).toContain('60秒タップなしで閉じてホームへ')
-    expect(idle).toContain('打鍵では延びず')
-    expect(outside).toContain('キーで閉じ')
+    expect(idle).toContain('60秒タップしないと閉じてホームへ戻ります')
+    expect(idle).toContain('キーでは延びません')
+    expect(outside).toContain('キーを押すと閉じて')
     expect(outside).not.toContain('外側')
     expect(outside).toContain('ホーム先頭から再開')
-    expect(outside).toContain('入力欄の編集・タブ移動キーは除く')
+    expect(outside).toContain('入力欄の編集・タブ移動のキーを除く')
     expect(stops).toContain('スキャン')
     expect(stops).toContain('モールス')
   })

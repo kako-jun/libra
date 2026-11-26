@@ -41,7 +41,7 @@ export interface SwitchInput<C = unknown> {
   up: (sourceId: string) => void
   /** 指定した入力元の押下だけを取り消す(決定しない)。pointercancel など */
   cancel: (sourceId: string) => void
-  /** 押下中の入力をすべて取り消す(決定しない)。ブラー・介助者メニュー表示時など */
+  /** 押下中の入力をすべて取り消す(決定しない)。ブラー・介助者用メニュー表示時など */
   cancelAll: () => void
 }
 

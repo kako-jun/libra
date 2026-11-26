@@ -23,7 +23,7 @@ export interface MorseInputOptions {
   onState: (state: MorseState) => void
   /** 緊急・スキャンへ戻る・伝達の確定 */
   onEvent: (event: Exclude<MorseEvent, null>) => void
-  /** 介助者メニューが開いている間など、時間経過(文字確定・無操作での復帰)を止めたいとき true */
+  /** 介助者用メニューが開いている間など、時間経過(文字確定・無操作での復帰)を止めたいとき true */
   isPaused?: () => boolean
   /** 押している間の符号(短点/長点の見込み)。押下中でなければ null */
   onHold?: (symbol: MorseSymbol | null) => void

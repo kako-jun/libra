@@ -22,6 +22,10 @@ async function checkBackNavigationAndEmergencyRetention(chromium, port) {
       )
     })
     await page.goto(`http://localhost:${port}/`)
+    // 起動直後は先頭(緊急)にカーソルがあるが、読み込み・初回描画の最中に押すと入力が取りこぼされることが
+    // ある(全スイートを続けて回すと稀に出た)。描画が落ち着いてから、カーソルが次に緊急へ来た時に押す
+    await page.evaluate(() => document.fonts.ready)
+    await page.waitForTimeout(800)
     const labels = () => page.locator('.grid-board .tile-label').allTextContents()
     const press = async () => {
       await page.keyboard.press('Space')

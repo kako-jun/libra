@@ -402,8 +402,10 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     expect(all.some((t) => t.classList.contains('tile-emergency'))).toBe(false)
     expect(all.length).toBeGreaterThan(0)
     for (const t of all) {
-      // 緊急詳細の各候補は tone:urgent(意味)だが赤面ルールは無い
-      expect(t.classList.contains('tile-urgent'), labelOf(t)).toBe(labelOf(t) !== '戻る')
+      // 緊急詳細の各候補は tone:urgent(意味)だが赤面ルールは無い。戻る・「緊急を解除」(Issue #108 の遷移項目)は通常の見た目
+      expect(t.classList.contains('tile-urgent'), labelOf(t)).toBe(
+        labelOf(t) !== '戻る' && labelOf(t) !== '緊急を解除',
+      )
     }
     expectNoRedTiles(container)
     // 緊急帯の中のテキストは帯のラベルであり、タイル(.tile)の子孫ではない

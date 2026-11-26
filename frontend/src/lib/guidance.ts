@@ -1,9 +1,9 @@
-// 画面下の固定案内(.screen-notes: 緊急中の振動だけ)・介助者メニュー上部の固定帯(.caregiver-notes)・
+// 画面下の固定案内(.screen-notes: 緊急中の振動だけ)・介助者用メニュー上部の固定帯(.caregiver-notes)・
 // 「状態」タブの「いまの動作」の文言。
 // 正本: docs/requirements.md §4.1.2 の「常時案内」表 / Issue #58
 //
 // 方針: 暗黙の操作は作らない。ただし画面を見れば分かることは書かず、見ても分からない挙動だけを書く
-// (本人画面は緊急中の振動、介助者メニューは「いまの動作」と上部の固定帯)。
+// (本人画面は緊急中の振動、介助者用メニューは「いまの動作」と上部の固定帯)。
 // 本人や介助者が任意に隠せる操作は設けない。副作用なし(テストしやすいよう文字列だけ返す)。
 // compact は低い画面(高さ500px以下)か狭い画面(幅480px以下)用の短縮形。出す・出さないは変えず、
 // 省くのは「理由」の語だけ。操作に関わる事実(何が起きるか・何をしても反応しない条件)は短縮形でも残す
@@ -24,7 +24,7 @@ export interface ScreenNotesContext {
   settings: Pick<Settings, 'hapticsEnabled'>
 }
 
-/** 見ても分からない設定依存の挙動を、介助者メニューの「いまの動作」に出すための文脈 */
+/** 見ても分からない設定依存の挙動を、介助者用メニューの「いまの動作」に出すための文脈 */
 export interface BehaviorNotesContext {
   settings: Pick<Settings, 'debounceMs' | 'minHoldMs' | 'activateOn' | 'auditoryScan' | 'voiceMode'>
 }
@@ -45,7 +45,7 @@ const SCREEN_CHANGE_NOTE_FULL = '押下中に画面や項目の並びが変わ�
 /**
  * 本人画面の下に常時出す案内。緊急中の周期振動まわりだけ(Issue #79)。
  * 順序は固定: 周期振動 → 再起動後は触れるまで振動なし / 振動できない端末。通常時は空配列(帯ごと出さない)。
- * 設定の細かい説明は buildBehaviorNotes で介助者メニューへ出す。
+ * 設定の細かい説明は buildBehaviorNotes で介助者用メニューへ出す。
  */
 export function buildScreenNotes(context: ScreenNotesContext): string[] {
   const { emergencyActive, vibrationAwaitsTouch, settings } = context
@@ -55,64 +55,70 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
 
   if (emergencyActive && settings.hapticsEnabled) {
     if (canVibrate) {
+      // Issue #110: 操作に要らない補足(呼び出し継続の合図・入力直後は休む)は書かない
       const every = `${EMERGENCY_REPEAT_MS / 1000}秒ごと`
-      notes.push(
-        compact
-          ? `緊急中は${every}に振動（入力直後は休む）。`
-          : `緊急中は${every}に振動（呼び出し継続の合図。本人の入力直後は休む）。`,
-      )
+      notes.push(compact ? `緊急中は${every}に振動。` : `緊急中は${every}に振動します。`)
       if (vibrationAwaitsTouch) {
+        // 再起動後に振動を再開するための操作。これは必要なので残す
         notes.push(
-          compact
-            ? '再起動後はタッチかキーまで振動なし。'
-            : '再起動後は、画面に触れるかキーを押すまで振動しません。',
+          compact ? 'タッチかキーで振動を再開。' : '画面に触れるかキーを押すと、振動を再開します。',
         )
       }
     } else {
-      notes.push('この端末は振動できません（緊急中の周期振動なし）。')
+      notes.push('この端末は振動できません。')
     }
   }
   return notes
 }
 
+/** 設定に応じた挙動の説明を、原因の設定ごとに分けたもの。該当しない項目は持たない */
+export interface BehaviorNoteMap {
+  /** 連打無視(スキャンタブの「連打無視」の下) */
+  debounce?: string
+  /** 押し方(「押下時間の下限」「決定のタイミング」の下) */
+  hold?: string
+  /** 読み上げの割り込み(「聴覚スキャン」の下) */
+  speech?: string
+}
+
 /**
- * 介助者メニュー「状態」タブの「いまの動作」。見ても分からない、設定に応じた挙動だけを現在の設定値で出す(スクロールできるので短縮形は持たない)。
- * 順序は固定: 連打無視 → 押し方 → 読み上げの割り込み。該当しなければ空配列。
+ * 見ても分からない、設定に応じた挙動の説明。介助者用メニューでは、原因の設定のすぐ下に出す(Issue #111。
+ * 以前は「状態」タブの「いまの動作」にまとめていた)。スクロールできるので短縮形は持たない。
  */
-export function buildBehaviorNotes(context: BehaviorNotesContext): string[] {
+export function buildBehaviorNoteMap(context: BehaviorNotesContext): BehaviorNoteMap {
   const { settings } = context
-  const notes: string[] = []
+  const map: BehaviorNoteMap = {}
 
   if (settings.debounceMs > 0) {
     const s = formatSeconds(settings.debounceMs)
-    notes.push(`${s}以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。`)
+    map.debounce = `${s}以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。`
   }
   if (settings.minHoldMs > 0) {
     const s = formatSeconds(settings.minHoldMs)
-    if (settings.activateOn === 'release') {
-      notes.push(
-        `${s}以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`,
-      )
-    } else {
-      notes.push(
-        `${s}以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`,
-      )
-    }
+    map.hold =
+      settings.activateOn === 'release'
+        ? `${s}以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
+        : `${s}以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
   } else if (settings.activateOn === 'release') {
-    notes.push(`押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`)
+    map.hold = `押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`
   }
   // 伝達の読み上げは、直後の1回だけ次のスキャン読み上げに割り込まれない(App.tsx の messageAnnounceGrace)。
   // 読み上げ自体が出るのは音声モードが「短く/全部」のときだけ
   if (settings.auditoryScan && (settings.voiceMode === 'short' || settings.voiceMode === 'full')) {
-    notes.push(
-      '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。',
-    )
+    map.speech =
+      '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。'
   }
-  return notes
+  return map
+}
+
+/** buildBehaviorNoteMap を固定順(連打無視 → 押し方 → 読み上げの割り込み)の配列にしたもの。該当しなければ空配列 */
+export function buildBehaviorNotes(context: BehaviorNotesContext): string[] {
+  const map = buildBehaviorNoteMap(context)
+  return [map.debounce, map.hold, map.speech].filter((note): note is string => note !== undefined)
 }
 
 /**
- * 介助者メニュー上部の固定帯の文言(常時表示。設定や状態で隠さない)。
+ * 介助者用メニュー上部の固定帯の文言(常時表示。設定や状態で隠さない)。
  * morseEnabled=false のときモールス入力は使えないので、モールスの時間停止は出さない。
  */
 export function buildCaregiverMenuNotes(
@@ -124,17 +130,17 @@ export function buildCaregiverMenuNotes(
   const stops = options.morseEnabled ? 'スキャンとモールス入力の時間' : 'スキャン'
   return [
     compact
-      ? `${seconds}秒タップなしで閉じてホームへ（打鍵では延びず）。`
-      : `${seconds}秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。`,
+      ? `${seconds}秒タップしないと閉じてホームへ戻ります（キーでは延びません）。`
+      : `${seconds}秒タップしないと、自動で閉じてホームに戻ります（キーを打っても延びません）。`,
     compact
-      ? 'キーで閉じ、ホーム先頭から再開（入力欄の編集・タブ移動キーは除く）。'
-      : 'キー入力で閉じ、ホーム先頭から再開（入力欄・スライダー・チェックボックス操作中の文字/矢印/Home/Endキーと、タブ上の←/→/Home/Endは閉じません）。',
+      ? 'キーを押すと閉じて、ホーム先頭から再開します（入力欄の編集・タブ移動のキーを除く）。'
+      : 'キーやスイッチを押すと閉じて、ホームの先頭から再開します（文字の入力・スライダーの操作・タブ移動のキーを除く）。',
     compact
-      ? `開く間は${options.morseEnabled ? 'スキャン・モールス時間' : 'スキャン'}停止。`
+      ? `開いている間は${options.morseEnabled ? 'スキャンとモールスの時間' : 'スキャン'}が止まります。`
       : `開いている間は、${stops}が止まります。`,
-    // 自動で起きること(Issue #76)。本人画面の常時案内ではなく、介助者メニューに置く
+    // 自動で起きること(Issue #76)。本人画面の常時案内ではなく、介助者用メニューに置く
     compact
-      ? `${IDLE_LAPS_BEFORE_HOME}周無入力でホームへ（モールス・ホームを除く）。`
-      : `入力がないまま${IDLE_LAPS_BEFORE_HOME}周すると、ホームに戻ります（モールス入力・ホームを除く）。`,
+      ? `本人の画面は${IDLE_LAPS_BEFORE_HOME}周無入力でホームへ戻ります（モールス・ホームを除く）。`
+      : `本人の画面は、入力がないまま${IDLE_LAPS_BEFORE_HOME}周するとホームに戻ります（モールス入力・ホームを除く）。`,
   ]
 }

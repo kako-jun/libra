@@ -1,4 +1,4 @@
-// 介助者メニューのフレーズ編集(Issue #8)。
+// 介助者用メニューのフレーズ編集(Issue #8)。
 // 編集できるのは不快・不快その他・痛い場所・要望・気分の「伝達メッセージ」項目だけ。
 // 緊急・戻る・はい・いいえ・続けて/やめて/変えて・下位画面への遷移項目・痛みの強さは
 // menus.ts が構造で固定するため、
@@ -20,12 +20,7 @@ import {
   type Phrase,
   type PhraseGroup,
 } from './lib/phrases'
-import {
-  DEFAULT_SETTINGS,
-  exportSettingsJson,
-  parseSettingsJson,
-  type Settings,
-} from './lib/settings'
+import { exportSettingsJson, parseSettingsJson, type Settings } from './lib/settings'
 
 interface PhraseEditorProps {
   settings: Settings
@@ -73,10 +68,9 @@ export default function PhraseEditor(props: PhraseEditorProps) {
 
   return (
     <section class="phrase-editor" aria-label="フレーズ編集">
-      <h3>フレーズ編集</h3>
       <p class="phrase-note">
         緊急・戻る・はい・いいえ・続けて/やめて/変えて
-        の位置と内容は変えられません。ここで編集できるのは下の定型文だけです。
+        の位置と内容は変えられません。ここで編集できるのは下のフレーズだけです。
       </p>
 
       <div class="caregiver-choice-options">
@@ -190,7 +184,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
           onClick={resetGroup}
           disabled={!isCustomized()}
         >
-          この画面を既定に戻す
+          この画面を初期値に戻す
         </button>
       </div>
     </section>
@@ -203,15 +197,12 @@ interface SettingsBackupProps {
   replaceSettings: (next: Settings) => void
 }
 
-/** 設定の書き出し/取り込み(端末の入れ替え用)。介助者メニューの「データ」タブ */
+/** 設定の書き出し/取り込み(端末の入れ替え用)。介助者用メニューの「データ」タブ */
 export function SettingsBackup(props: SettingsBackupProps) {
   const [backupText, setBackupText] = createSignal('')
   const [backupStatus, setBackupStatus] = createSignal('')
   // 取り込みは今の設定を上書きするため、1回目は確認の表示だけにして2回目で実行する
   const [importArmed, setImportArmed] = createSignal(false)
-  // 設定全体の既定化も破壊的なので同じ2段階確認にする。タブ切替・閉じるでこのコンポーネントごと消え、確認状態も解除される
-  const [resetArmed, setResetArmed] = createSignal(false)
-
   const doExport = () => {
     const json = exportSettingsJson(props.settings)
     setBackupText(json)
@@ -228,7 +219,6 @@ export function SettingsBackup(props: SettingsBackupProps) {
   }
 
   const doImport = () => {
-    setResetArmed(false)
     // 今の設定を土台に、書き出しに含まれる検証済みの項目だけを上書きする
     const next = parseSettingsJson(backupText(), props.settings)
     if (!next) {
@@ -248,23 +238,8 @@ export function SettingsBackup(props: SettingsBackupProps) {
     setBackupStatus('取り込みました。')
   }
 
-  const doReset = () => {
-    setImportArmed(false)
-    if (!resetArmed()) {
-      setResetArmed(true)
-      setBackupStatus(
-        '全設定とフレーズが既定に戻ります（元に戻せません）。よければもう一度押してください。',
-      )
-      return
-    }
-    setResetArmed(false)
-    props.replaceSettings({ ...DEFAULT_SETTINGS })
-    setBackupStatus('設定を既定に戻しました。')
-  }
-
   return (
     <section class="settings-backup" aria-label="設定データ">
-      <h3>設定データ</h3>
       <div class="caregiver-field">
         <span>設定のバックアップ（端末の入れ替え用）</span>
         <textarea
@@ -273,7 +248,6 @@ export function SettingsBackup(props: SettingsBackupProps) {
           onInput={(event) => {
             setBackupText(event.currentTarget.value)
             setImportArmed(false)
-            setResetArmed(false)
           }}
           placeholder="書き出した設定の JSON をここに貼り付けて取り込みます。"
         />
@@ -283,14 +257,6 @@ export function SettingsBackup(props: SettingsBackupProps) {
           </button>
           <button type="button" class="caregiver-action" onClick={doImport}>
             取り込み
-          </button>
-        </div>
-      </div>
-      <div class="caregiver-field">
-        <span>設定全体を既定に戻す（スキャン・入力方式・フィードバック・表示・フレーズ）</span>
-        <div class="phrase-actions">
-          <button type="button" class="caregiver-action" onClick={doReset}>
-            {resetArmed() ? 'もう一度押すと既定に戻す' : '設定を既定に戻す'}
           </button>
         </div>
       </div>

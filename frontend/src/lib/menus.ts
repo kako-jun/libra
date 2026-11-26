@@ -16,6 +16,7 @@ export type Tone = 'neutral' | 'urgent'
 export type ScreenId =
   | 'home'
   | 'urgentDetail'
+  | 'emergencyRelease'
   | 'discomfort'
   | 'discomfortOther'
   | 'painLocation'
@@ -31,6 +32,7 @@ export type ScreenId =
 export const PATIENT_SCREEN_IDS: readonly ScreenId[] = [
   'home',
   'urgentDetail',
+  'emergencyRelease',
   'discomfort',
   'discomfortOther',
   'painLocation',
@@ -46,7 +48,9 @@ export const PATIENT_SCREEN_IDS: readonly ScreenId[] = [
 export type ActionId =
   | { type: 'emergency' }
   | { type: 'emergencyDetail'; label: string }
+  | { type: 'emergencyRelease' }
   | { type: 'undo' }
+  | { type: 'repeat' }
   | { type: 'back' }
   | { type: 'navigate'; screen: ScreenId }
   | { type: 'message'; text: string; tone?: Tone }
@@ -70,6 +74,8 @@ export interface MenuItem {
 /** 下位画面の「戻る」の遷移先。画面ツリーに従う（painLocation は discomfort の子）。 */
 export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
   urgentDetail: 'home',
+  // 本人による緊急の解除の確認(Issue #108)。緊急詳細の下
+  emergencyRelease: 'urgentDetail',
   discomfort: 'home',
   discomfortOther: 'discomfort',
   painLocation: 'discomfort',
@@ -86,6 +92,7 @@ export const PARENT_SCREEN: Record<Exclude<ScreenId, 'home'>, ScreenId> = {
 export const SCREEN_TITLES: Record<ScreenId, string> = {
   home: 'ホーム',
   urgentDetail: '緊急',
+  emergencyRelease: '緊急を解除',
   discomfort: '不快',
   discomfortOther: '不快・その他',
   painLocation: '痛い場所',
@@ -135,6 +142,7 @@ export function buildScreenBreadcrumb(
 export const SCREEN_GUIDANCE: Record<ScreenId, string> = {
   home: '伝えたいことを選んでください。',
   urgentDetail: '緊急です。いま伝えたい状態を選んでください。',
+  emergencyRelease: '緊急を解除するときは「解除する」を選んでください。',
   discomfort: 'つらいことを選んでください。',
   discomfortOther: 'つらいことを選んでください。',
   painLocation: '痛い場所を選んでください。',
@@ -242,6 +250,9 @@ export interface HomeMenuOptions {
 export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
   const showUndo = options.showUndo && !options.emergencyActive
   return homeScreen([
+    // 緊急の次に常設(Issue #123)。聞き逃されたとき、同じ選択をやり直さずに直前の伝達をもう一度伝える。
+    // 伝達が無いときも位置を空けない(出入りで はい・いいえ の位置を動かさない。Issue #102 と同じ考え方)
+    { id: 'repeat', label: 'もう一度', action: { type: 'repeat' } },
     message('yes', 'はい', 'はい。'),
     message('no', 'いいえ', 'いいえ。'),
     // 取り消しは「いいえ」の直後(Issue #102)。出入りしても「はい」「いいえ」の位置と到達時間を変えない
@@ -282,11 +293,25 @@ export function buildUrgentDetailMenu(selectedDetails: readonly string[] = []): 
         action: { type: 'emergencyDetail' as const, label },
       }),
     ),
+    // 本人が自分で緊急を解除する入口(Issue #108)。詳細候補より後ろ(末尾)に置き、ここでは解除しない。
+    // 次の確認画面で「解除する」を選んだときだけ解除する(誤操作で緊急が消えないようにする)
+    navigate('emergency-release-nav', '緊急を解除', 'emergencyRelease'),
+  ]
+}
+
+/**
+ * 本人による緊急の解除の確認(Issue #108): 戻る / 解除する。
+ * 先頭は「戻る」なので、続けて押しても解除にならない。緊急詳細と同じく、成立済みの「緊急」タイルは置かない。
+ */
+export function buildEmergencyReleaseMenu(): MenuItem[] {
+  return [
+    makeBackItem(),
+    { id: 'emergency-release', label: '解除する', action: { type: 'emergencyRelease' } },
   ]
 }
 
 // 1画面の項目数は緊急・戻るを含めて8以内(requirements.md §4.1)。既定はこれを満たし、
-// 介助者が編集して超える場合は介助者メニューで警告する(phrases.ts)。
+// 介助者が編集して超える場合は介助者用メニューで警告する(phrases.ts)。
 // 「その他」は暑い/寒い/喉が渇いた/かゆい/眠れないを discomfortOther へ退避する。
 export function buildDiscomfortMenu(phrases?: PhraseSets): MenuItem[] {
   return subScreen([
@@ -370,7 +395,11 @@ export const LETTER_ROWS: { name: string; chars: string[] }[] = [
   { name: 'わ行', chars: ['わ', 'を', 'ん', 'ー'] },
 ]
 
-/** 文字盤の行段階: 戻る / 緊急 / あ〜わ行 / 確定 / 1字消す */
+/**
+ * 文字盤の行段階: 戻る / 緊急 / 1字消す / あ〜わ行 / 確定(14 項目)。
+ * 「1字消す」は見つけやすいよう上(緊急の次)に置く(Issue #121)。専用の 15 セル格子で全項目を
+ * スクロールなしで出す(gridLayout.ts の letters)
+ */
 export function buildLettersMenu(): MenuItem[] {
   const rowItems: MenuItem[] = LETTER_ROWS.map((row, index) => ({
     id: `letter-row-${index}`,
@@ -378,9 +407,9 @@ export function buildLettersMenu(): MenuItem[] {
     action: { type: 'letterRow', row: index },
   }))
   return subScreen([
+    { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
     ...rowItems,
     { id: 'commit', label: '確定', action: { type: 'letterCommit' } },
-    { id: 'backspace', label: '1字消す', action: { type: 'letterBackspace' } },
   ])
 }
 
@@ -407,6 +436,8 @@ export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuI
       return buildHomeMenu(homeOptions)
     case 'urgentDetail':
       return buildUrgentDetailMenu(homeOptions.emergencyDetails)
+    case 'emergencyRelease':
+      return buildEmergencyReleaseMenu()
     case 'discomfort':
       return buildDiscomfortMenu(homeOptions.phrases)
     case 'discomfortOther':

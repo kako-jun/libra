@@ -1,4 +1,4 @@
-// Issue #58/#79: 常時案内(.screen-notes / .caregiver-notes / 状態タブの「いまの動作」)の App 結合テスト。
+// Issue #58/#79: 常時案内(.screen-notes / .caregiver-notes / スキャンタブの各設定の下の「いまの動作」)の App 結合テスト。
 // 文言と条件の表引きは lib/__tests__/guidance.test.ts。ここは「実際の状態遷移・設定変更・
 // DOM 上の場所」に案内が追従すること(隠せない・場所固定)を確認する。
 //
@@ -8,8 +8,8 @@
 //   緊急開始(urgentDetail)            | .screen-notes に振動案内だけ → 解除で帯ごと消える
 //   緊急復元+振動ON                   | 再起動後の振動注意 → 画面に触れると消える
 //   緊急復元+振動OFF                  | 帯ごと出ない
-//   介助者メニュー「状態」タブ         | 「いまの動作」が現在の設定値に追従(連打無視・押し方・読み上げ割り込み)
-//   介助者メニュー表示中              | .caregiver-notes が常に出る(タブを替えても残る)
+//   介助者用メニュー「スキャン」タブ   | 各設定の下の説明(Issue #111)が現在の設定値に追従(連打無視・押し方・読み上げ割り込み)
+//   介助者用メニュー表示中            | .caregiver-notes が常に出る(タブを替えても残る)
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
@@ -42,7 +42,7 @@ class MockAudioContext {
 }
 
 const VIBRATION_FRAGMENT = '3秒ごとに振動'
-const AWAIT_TOUCH = '再起動後は、画面に触れるかキーを押すまで振動しません。'
+const AWAIT_TOUCH = '画面に触れるかキーを押すと、振動を再開します。'
 const AUDITORY_FRAGMENT = '伝達の読み上げは、直後の1項目分は割り込まれません'
 const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効。モールス入力を除く'
 
@@ -67,10 +67,10 @@ function screenNotes(container: HTMLElement): string[] {
 function notesText(container: HTMLElement): string {
   return screenNotes(container).join('\n')
 }
-/** 介助者メニュー「状態」タブの「いまの動作」(メニューを開いて状態タブを選んで読む) */
+/** 介助者用メニュー「スキャン」タブの、各設定の下の説明(.caregiver-behavior。Issue #111) */
 function behaviorNotes(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll('.caregiver-behavior li')).map(
-    (li) => li.textContent ?? '',
+  return Array.from(container.querySelectorAll('p.caregiver-hint.caregiver-behavior')).map(
+    (p) => p.textContent ?? '',
   )
 }
 function caregiverNotes(container: HTMLElement): string[] {
@@ -116,10 +116,10 @@ function changeSettingsViaMenu(container: HTMLElement, change: () => void) {
   change()
   closeCaregiverMenu(container)
 }
-/** メニューを開いて状態タブの「いまの動作」を読み、閉じる */
+/** メニューを開いてスキャンタブの各設定の下の説明を読み、閉じる */
 function readBehavior(container: HTMLElement): string {
   openCaregiverMenu(container)
-  selectCaregiverTab(container, '状態')
+  selectCaregiverTab(container, 'スキャン')
   const text = behaviorNotes(container).join('\n')
   closeCaregiverMenu(container)
   return text
@@ -161,7 +161,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
 
     it('伝達直後(取り消し猶予中)・下位画面・文字盤でも .screen-notes は無い', () => {
       const { container } = render(() => <App />)
-      vi.advanceTimersByTime(HEAD_HOLD_MS)
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index1 は「もう一度」、index2 が「はい」
       fireEvent.keyDown(window, { key: ' ' }) // はい → home(取り消し)
       expect(tileLabels(container)).toContain('取り消し')
       expect(container.querySelector('.screen-notes')).toBeNull()
@@ -186,7 +186,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
     function clearEmergencyViaMenu(container: HTMLElement) {
       openCaregiverMenu(container)
       const clear = Array.from(container.querySelectorAll('button')).find((b) =>
-        b.textContent?.includes('緊急解除'),
+        b.textContent?.includes('緊急を解除'),
       ) as HTMLElement
       fireEvent.click(clear)
       closeCaregiverMenu(container)
@@ -262,7 +262,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
     })
   })
 
-  describe('設定への追従(状態タブの「いまの動作」)', () => {
+  describe('設定への追従(スキャンタブの各設定の下の説明)', () => {
     it('保存済み設定で起動すると、押し方の文言がその値になる(先頭待機は書かない)', () => {
       withSettings({
         debounceMs: 0,
@@ -273,33 +273,35 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       })
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, '状態')
+      selectCaregiverTab(container, 'スキャン')
       expect(behaviorNotes(container)).toEqual([
         `0.8秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
       ])
     })
 
-    it('既定では連打無視の行だけが読める。見出しは「いまの動作」', () => {
-      const { container } = render(() => <App />)
-      openCaregiverMenu(container)
-      selectCaregiverTab(container, '状態')
-      expect(behaviorNotes(container)).toEqual([
-        '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
-      ])
-      const titles = Array.from(container.querySelectorAll('.caregiver-section-title')).map(
-        (el) => el.textContent,
-      )
-      expect(titles).toContain('いまの動作')
-    })
-
-    it('他のタブには「いまの動作」は出ない(状態タブのパネル内だけ)', () => {
+    it('既定では連打無視の説明だけが、連打無視の設定のすぐ下に読める。「いまの動作」の見出しは無い(Issue #111)', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       selectCaregiverTab(container, 'スキャン')
-      expect(container.querySelector('.caregiver-behavior')).toBeNull()
+      expect(behaviorNotes(container)).toEqual([
+        '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
+      ])
+      const hint = container.querySelector('p.caregiver-behavior') as HTMLElement
+      expect(hint.previousElementSibling?.textContent).toContain('連打無視')
+      expect(container.querySelector('.caregiver-section-title')).toBeNull()
+      expect(container.querySelector('.caregiver-panel')?.textContent).not.toContain('いまの動作')
     })
 
-    it('連打無視を 0 にし、他の設定も無ければ「いまの動作」の節ごと消える', () => {
+    it('スキャンタブ以外(端末の状態など)には設定の下の説明は出ない', () => {
+      const { container } = render(() => <App />)
+      openCaregiverMenu(container)
+      for (const label of ['端末の状態', 'モールス', '音と振動', '表示']) {
+        selectCaregiverTab(container, label)
+        expect(container.querySelector('.caregiver-behavior'), label).toBeNull()
+      }
+    })
+
+    it('連打無視を 0 にし、他の設定も無ければ設定の下の説明ごと消える', () => {
       const { container } = render(() => <App />)
       expect(readBehavior(container)).toContain('連打は数えません')
       changeSettingsViaMenu(container, () => {
@@ -308,7 +310,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       })
       expect(readBehavior(container)).toBe('')
       openCaregiverMenu(container)
-      selectCaregiverTab(container, '状態')
+      selectCaregiverTab(container, 'スキャン')
       expect(container.querySelector('.caregiver-behavior')).toBeNull()
     })
 
@@ -372,13 +374,13 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const { container } = render(() => <App />)
       expect(readBehavior(container)).not.toContain(AUDITORY_FRAGMENT)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, '入力方式')
+      selectCaregiverTab(container, 'スキャン') // 聴覚スキャンはスキャンタブにある(Issue #111)
       const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
       fireEvent.click(checkbox)
       closeCaregiverMenu(container)
       expect(readBehavior(container)).toContain(AUDITORY_FRAGMENT)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, '入力方式')
+      selectCaregiverTab(container, 'スキャン')
       fireEvent.click(container.querySelector('input[type="checkbox"]') as HTMLInputElement)
       closeCaregiverMenu(container)
       expect(readBehavior(container)).not.toContain(AUDITORY_FRAGMENT)
@@ -396,9 +398,9 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const panel = container.querySelector('.caregiver-panel') as HTMLElement
       const children = () =>
         Array.from(panel.children).map((el) => el.className.toString().split(' ')[0])
-      selectCaregiverTab(container, '状態')
+      selectCaregiverTab(container, '端末の状態')
       const before = children()
-      for (const label of ['スキャン', '状態', '入力方式', '状態']) {
+      for (const label of ['スキャン', '端末の状態', 'モールス', '端末の状態']) {
         selectCaregiverTab(container, label)
         expect(children()).toEqual(before)
       }
@@ -409,9 +411,9 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
       expect(notesText(container)).toContain(VIBRATION_FRAGMENT)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'フィードバック')
+      selectCaregiverTab(container, '音と振動')
       const checkbox = Array.from(container.querySelectorAll('label.caregiver-checkbox')).find(
-        (l) => l.textContent?.includes('本人への振動フィードバック'),
+        (l) => l.textContent?.includes('本人に振動で知らせる'),
       )?.firstElementChild as HTMLInputElement
       fireEvent.click(checkbox)
       closeCaregiverMenu(container)
@@ -500,7 +502,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(container.querySelector('.screen-notes button')).toBeNull()
     })
 
-    it('案内に絵文字が含まれない(画面・介助者メニュー)', () => {
+    it('案内に絵文字が含まれない(画面・介助者用メニュー)', () => {
       const emoji = /\p{Extended_Pictographic}/u
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急で行を増やす
@@ -520,7 +522,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
     })
   })
 
-  describe('介助者メニューの常時案内', () => {
+  describe('介助者用メニューの常時案内', () => {
     it('閉じている間は出ず、開くと所定の4行が出る(60秒は自動閉じ時間に一致)', () => {
       const { container } = render(() => <App />)
       expect(container.querySelector('.caregiver-notes')).toBeNull()
@@ -528,19 +530,19 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const notes = caregiverNotes(container)
       expect(notes).toHaveLength(4)
       expect(notes[0]).toBe(
-        '60秒タップしないと、自動で閉じてホームに戻ります（打鍵では延びません）。',
+        '60秒タップしないと、自動で閉じてホームに戻ります（キーを打っても延びません）。',
       )
-      expect(notes[1]).toContain('キー入力で閉じ')
+      expect(notes[1]).toContain('キーやスイッチを押すと閉じて')
       expect(notes[1]).not.toContain('外側')
-      expect(notes[1]).toContain('タブ上の←/→/Home/End')
-      expect(notes[1]).toContain('入力欄・スライダー・チェックボックス操作中')
+      expect(notes[1]).toContain('タブ移動のキーを除く')
+      expect(notes[1]).toContain('文字の入力・スライダーの操作')
       // モールス入力が無効(既定)なので、モールスの時間停止は出さずスキャン停止だけ
       expect(notes[2]).toBe('開いている間は、スキャンが止まります。')
       expect(notes[3]).toBe(
-        '入力がないまま3周すると、ホームに戻ります（モールス入力・ホームを除く）。',
+        '本人の画面は、入力がないまま3周するとホームに戻ります（モールス入力・ホームを除く）。',
       )
       expect(container.querySelector('.caregiver-notes')?.getAttribute('aria-label')).toBe(
-        '介助者メニューの自動で起きること',
+        '介助者用メニューの自動で起きること',
       )
     })
 
@@ -573,7 +575,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(container.querySelector('.caregiver-notes')).toBeNull()
     })
 
-    it('設定を変えても(スキャン間隔等)介助者メニューの案内は変わらない', () => {
+    it('設定を変えても(スキャン間隔等)介助者用メニューの案内は変わらない', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       const before = caregiverNotes(container)
@@ -641,7 +643,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       delete (navigator as unknown as { vibrate?: unknown }).vibrate
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
-      expect(notesText(container)).toContain('この端末は振動できません（緊急中の周期振動なし）。')
+      expect(notesText(container)).toContain('この端末は振動できません。')
       expect(notesText(container)).not.toContain('秒ごとに振動')
     })
 
@@ -654,12 +656,16 @@ describe('Issue #58: 常時案内(App 結合)', () => {
 
   describe('低い画面の短縮文言(matchMedia)', () => {
     type Listener = (event: { matches: boolean }) => void
-    function mockMatchMedia(initial: boolean) {
+    // 本人画面の帯は「高さ500px以下か幅480px以下」、介助者用メニューの帯は「高さ500px以下」だけで短縮形にする
+    function mockMatchMedia(
+      initial: boolean,
+      queries: string[] = ['(max-height: 500px), (max-width: 480px)', '(max-height: 500px)'],
+    ) {
       const listeners: Listener[] = []
       let matches = initial
       ;(window as unknown as { matchMedia?: unknown }).matchMedia = vi.fn((query: string) => ({
         get matches() {
-          return query === '(max-height: 500px), (max-width: 480px)' ? matches : false
+          return queries.includes(query) ? matches : false
         },
         media: query,
         addEventListener: (_: string, l: Listener) => listeners.push(l),
@@ -677,18 +683,18 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       delete (window as unknown as { matchMedia?: unknown }).matchMedia
     })
 
-    it('高さ500px以下か幅480px以下でも、介助者メニューの「いまの動作」は通常文言のまま(本人画面の帯だけ短縮形)', () => {
+    it('高さ500px以下でも、介助者用メニューの設定の下の説明は通常文言のまま(本人画面の帯だけ短縮形)', () => {
       mockMatchMedia(true)
       const { container } = render(() => <App />)
       expect(container.querySelector('.screen-notes')).toBeNull() // 通常時は帯なし
       openCaregiverMenu(container)
-      selectCaregiverTab(container, '状態')
+      selectCaregiverTab(container, 'スキャン')
       expect(behaviorNotes(container)).toEqual([
         '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
       ])
       closeCaregiverMenu(container)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
-      expect(screenNotes(container)).toEqual(['緊急中は3秒ごとに振動（入力直後は休む）。'])
+      expect(screenNotes(container)).toEqual(['緊急中は3秒ごとに振動。'])
     })
 
     it('高さの条件が変わると(回転など)、その場で通常形と短縮形が切り替わる', () => {
@@ -696,22 +702,33 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
       expect(screenNotes(container)).toHaveLength(1)
-      expect(notesText(container)).toContain('呼び出し継続の合図')
+      expect(notesText(container)).toContain('緊急中は3秒ごとに振動します。')
       setShort(true)
       expect(screenNotes(container)).toHaveLength(1)
-      expect(notesText(container)).not.toContain('呼び出し継続の合図')
-      expect(notesText(container)).toContain('入力直後は休む')
+      expect(notesText(container)).not.toContain('振動します')
+      expect(notesText(container)).toContain('緊急中は3秒ごとに振動。')
       setShort(false)
-      expect(notesText(container)).toContain('呼び出し継続の合図')
+      expect(notesText(container)).toContain('緊急中は3秒ごとに振動します。')
     })
 
-    it('介助者メニューの帯も、短縮形でも4行のまま', () => {
+    it('幅480px以下だけ(高さは十分)では、本人画面の帯は短縮形でも介助者用メニューの帯は通常形のまま', () => {
+      mockMatchMedia(true, ['(max-height: 500px), (max-width: 480px)'])
+      const { container } = render(() => <App />)
+      fireEvent.keyDown(window, { key: ' ' }) // 緊急
+      expect(screenNotes(container)).toEqual(['緊急中は3秒ごとに振動。'])
+      openCaregiverMenu(container)
+      expect(caregiverNotes(container)[0]).toBe(
+        '60秒タップしないと、自動で閉じてホームに戻ります（キーを打っても延びません）。',
+      )
+    })
+
+    it('介助者用メニューの帯も、短縮形でも4行のまま', () => {
       mockMatchMedia(true)
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       const notes = caregiverNotes(container)
       expect(notes).toHaveLength(4)
-      expect(notes[0]).toBe('60秒タップなしで閉じてホームへ（打鍵では延びず）。')
+      expect(notes[0]).toBe('60秒タップしないと閉じてホームへ戻ります（キーでは延びません）。')
     })
   })
 
@@ -768,7 +785,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       return sizes
     }
 
-    it('帯の本文の文字は、画面案内・介助者メニューとも 0.7rem 以上(下限を静的に縛る)', () => {
+    it('帯の本文の文字は、画面案内・介助者用メニューとも 0.7rem 以上(下限を静的に縛る)', () => {
       for (const selector of ['.screen-notes', '.caregiver-notes']) {
         const sizes = fontSizesRem(selector)
         expect(sizes.length, `${selector} の font-size 宣言`).toBeGreaterThan(0)

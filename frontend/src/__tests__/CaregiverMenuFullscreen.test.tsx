@@ -27,7 +27,10 @@ const ruleBody = (selector: string): string => {
 const allRuleBodies = (selector: string): string[] => {
   const out: string[] = []
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const sels = m[1].replace(/\/\*[\s\S]*?\*\//g, '').split(',').map((x) => x.trim())
+    const sels = m[1]
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split(',')
+      .map((x) => x.trim())
     if (sels.includes(selector)) out.push(m[2])
   }
   return out
@@ -44,7 +47,10 @@ const subjectRuleBodies = (cls: string): string[] => {
   const out: string[] = []
   const head = new RegExp(`^${cls.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`)
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const sels = m[1].replace(/\/\*[\s\S]*?\*\//g, '').split(',').map((x) => x.trim())
+    const sels = m[1]
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split(',')
+      .map((x) => x.trim())
     if (sels.some((sel) => head.test(sel.split(/[\s>+~]+/).pop() ?? ''))) out.push(m[2])
   }
   return out
@@ -64,17 +70,28 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
     }
   })
 
-  it('.caregiver-header / .caregiver-notes / .caregiver-tablist は flex: none の固定帯', () => {
-    for (const sel of ['.caregiver-header', '.caregiver-notes', '.caregiver-tablist']) {
+  // Issue #111: タブ列は固定帯 .caregiver-tabs(flex: none)の中に、前後の矢印と tablist(flex: 1 1 auto)を並べる。
+  // 固定帯として縦に伸び縮みしないのは外側の .caregiver-tabs で、tablist は帯の中で横幅を埋める
+  it('.caregiver-header / .caregiver-notes / .caregiver-tabs は flex: none の固定帯', () => {
+    for (const sel of ['.caregiver-header', '.caregiver-notes', '.caregiver-tabs']) {
       expect(ruleBody(sel), sel).toMatch(/(^|[;\s])flex:\s*none/)
     }
   })
 
+  it('.caregiver-tablist は固定帯 .caregiver-tabs の中で横幅を埋める(flex: 1 1 auto)', () => {
+    expect(ruleBody('.caregiver-tablist')).toMatch(/(^|[;\s])flex:\s*1 1 auto/)
+  })
+
   it('メディアクエリ内でも固定帯の flex と .caregiver-panel の height を上書きしていない', () => {
-    for (const sel of ['.caregiver-header', '.caregiver-notes', '.caregiver-tablist']) {
+    for (const sel of ['.caregiver-header', '.caregiver-notes', '.caregiver-tabs']) {
       for (const b of allRuleBodies(sel)) {
         expect(b, sel).not.toMatch(/(^|[;\s])flex(-grow|-shrink|-basis)?:\s*(?!none)[^\s;]/)
       }
+    }
+    for (const b of allRuleBodies('.caregiver-tablist')) {
+      expect(b, '.caregiver-tablist').not.toMatch(
+        /(^|[;\s])flex(-grow|-shrink|-basis)?:\s*(?!1 1 auto)[^\s;]/,
+      )
     }
     for (const b of subjectRuleBodies('.caregiver-panel')) {
       expect(b).not.toMatch(/(^|[;\s])(max-|min-)?height:\s*(?!100%)[^\s;]/)
@@ -148,19 +165,21 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
   afterEach(() => cleanup())
 
   const TAB_LABELS = [
-    '状態',
+    '端末の状態',
     'スキャン',
-    '入力方式',
-    'フィードバック',
+    'モールス',
+    '音と振動',
     '表示',
     'フレーズ',
     'データ',
+    'このアプリ',
   ]
   const pick = (c: HTMLElement) => ({
     overlay: c.querySelector('.caregiver-overlay'),
     panel: c.querySelector('.caregiver-panel'),
     header: c.querySelector('.caregiver-header'),
     notes: c.querySelector('.caregiver-notes'),
+    tabs: c.querySelector('.caregiver-tabs'),
     tablist: c.querySelector('.caregiver-tablist'),
   })
   const tabs = (c: HTMLElement) => Array.from(c.querySelectorAll('[role="tab"]')) as HTMLElement[]
@@ -169,7 +188,7 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
       b.textContent?.includes(text),
     )
 
-  it('7タブを順に切り替えても overlay/panel/header/notes/tablist は同一ノードのまま', () => {
+  it('8タブを順に切り替えても overlay/panel/header/notes/tabs/tablist は同一ノードのまま', () => {
     const { container } = render(() => <App />)
     fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
     const before = pick(container)
@@ -183,6 +202,7 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
       expect(after.panel).toBe(before.panel)
       expect(after.header).toBe(before.header)
       expect(after.notes).toBe(before.notes)
+      expect(after.tabs).toBe(before.tabs)
       expect(after.tablist).toBe(before.tablist)
       // 常に tabpanel は1つだけで、スクロールはその中
       expect(container.querySelectorAll('.caregiver-panel > .caregiver-tabpanel')).toHaveLength(1)
@@ -194,7 +214,7 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
     fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
     for (const label of TAB_LABELS) {
       fireEvent.click(tabs(container).find((t) => t.textContent === label) as HTMLElement)
-      expect(hasButton(container, '緊急解除'), `${label}: 緊急解除`).toBe(true)
+      expect(hasButton(container, '緊急を解除'), `${label}: 緊急解除`).toBe(true)
       expect(hasButton(container, '閉じる'), `${label}: 閉じる`).toBe(true)
     }
   })
@@ -221,7 +241,9 @@ describe('Issue #91: 「閉じる」は右上の角に固定(静的)', () => {
   })
 
   it('どの grid-template-areas でも「閉じる」は 1 行目の右端の列にある', () => {
-    const all = headerGridBodies().map(areaRows).filter((r) => r.length > 0)
+    const all = headerGridBodies()
+      .map(areaRows)
+      .filter((r) => r.length > 0)
     expect(all.length).toBeGreaterThanOrEqual(2) // 狭い幅(基本)と広い幅(@container)
     for (const rows of all) {
       const first = rows[0]
@@ -234,7 +256,9 @@ describe('Issue #91: 「閉じる」は右上の角に固定(静的)', () => {
   it('広い幅は 1 行 [title emergency close]、狭い幅は 2 行目へ緊急解除だけを落とす', () => {
     const [narrow, wide] = [
       areaRows(ruleBody('.caregiver-header-grid')),
-      headerGridBodies().map(areaRows).find((r) => r.length === 1) ?? [],
+      headerGridBodies()
+        .map(areaRows)
+        .find((r) => r.length === 1) ?? [],
     ]
     expect(narrow).toEqual([
       ['title', 'close'],
@@ -268,7 +292,9 @@ describe('Issue #91: ヘッダの DOM 順(Tab 順)は 見出し → 緊急解除
   it('見出しの後に、緊急解除、閉じるの順で並ぶ', () => {
     const { container } = render(() => <App />)
     fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
-    const grid = container.querySelector('.caregiver-header > .caregiver-header-grid') as HTMLElement
+    const grid = container.querySelector(
+      '.caregiver-header > .caregiver-header-grid',
+    ) as HTMLElement
     expect(grid).not.toBeNull()
     const children = Array.from(grid.children)
     expect(children.map((e) => e.tagName)).toEqual(['H2', 'BUTTON', 'BUTTON'])
