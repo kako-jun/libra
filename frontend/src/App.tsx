@@ -1248,9 +1248,11 @@ export default function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       idleSteps = 0 // キー/シャッターは(連打無視・長押しの繰り返しも)本人の入力
       heldInputs.add(`key:${event.code || event.key}`)
-      if (event.repeat) return
-      resumeToneAudioContext()
+      if (!event.repeat) resumeToneAudioContext()
 
+      // メニュー表示中の判定は、押しっぱなしのリピートも通す。リピートを素通しにすると、ブラウザの
+      // 既定の動作(ラジオの値の移動・フォーカスしたボタンの実行)が本人のスイッチで起き、
+      // 2 回押しの確認も通ってしまう(requirements.md §6)
       if (caregiverMenuOpen()) {
         // Issue #8: 文字を入力する欄での「文字を打つキー」と、スライダーの矢印キーでは閉じない。欄に
         // フォーカスが残ったまま本人がスイッチ(Enter・音量キー・Space 等)を押しても、従来どおり閉じて
@@ -1268,6 +1270,13 @@ export default function App() {
         // ホーム先頭から再開する(その押下では項目を実行しない)
         event.preventDefault()
         closeCaregiverMenu()
+        return
+      }
+
+      // 本人画面ではリピートで何も実行しない。既定の動作も止める(「介助者用」などにフォーカスがあると、
+      // Enter のリピートのたびにボタンが実行される。メニューが開閉を繰り返す)
+      if (event.repeat) {
+        event.preventDefault()
         return
       }
 

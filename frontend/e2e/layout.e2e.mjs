@@ -2127,8 +2127,77 @@ async function checkHomeGrid(chromium, port) {
   return failures
 }
 
+/**
+ * 押しっぱなしのスイッチのリピート(同じキーの keyboard.down の2回目以降は repeat: true)で、介助者用メニューの
+ * 値が変わらず、ボタンが実行されないこと。本人がキーを押した後にメニューが開き、ラジオや確認中の
+ * 「初期値に戻す」にフォーカスがある状態を作る。jsdom は既定の動作を起こさないので実ブラウザで確かめる
+ */
+async function checkCaregiverKeyRepeat(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  const cases = [
+    {
+      title: 'ラジオ',
+      keys: ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'Space'],
+      tab: '音と振動',
+      prepare: (page) => page.locator('label.caregiver-radio', { hasText: '全部読む' }).click(),
+    },
+    {
+      title: 'チェックボックス',
+      keys: ['Enter', 'Space'],
+      tab: '音と振動',
+      prepare: (page) => page.locator('.caregiver-tabpanel input[type="checkbox"]').first().focus(),
+    },
+    {
+      title: '確認中の初期値に戻す',
+      keys: ['Enter', 'Space'],
+      tab: 'スキャン',
+      prepare: (page) => page.locator('.caregiver-reset-button').click(),
+    },
+  ]
+  try {
+    for (const { title, keys, tab, prepare } of cases) {
+      for (const key of keys) {
+        const name = `[caregiver-key-repeat ${title} ${key}]`
+        const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+        const page = await context.newPage()
+        await page.addInitScript(() =>
+          window.localStorage.setItem(
+            'libra',
+            JSON.stringify({ intervalMs: 5000, hapticsEnabled: true }),
+          ),
+        )
+        await page.goto(`http://localhost:${port}/`)
+        await page.waitForTimeout(300)
+        await page.keyboard.down(key) // 本人がメニューの開く前から押している
+        await openCaregiverTab(page, tab)
+        await prepare(page)
+        const saved = () => page.evaluate(() => window.localStorage.getItem('libra'))
+        const before = await saved()
+        for (let i = 0; i < 3; i += 1) await page.keyboard.down(key)
+        await page.keyboard.up(key)
+        await page.waitForTimeout(200)
+        const after = await saved()
+        if (after !== before) failures.push(`${name} 設定が変わった: ${before} -> ${after}`)
+        if ((await page.locator('.caregiver-panel').count()) !== 0) {
+          failures.push(`${name} メニューが閉じない`)
+        }
+        await context.close()
+      }
+    }
+  } catch (error) {
+    failures.push(`[caregiver-key-repeat] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
+    { name: 'caregiver-key-repeat', run: checkCaregiverKeyRepeat },
     { name: 'caregiver-choices', run: checkCaregiverChoices },
     { name: 'caregiver-tab-reveal', run: checkCaregiverTabReveal },
     { name: 'letters-scroll', run: checkLettersScrollLayout },

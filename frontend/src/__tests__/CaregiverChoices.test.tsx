@@ -5,6 +5,8 @@
 //   値の欄       | 5 欄すべてラジオ(ボタンではない)。名前と順番・今の値がチェックされる・選ぶと保存・グループ名
 //   打鍵         | ラジオ・チェックボックス(フレーズの編集先を含む)にフォーカスが残っていても、どのキーも
 //                | 本人のスイッチ: 既定の動作を止めて閉じ、値は変わらない。スライダーは矢印だけ閉じない
+//   押しっぱなし | repeat: true の打鍵も同じ扱い(既定の動作を止めて閉じる)。2 回押しの確認を通さない。
+//                | 本人画面のリピートは何も実行せず、既定の動作も止める。例外の部品のリピートは保つ
 //   実行する操作 | 画像を選ぶ・消すはボタンのまま
 //   編集先       | パネルの階層と順・快は選べない・読み上げ名は道順・選ぶと一覧が替わる・警告と初期値に戻すも道順
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -206,6 +208,81 @@ describe('Issue #148: 値を選ぶ欄はラジオボタン', () => {
       area.focus()
       expect(fireEvent.keyDown(area, { key })).toBe(true)
       expect(menuOpen(container)).toBe(true)
+    },
+  )
+
+  // 安全: 押しっぱなしのスイッチのリピートを素通しにすると、ブラウザの既定の動作で値が変わり、
+  // フォーカスしたボタンが何度も実行される。jsdom は既定の動作を起こさないので、止めたこと
+  // (preventDefault)と閉じたことを確かめる。実際のボタンの実行は実ブラウザ(e2e の caregiver-key-repeat)
+  const pressRepeat = (el: Element, key: string) => fireEvent.keyDown(el, { key, repeat: true })
+
+  it.each(SWITCH_KEYS)(
+    'ラジオ上のリピート「%s」は、既定の動作を止めて閉じ、値は変わらない',
+    (key) => {
+      const { container, panel } = openTab('音と振動')
+      chooseRadio(panel, '全部読む')
+      const radio = radioByName(panel, '全部読む')
+      radio.focus()
+      expect(pressRepeat(radio, key)).toBe(false)
+      expect(menuOpen(container)).toBe(false)
+      expect(saved().voiceMode).toBe('full')
+    },
+  )
+
+  it.each(['Enter', ' ', 'ArrowRight', 'a'])(
+    '「初期値に戻す」の確認中のリピート「%s」は、ボタンの実行を止めて閉じる',
+    (key) => {
+      setSettings({ intervalMs: 5000 })
+      const { container, panel } = openTab('スキャン')
+      const reset = panel.querySelector('.caregiver-reset-button') as HTMLElement
+      fireEvent.click(reset)
+      reset.focus()
+      expect(pressRepeat(reset, key)).toBe(false)
+      expect(menuOpen(container)).toBe(false)
+      expect(saved().intervalMs).toBe(5000)
+    },
+  )
+
+  it.each(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])(
+    'スライダーの矢印「%s」の押しっぱなしは、これまでどおり閉じず、調整を止めない',
+    (key) => {
+      const { container, panel } = openTab('スキャン')
+      const slider = panel.querySelector('input[type="range"]') as HTMLInputElement
+      expect(pressRepeat(slider, key)).toBe(true)
+      expect(menuOpen(container)).toBe(true)
+    },
+  )
+
+  it.each(['a', 'Backspace', 'ArrowLeft'])(
+    '文字を入力する欄の「%s」の押しっぱなしは、閉じず、入力を止めない',
+    (key) => {
+      const { container, panel } = openTab('データ')
+      const area = panel.querySelector('textarea') as HTMLTextAreaElement
+      expect(pressRepeat(area, key)).toBe(true)
+      expect(menuOpen(container)).toBe(true)
+    },
+  )
+
+  it('タブ上の矢印の押しっぱなしは、これまでどおりタブを移り、閉じない', () => {
+    const { container } = openTab('使用準備')
+    const selected = () => container.querySelector('[role="tab"][aria-selected="true"]') as Element
+    pressRepeat(selected(), 'ArrowRight')
+    pressRepeat(selected(), 'ArrowRight')
+    expect(selected().textContent).toBe('音と振動')
+    expect(menuOpen(container)).toBe(true)
+  })
+
+  it.each(['Enter', ' '])(
+    '本人画面の「介助者用」上のリピート「%s」は、ボタンの実行を止め、何も開かず何も選ばない',
+    (key) => {
+      const { container } = render(() => <App />)
+      const button = container.querySelector('.caregiver-button') as HTMLElement
+      button.focus()
+      expect(pressRepeat(button, key)).toBe(false)
+      expect(menuOpen(container)).toBe(false)
+      expect(container.querySelector('.emergency-status')).toBeNull()
+      // 最初の打鍵は、これまでどおりボタンの標準の実行に任せる
+      expect(fireEvent.keyDown(button, { key })).toBe(true)
     },
   )
 
