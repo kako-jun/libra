@@ -1,16 +1,15 @@
-// 画面下の固定案内(.screen-notes: 緊急中の振動だけ)・介助者用メニュー上部の固定帯(.caregiver-notes)・
-// 「状態」タブの「いまの動作」の文言。
+// 画面下の固定案内(.screen-notes: 緊急中の振動だけ)と、介助者用メニュー「スキャン」タブの
+// 原因の設定の下に出す動作の説明の文言。
 // 正本: docs/requirements.md §4.1.2 の「常時案内」表 / Issue #58
 //
 // 方針: 暗黙の操作は作らない。ただし画面を見れば分かることは書かず、見ても分からない挙動だけを書く
-// (本人画面は緊急中の振動、介助者用メニューは「いまの動作」と上部の固定帯)。
+// (本人画面は緊急中の振動、介助者用メニューは設定に応じた動作の説明。上部の固定帯は Issue #138 で削除した)。
 // 本人や介助者が任意に隠せる操作は設けない。副作用なし(テストしやすいよう文字列だけ返す)。
 // compact は低い画面(高さ500px以下)か狭い画面(幅480px以下)用の短縮形。出す・出さないは変えず、
 // 省くのは「理由」の語だけ。操作に関わる事実(何が起きるか・何をしても反応しない条件)は短縮形でも残す
 // (本人は画面をスクロールできないため、帯が格子を押し潰さないようにする)。
 
 import { EMERGENCY_REPEAT_MS } from './feedback'
-import { IDLE_LAPS_BEFORE_HOME } from './idleLaps'
 import type { Settings } from './settings'
 
 export interface ScreenNotesContext {
@@ -24,7 +23,7 @@ export interface ScreenNotesContext {
   settings: Pick<Settings, 'hapticsEnabled'>
 }
 
-/** 見ても分からない設定依存の挙動を、介助者用メニューの「いまの動作」に出すための文脈 */
+/** 見ても分からない設定依存の挙動を、介助者用メニューに出すための文脈 */
 export interface BehaviorNotesContext {
   settings: Pick<Settings, 'debounceMs' | 'minHoldMs' | 'activateOn' | 'auditoryScan' | 'voiceMode'>
 }
@@ -83,7 +82,7 @@ export interface BehaviorNoteMap {
 
 /**
  * 見ても分からない、設定に応じた挙動の説明。介助者用メニューでは、原因の設定のすぐ下に出す(Issue #111。
- * 以前は「状態」タブの「いまの動作」にまとめていた)。スクロールできるので短縮形は持たない。
+ * 以前は旧「状態」タブの「いまの動作」にまとめていた)。スクロールできるので短縮形は持たない。
  */
 export function buildBehaviorNoteMap(context: BehaviorNotesContext): BehaviorNoteMap {
   const { settings } = context
@@ -115,32 +114,4 @@ export function buildBehaviorNoteMap(context: BehaviorNotesContext): BehaviorNot
 export function buildBehaviorNotes(context: BehaviorNotesContext): string[] {
   const map = buildBehaviorNoteMap(context)
   return [map.debounce, map.hold, map.speech].filter((note): note is string => note !== undefined)
-}
-
-/**
- * 介助者用メニュー上部の固定帯の文言(常時表示。設定や状態で隠さない)。
- * morseEnabled=false のときモールス入力は使えないので、モールスの時間停止は出さない。
- */
-export function buildCaregiverMenuNotes(
-  idleTimeoutMs: number,
-  options: { morseEnabled?: boolean; compact?: boolean } = {},
-): string[] {
-  const seconds = idleTimeoutMs / 1000
-  const compact = options.compact === true
-  const stops = options.morseEnabled ? 'スキャンとモールス入力の時間' : 'スキャン'
-  return [
-    compact
-      ? `${seconds}秒タップしないと閉じてホームへ戻ります（キーでは延びません）。`
-      : `${seconds}秒タップしないと、自動で閉じてホームに戻ります（キーを打っても延びません）。`,
-    compact
-      ? 'キーを押すと閉じて、ホーム先頭から再開します（入力欄の編集・タブ移動のキーを除く）。'
-      : 'キーやスイッチを押すと閉じて、ホームの先頭から再開します（文字の入力・スライダーの操作・タブ移動のキーを除く）。',
-    compact
-      ? `開いている間は${options.morseEnabled ? 'スキャンとモールスの時間' : 'スキャン'}が止まります。`
-      : `開いている間は、${stops}が止まります。`,
-    // 自動で起きること(Issue #76)。本人画面の常時案内ではなく、介助者用メニューに置く
-    compact
-      ? `本人の画面は${IDLE_LAPS_BEFORE_HOME}周無入力でホームへ戻ります（モールス・ホームを除く）。`
-      : `本人の画面は、入力がないまま${IDLE_LAPS_BEFORE_HOME}周するとホームに戻ります（モールス入力・ホームを除く）。`,
-  ]
 }

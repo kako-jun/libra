@@ -1,9 +1,9 @@
 // Issue #68: 介助者メニューは画面全体の設定画面。高さ固定でタブ切替時に外枠が動かない。
 // jsdom はレイアウト寸法を測れないため、(1) globals.css の規則を静的に縛り(メディアクエリ内も含む)、
-// (2) 全タブ切替で外枠・ヘッダ・タブ列・案内帯の構造が不変(同一DOMノード・tabpanel は1つ)であることを確認する。
+// (2) 全タブ切替で外枠・ヘッダ・タブ列の構造が不変(同一DOMノード・tabpanel は1つ)であることを確認する。
 // (2) は構造の不変条件であり、#68 の退行(高さが中身で決まる等)そのものはCSS側の静的検証が捕まえる。
 // 実寸(getBoundingClientRect の一致)は実ブラウザで確認する。
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 
@@ -72,8 +72,8 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
 
   // Issue #111: タブ列は固定帯 .caregiver-tabs(flex: none)の中に、前後の矢印と tablist(flex: 1 1 auto)を並べる。
   // 固定帯として縦に伸び縮みしないのは外側の .caregiver-tabs で、tablist は帯の中で横幅を埋める
-  it('.caregiver-header / .caregiver-notes / .caregiver-tabs は flex: none の固定帯', () => {
-    for (const sel of ['.caregiver-header', '.caregiver-notes', '.caregiver-tabs']) {
+  it('.caregiver-header / .caregiver-tabs は flex: none の固定帯', () => {
+    for (const sel of ['.caregiver-header', '.caregiver-tabs']) {
       expect(ruleBody(sel), sel).toMatch(/(^|[;\s])flex:\s*none/)
     }
   })
@@ -83,7 +83,7 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
   })
 
   it('メディアクエリ内でも固定帯の flex と .caregiver-panel の height を上書きしていない', () => {
-    for (const sel of ['.caregiver-header', '.caregiver-notes', '.caregiver-tabs']) {
+    for (const sel of ['.caregiver-header', '.caregiver-tabs']) {
       for (const b of allRuleBodies(sel)) {
         expect(b, sel).not.toMatch(/(^|[;\s])flex(-grow|-shrink|-basis)?:\s*(?!none)[^\s;]/)
       }
@@ -162,15 +162,17 @@ describe('Issue #68: 介助者メニューのスタイル(静的)', () => {
 })
 
 describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造の不変条件)', () => {
+  // 緊急は保存されて次の描画で復元されるので、テストの間で持ち越さない
+  beforeEach(() => window.localStorage.clear())
   afterEach(() => cleanup())
 
   const TAB_LABELS = [
-    '端末の状態',
+    '使用準備',
     'スキャン',
-    'モールス',
     '音と振動',
     '表示',
     'フレーズ',
+    'モールス',
     'データ',
     'このアプリ',
   ]
@@ -178,7 +180,6 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
     overlay: c.querySelector('.caregiver-overlay'),
     panel: c.querySelector('.caregiver-panel'),
     header: c.querySelector('.caregiver-header'),
-    notes: c.querySelector('.caregiver-notes'),
     tabs: c.querySelector('.caregiver-tabs'),
     tablist: c.querySelector('.caregiver-tablist'),
   })
@@ -188,7 +189,7 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
       b.textContent?.includes(text),
     )
 
-  it('8タブを順に切り替えても overlay/panel/header/notes/tabs/tablist は同一ノードのまま', () => {
+  it('8タブを順に切り替えても overlay/panel/header/tabs/tablist は同一ノードのまま', () => {
     const { container } = render(() => <App />)
     fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
     const before = pick(container)
@@ -201,7 +202,6 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
       expect(after.overlay).toBe(before.overlay)
       expect(after.panel).toBe(before.panel)
       expect(after.header).toBe(before.header)
-      expect(after.notes).toBe(before.notes)
       expect(after.tabs).toBe(before.tabs)
       expect(after.tablist).toBe(before.tablist)
       // 常に tabpanel は1つだけで、スクロールはその中
@@ -209,14 +209,39 @@ describe('Issue #68: 全タブ切替で外枠の構造が変わらない(構造�
     }
   })
 
-  it('緊急解除と閉じるは全タブで常にヘッダに存在する', () => {
+  it('緊急中は、緊急解除と閉じるが全タブで常にヘッダに存在する', () => {
     const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 先頭の「緊急」を選ぶ
     fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
     for (const label of TAB_LABELS) {
       fireEvent.click(tabs(container).find((t) => t.textContent === label) as HTMLElement)
       expect(hasButton(container, '緊急を解除'), `${label}: 緊急解除`).toBe(true)
       expect(hasButton(container, '閉じる'), `${label}: 閉じる`).toBe(true)
     }
+  })
+
+  it('Issue #137: 緊急が無いときは、どのタブでもヘッダのボタンは「閉じる」だけ', () => {
+    const { container } = render(() => <App />)
+    fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
+    for (const label of TAB_LABELS) {
+      fireEvent.click(tabs(container).find((t) => t.textContent === label) as HTMLElement)
+      const buttons = Array.from(container.querySelectorAll('.caregiver-header button'))
+      expect(
+        buttons.map((b) => b.textContent),
+        label,
+      ).toEqual(['閉じる'])
+    }
+  })
+
+  it('Issue #137: 解除を押すとボタンが消える', () => {
+    const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急
+    fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
+    const clear = container.querySelector('.caregiver-emergency-clear') as HTMLElement
+    expect(clear.textContent).toBe('緊急を解除')
+    fireEvent.click(clear)
+    expect(container.querySelector('.caregiver-emergency-clear')).toBeNull()
+    expect(container.querySelector('.caregiver-panel')).not.toBeNull()
   })
 })
 
@@ -267,7 +292,15 @@ describe('Issue #91: 「閉じる」は右上の角に固定(静的)', () => {
     expect(wide).toEqual([['title', 'emergency', 'close']])
   })
 
-  it('広い幅への切替は、ブラウザ既定の文字サイズに追従する container query(em。アプリの文字サイズ設定は介助者メニューに影響しない)で、container は .caregiver-header', () => {
+  it('Issue #152: 緊急解除はどちらの並びでも左右の中央(狭い幅は中央寄せ、広い幅は左右の列が同じ幅)', () => {
+    const emergency = allRuleBodies('.caregiver-header .caregiver-emergency-clear')
+    expect(emergency.join('\n')).toMatch(/justify-self:\s*center/)
+    for (const b of emergency) expect(b).not.toMatch(/justify-self:\s*(?!center)[^\s;]/)
+    const wide = headerGridBodies().find((b) => areaRows(b).length === 1) ?? ''
+    expect(wide).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\) auto minmax\(0, 1fr\)/)
+  })
+
+  it('広い幅への切替は em の container query(基準は container の文字サイズ。パネルの rem 指定を通じてブラウザ既定の文字サイズに追従し、アプリの文字サイズ設定は影響しない)で、container は .caregiver-header', () => {
     expect(ruleBody('.caregiver-header')).toMatch(/container-type:\s*inline-size/)
     expect(css).toMatch(/@container\s*\(min-width:\s*[\d.]+em\)/)
   })
@@ -279,7 +312,10 @@ describe('Issue #91: 「閉じる」は右上の角に固定(静的)', () => {
     )
     const closeBodies = allRuleBodies('.caregiver-header .caregiver-close')
     expect(closeBodies.join('\n')).toMatch(/grid-area:\s*close/)
-    for (const b of closeBodies) expect(b).not.toMatch(/margin|position|transform|justify-self/)
+    for (const b of closeBodies) expect(b).not.toMatch(/margin|position|transform/)
+    // Issue #152 で左右の列を同じ幅にしたので、閉じるは列の右端に寄せる。end 以外の横位置指定は許さない
+    expect(closeBodies.join('\n')).toMatch(/justify-self:\s*end/)
+    for (const b of closeBodies) expect(b).not.toMatch(/justify-self:\s*(?!end)[^\s;]/)
     // 見出しが折り返して 1 行目が伸びても、閉じるは中央に下がらず 1 行目の上端(右上の角)に固定する
     expect(closeBodies.join('\n')).toMatch(/align-self:\s*start/)
     for (const b of closeBodies) expect(b).not.toMatch(/align-self:\s*(?!start)\S/)
@@ -291,6 +327,7 @@ describe('Issue #91: ヘッダの DOM 順(Tab 順)は 見出し → 緊急解除
 
   it('見出しの後に、緊急解除、閉じるの順で並ぶ', () => {
     const { container } = render(() => <App />)
+    fireEvent.keyDown(window, { key: ' ' }) // 緊急中だけ緊急解除が出る(Issue #137)
     fireEvent.click(container.querySelector('.caregiver-button') as HTMLElement)
     const grid = container.querySelector(
       '.caregiver-header > .caregiver-header-grid',

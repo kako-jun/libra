@@ -43,7 +43,6 @@
   --caregiver-status-ok-bg: #ecfdf5;
   --caregiver-status-ok-border: #86efac;
   --caregiver-status-warn-bg: #fff7ed;
-  --caregiver-status-warn-border: #f59e0b;
   --caregiver-status-warn-text: #7f1d1d;
   --caregiver-action-bg: #065f46;
   --caregiver-action-text: #ffffff;
@@ -77,7 +76,6 @@
   --caregiver-status-ok-bg: #123a29;
   --caregiver-status-ok-border: #4ade80;
   --caregiver-status-warn-bg: #3a2408;
-  --caregiver-status-warn-border: #f59e0b;
   --caregiver-status-warn-text: #ffd9a8;
   --caregiver-action-bg: #1a4a32;
   --caregiver-action-text: #eafaf1;
@@ -831,8 +829,8 @@ h1[data-fit='single'] {
    介助者 UI — 目立たないが介助者には分かる見た目。
    =================================================================== */
 .caregiver-button {
-  /* Issue #109: 介助者用メニューの「閉じる」(.caregiver-action.caregiver-close)と同じ見た目にする
-     (濃い緑の面・白文字・同じ角丸・太さ・文字の大きさ)。開く・閉じるが同じ位置・同じ形のボタンになる。
+  /* Issue #109: 介助者用メニューの「閉じる」(.caregiver-action.caregiver-close)と同じ面・文字色・角丸にする。
+     文字の大きさと太さは本人画面の値のまま(メニュー内は Issue #163 で通常の文字にした)。開く・閉じるが同じ位置・同じ形のボタンになる。
      案内欄(.screen-guide)の高さいっぱいに伸ばし、上・右・下の余白を同じ値(--guide-pad)にそろえる */
   z-index: 20;
   flex: 1 1 auto;
@@ -874,9 +872,12 @@ h1[data-fit='single'] {
   overflow: hidden;
   color: var(--text);
   background: var(--caregiver-panel-bg);
-  /* Issue #111: 介助者が読む説明と操作の文字を大きくする(本人画面の文字サイズ設定とは独立) */
-  font-size: 1.125rem;
-  line-height: 1.45;
+  /* Issue #163: 一般的なアプリの文字にする(本文 16px・通常の太さ。太くするのは見出しと、色だけに頼らないための
+     選択中タブと状態の印だけ)。本人画面の文字サイズ設定とは独立。入力欄はここから受け継ぐので 16px
+     (iOS が入力欄の拡大をしない大きさ)。押せる範囲は各ボタンの min-height で 44px 以上を保つ */
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
   /* Issue #5: 親(.app-shell)の touch-action:none / user-select:none を打ち消し、
      スライダー操作・チェックボックス・文言の選択など通常の介助者操作を妨げない */
   touch-action: auto;
@@ -888,8 +889,12 @@ h1[data-fit='single'] {
 /* Issue #31: 見出し・緊急解除・閉じるはカテゴリ切替と独立して常に見える(スクロールしない)
    Issue #91: 「閉じる」はどの幅でもパネル右上の角(padding の内側)に固定する。flex-wrap の落ち方には頼らず、
    grid-template-areas で明示する。DOM 順は 見出し → 緊急解除 → 閉じる のまま(Tab 順を変えない)。
-   幅に余裕がある(ヘッダが 28em 以上)ときは 1 行 [見出し | 緊急解除 | 閉じる]、足りないときは
-   1 行目 [見出し | 閉じる]・2 行目 [緊急解除] にする。em はブラウザ既定の文字サイズに追従する(アプリの文字サイズ設定は介助者用メニューに影響しないので、標準と特大で切替幅は同じ)。
+   Issue #152: 緊急解除はヘッダの左右の中央に置く。幅に余裕がある(ヘッダが 34em 以上)ときは 1 行
+   [見出し | 緊急解除 | 閉じる](左右の列を同じ幅にして中央をそろえる)、足りないときは 1 行目
+   [見出し | 閉じる]・2 行目 [緊急解除](中央)にする。緊急が無いときは緊急解除が無い(Issue #137)ので、
+   2 行目の余白は行の gap でなくボタンの margin で取る。この em は container の .caregiver-header の文字サイズ(.caregiver-panel の 1rem を受け継ぐ。
+   ブラウザ既定が 16px なら 16px)が基準で、34em はヘッダ幅 544px。rem 経由でブラウザ既定の文字サイズに追従する。
+   アプリの文字サイズ設定は介助者用メニューに影響しないので、標準と特大で切替幅は同じ。
    「閉じる」は align-self: start で、見出しが折り返しても 1 行目の上端(パネルの右上の角)に固定する。 */
 .caregiver-header {
   flex: none;
@@ -903,7 +908,7 @@ h1[data-fit='single'] {
     'title close'
     'emergency emergency';
   align-items: center;
-  gap: 8px 12px;
+  gap: 0 12px;
 }
 
 .caregiver-header h2 {
@@ -913,22 +918,24 @@ h1[data-fit='single'] {
 
 .caregiver-header .caregiver-emergency-clear {
   grid-area: emergency;
-  justify-self: start;
+  justify-self: center;
+  margin-top: 8px;
 }
 
 .caregiver-header .caregiver-close {
   grid-area: close;
   align-self: start;
+  justify-self: end;
 }
 
-@container (min-width: 28em) {
+@container (min-width: 34em) {
   .caregiver-header-grid {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     grid-template-areas: 'title emergency close';
   }
 
   .caregiver-header .caregiver-emergency-clear {
-    justify-self: auto;
+    margin-top: 0;
   }
 }
 
@@ -992,7 +999,6 @@ h1[data-fit='single'] {
   border: 2px solid transparent;
   border-bottom: none;
   border-radius: 8px 8px 0 0;
-  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -1013,7 +1019,7 @@ h1[data-fit='single'] {
   color: var(--caregiver-action-text);
   background: var(--caregiver-action-bg);
   border-color: var(--caregiver-action-bg);
-  font-weight: 800;
+  font-weight: 700;
   box-shadow: inset 0 -4px 0 var(--caregiver-status-ok-border);
 }
 
@@ -1040,13 +1046,11 @@ h1[data-fit='single'] {
   gap: 12px;
 }
 
-/* 上の設定が ON のときだけ効く設定。左の線と字下げで従属を示す */
+/* 上の設定が ON のときだけ効く設定。字下げと余白で従属を示す(縦線は引かない。Issue #142) */
 .caregiver-sub {
   display: grid;
   gap: 16px;
-  margin-left: 12px;
-  padding-left: 14px;
-  border-left: 4px solid var(--caregiver-status-ok-border);
+  padding-left: 30px;
 }
 
 .caregiver-tabpanel > .caregiver-sub {
@@ -1077,7 +1081,6 @@ h1[data-fit='single'] {
 .caregiver-hint {
   margin: 0;
   font-size: 1rem;
-  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -1085,11 +1088,54 @@ h1[data-fit='single'] {
   color: var(--text-muted);
 }
 
-/* 文字サイズのサンプル。本人画面のタイルと同じ式(.tile と共有する --tile-label-font)で描く */
+/* Issue #141: スライダーと、その左右の 1 段階ずつの矢印。矢印の場所は上下限でも残す */
+.caregiver-range-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+}
+
+.caregiver-range-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+}
+
+.caregiver-range-step {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 2px solid var(--caregiver-action-bg);
+  border-radius: 8px;
+}
+
+/* 上限・下限では外側の矢印を出さない(場所は残る) */
+.caregiver-range-step:disabled {
+  visibility: hidden;
+}
+
+.caregiver-range-step svg {
+  width: 14px;
+  height: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 文字サイズのサンプル。本人画面のタイルと同じ式(.tile と共有する --tile-label-font)で描く。
+   中央に置き(Issue #143)、高さは固定(特大の文字が入る高さ)なので、サイズを変えても下の項目は動かない */
 .font-size-sample {
   display: grid;
   place-items: center;
-  justify-self: end;
+  justify-self: center;
   width: min(100%, 320px);
   height: 150px;
   padding: var(--scan-ring-inset);
@@ -1097,6 +1143,15 @@ h1[data-fit='single'] {
   background: var(--surface);
   border: var(--grid-line-width) solid var(--grid-line);
   overflow: hidden;
+}
+
+/* Issue #158: ページのボタンからインストールできない環境で示す手順 */
+.install-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 1.3em;
+  font-size: 1rem;
 }
 
 /* 広い画面で中身が間延びしないよう、タブ内の子要素だけ読みやすい幅に抑える(パネル・ヘッダ・タブ列は全幅) */
@@ -1111,18 +1166,27 @@ h1[data-fit='single'] {
 
 .caregiver-panel h2 {
   margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* 見出し(「このアプリ」タブの「使い方」)だけ少し強くする。段落の .caregiver-lead は通常の太さ */
+.caregiver-panel h3 {
+  font-weight: 700;
 }
 
 .caregiver-field {
   display: grid;
   gap: 6px;
-  font-weight: 700;
 }
 
 .caregiver-checkbox {
   grid-auto-flow: column;
   justify-content: start;
   align-items: center;
+  align-content: center;
+  /* 押せる範囲(ラベル全体)を 1 行でも 44px 以上にする */
+  min-height: 44px;
   gap: 10px;
 }
 
@@ -1156,7 +1220,6 @@ h1[data-fit='single'] {
   background: var(--caregiver-status-ok-bg);
   border: 2px solid var(--caregiver-action-bg);
   border-radius: 8px;
-  font-weight: 800;
 }
 
 .caregiver-voice-options button.active,
@@ -1167,7 +1230,8 @@ h1[data-fit='single'] {
 }
 
 /* Issue #111: 状態・結果の表示。操作できないので、ボタンに見える囲み(枠・角丸)にしない。
-   左の太い線と印(✓ / !)で、問題なし・対応が必要を示す */
+   印(✓ / !)と文で問題なし・対応が必要を示し、対応が必要な表示には背景も付ける。左の線は引かない
+   (Issue #142)。左の余白は、背景のある表示と無い表示で印の位置をそろえるため両方に取る */
 .caregiver-status {
   display: flex;
   align-items: baseline;
@@ -1175,21 +1239,18 @@ h1[data-fit='single'] {
   margin: 0;
   padding: 2px 0 2px 12px;
   color: var(--text);
-  border-left: 6px solid var(--caregiver-status-ok-border);
-  font-weight: 700;
 }
 
 .caregiver-status.warn {
   color: var(--caregiver-status-warn-text);
   background: var(--caregiver-status-warn-bg);
-  border-left-color: var(--caregiver-status-warn-border);
   padding-block: 8px;
   padding-right: 10px;
 }
 
 .caregiver-status-mark {
   flex: none;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .caregiver-status-text {
@@ -1199,7 +1260,6 @@ h1[data-fit='single'] {
 }
 
 .caregiver-status-todo {
-  font-weight: 600;
 }
 
 .caregiver-action {
@@ -1209,7 +1269,6 @@ h1[data-fit='single'] {
   background: var(--caregiver-action-bg);
   border: none;
   border-radius: 8px;
-  font-weight: 800;
 }
 
 .caregiver-action:disabled {
@@ -1300,6 +1359,8 @@ h1[data-fit='single'] {
 .phrase-editor,
 .settings-backup {
   display: grid;
+  /* 列を親の幅に合わせる。指定が無いと入力欄の既定の最小幅で列が広がり、320 幅で横にはみ出す */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -1307,12 +1368,12 @@ h1[data-fit='single'] {
   margin: 0;
   color: var(--text-muted);
   font-size: 1rem;
-  font-weight: 600;
   line-height: 1.4;
 }
 
 .phrase-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin: 0;
   padding: 0;
@@ -1321,6 +1382,7 @@ h1[data-fit='single'] {
 
 .phrase-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   padding: 10px;
   border: 1px solid var(--grid-line);
@@ -1329,9 +1391,15 @@ h1[data-fit='single'] {
 
 .phrase-row label {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   font-size: 1rem;
-  font-weight: 700;
+}
+
+.phrase-row input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 
 .phrase-row input,
@@ -1361,7 +1429,6 @@ h1[data-fit='single'] {
   background: var(--surface);
   border: 1px solid var(--grid-line);
   border-radius: 6px;
-  font-weight: 800;
 }
 
 .phrase-row-actions button:disabled {
@@ -1792,8 +1859,8 @@ h1[data-fit='single'] {
 /* ===================================================================
    Issue #58/#79: 操作と自動で起きることの常時案内。
    本人画面は画面下端の固定帯(.screen-notes)。Issue #79 で緊急中の振動の行だけに絞り、通常時は帯ごと出さない。
-   設定に応じた挙動の説明は介助者用メニュー「状態」タブの「いまの動作」(.caregiver-behavior)、
-   自動で起きること(60秒閉じる等)は上部の固定帯(.caregiver-notes)。隠す操作は無い。
+   設定に応じた挙動の説明は介助者用メニュー「スキャン」タブの原因の設定の下(.caregiver-behavior)。
+   隠す操作は無い。
    本人はスクロールできないため、帯は高さ分だけタイル/メッセージ領域を縮め、はみ出さない。
    =================================================================== */
 .app-shell {
@@ -1818,25 +1885,12 @@ h1[data-fit='single'] {
   list-style: none;
 }
 
-.screen-notes li,
-.caregiver-notes li {
+.screen-notes li {
   /* 文として続けて流し込み、行を無駄にしない(1項目1行にすると帯が高くなる) */
   display: inline;
   margin-right: 1em;
   overflow-wrap: anywhere;
   line-break: strict;
-}
-
-.caregiver-notes {
-  flex: none;
-  margin: 0;
-  list-style: none;
-  padding: 6px 10px;
-  color: var(--text);
-  background: var(--caregiver-status-ok-bg);
-  border: 1px solid var(--caregiver-status-ok-border);
-  font-size: 1rem;
-  line-height: 1.35;
 }
 
 @media (max-width: 480px), (max-height: 500px) {
@@ -1865,19 +1919,9 @@ h1[data-fit='single'] {
     padding: 3px 12px;
   }
 
-  /* 帯が増えた分、短い画面では設定ペインの下限を詰める(ペインはスクロールする) */
+  /* 短い画面では設定ペインの下限を詰める(ペインはスクロールする) */
   .caregiver-tabpanel {
     min-height: 4.5rem;
-  }
-
-}
-
-/* 介助者用メニュー上部の案内を詰めるのは、高さが足りない画面だけ(Issue #111。縦長スマホは通常の大きさと文言) */
-@media (max-height: 500px) {
-  .caregiver-notes {
-    font-size: 0.8rem;
-    line-height: 1.2;
-    padding: 3px 8px;
   }
 }
 
@@ -2219,7 +2263,6 @@ h1[data-fit='single'] {
   gap: 8px;
   margin: 0;
   padding-left: 1.3em;
-  font-weight: 600;
 }
 
 /* リンクもボタンと同じ大きさ・右寄せにする(Issue #111 の統一) */
@@ -2238,7 +2281,6 @@ h1[data-fit='single'] {
   color: var(--caregiver-action-text);
   background: var(--caregiver-action-bg);
   border-radius: 8px;
-  font-weight: 800;
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
@@ -2247,7 +2289,6 @@ h1[data-fit='single'] {
   display: grid;
   gap: 8px;
   margin: 0;
-  font-weight: 700;
 }
 
 .app-facts > div {
@@ -2258,11 +2299,9 @@ h1[data-fit='single'] {
 }
 
 .app-facts dt {
-  font-weight: 700;
 }
 
 .app-facts dd {
   margin: 0;
-  font-weight: 600;
   text-align: right;
 }
