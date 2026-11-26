@@ -18,7 +18,7 @@
 //   これらは介助者用メニュー(スクロールできる)に出すので短縮形を持たない
 //   押下下限>0, release  | H=「◯秒以上押し続けて離すと」
 //   聴覚スキャン ON/OFF  | A は ON かつ音声モード short/full のときだけ(off/tone なら出ない)
-//   先頭待機・取り消し・緊急中の取り消しなしは、見れば分かるのでどこにも書かない
+//   先頭待機は、見れば分かるのでどこにも書かない
 import { describe, expect, it } from 'vitest'
 import { PATIENT_SCREEN_IDS, type ScreenId } from '../menus'
 import { DEFAULT_SETTINGS } from '../settings'
@@ -77,7 +77,7 @@ describe('buildScreenNotes: 状態の表引き', () => {
     }
   })
 
-  it('緊急中は周期振動の1行だけ(取り消しなし・押し方・先頭待機は出ない。呼び出し継続・入力直後の補足も書かない)。全画面共通', () => {
+  it('緊急中は周期振動の1行だけ(押し方・先頭待機は出ない。呼び出し継続・入力直後の補足も書かない)。全画面共通', () => {
     for (const screen of PATIENT_SCREEN_IDS) {
       expect(notes(screen, { emergencyActive: true })).toEqual([VIBRATION])
     }
@@ -213,10 +213,9 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
     }
   })
 
-  it('先頭待機・取り消し・緊急中の取り消しなしは、どの設定でも書かない', () => {
+  it('先頭待機は、どの設定でも書かない', () => {
     const all = behavior({ debounceMs: 300, minHoldMs: 400, activateOn: 'release', ...SPEAKING })
     expect(all.join('')).not.toContain('先頭')
-    expect(all.join('')).not.toContain('取り消し')
   })
 
   it('全部入りの順序: 連打 → 押し方 → 聴覚', () => {

@@ -448,8 +448,6 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     ]
     for (const s of screens) {
       const items = buildMenu(s, {
-        showUndo: false,
-        emergencyActive: s === 'urgentDetail',
         morseEnabled: false,
         phrases: undefined,
         pain: undefined,

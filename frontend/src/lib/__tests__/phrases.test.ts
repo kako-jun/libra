@@ -141,13 +141,9 @@ describe('緊急と取り違える項目・画面の項目数', () => {
       ],
     }
     for (const sets of [undefined, phrases]) {
-      expect(
-        buildMenu(PHRASE_GROUP_SCREEN[group], {
-          showUndo: false,
-          emergencyActive: false,
-          phrases: sets,
-        }).length,
-      ).toBe(screenItemCount(group, sets))
+      expect(buildMenu(PHRASE_GROUP_SCREEN[group], { phrases: sets }).length).toBe(
+        screenItemCount(group, sets),
+      )
     }
   })
 })
@@ -173,34 +169,26 @@ describe('編集しても戻る・緊急の位置が固定される(安全の優
     'feelings',
   ] as const)('%s: 空・予約ラベル・上限いっぱいでも items[0]=戻る, items[1]=緊急', (screen) => {
     for (const phrases of [undefined, {}, hostile]) {
-      const items = buildMenu(screen, { showUndo: false, emergencyActive: false, phrases })
+      const items = buildMenu(screen, { phrases })
       expect(items[0].action).toEqual({ type: 'back' })
       expect(items[1].action).toEqual({ type: 'emergency' })
     }
   })
 
   it('ホームの並び(緊急→もう一度→はい→いいえ→…)はフレーズ編集の影響を受けない', () => {
-    const items = buildMenu('home', { showUndo: false, emergencyActive: false, phrases: hostile })
+    const items = buildMenu('home', { phrases: hostile })
     expect(items.slice(0, 4).map((i) => i.label)).toEqual(['緊急', 'もう一度', 'はい', 'いいえ'])
   })
 
   it('追加したフレーズはその画面の項目になり、不快の遷移項目は固定位置のまま', () => {
     const phrases = { discomfort: [{ id: 'custom-1', label: 'のど', text: 'のどが痛いです' }] }
-    const labels = buildMenu('discomfort', {
-      showUndo: false,
-      emergencyActive: false,
-      phrases,
-    }).map((i) => i.label)
+    const labels = buildMenu('discomfort', { phrases }).map((i) => i.label)
     expect(labels).toEqual(['戻る', '緊急', '痛い', 'のど', 'その他'])
   })
 
   it('下位画面へ進むタイルの予告に、編集後のフレーズが反映される', () => {
     const phrases = { moodRequest: [{ id: 'a', label: 'テレビ', text: 'テレビを見たいです' }] }
-    const home = buildMenu('home', {
-      showUndo: false,
-      emergencyActive: false,
-      phrases,
-    })
+    const home = buildMenu('home', { phrases })
     expect(home.find((i) => i.id === 'requests-nav')?.preview).toBe('テレビ')
   })
 })

@@ -49,7 +49,6 @@ export type ActionId =
   | { type: 'emergency' }
   | { type: 'emergencyDetail'; label: string }
   | { type: 'emergencyRelease' }
-  | { type: 'undo' }
   | { type: 'repeat' }
   | { type: 'back' }
   | { type: 'navigate'; screen: ScreenId }
@@ -189,7 +188,7 @@ const PREVIEW_ITEM_COUNT = 6
  *  遷移項目(要望・気分など)も名前で並べる(矢印は付けない)。ハードコードしない
  *  ことで menus.ts の項目定義を変更しても自動で追従する。 */
 function buildPreview(screen: ScreenId, phrases?: PhraseSets): string {
-  const items = buildMenu(screen, { showUndo: false, emergencyActive: false, phrases })
+  const items = buildMenu(screen, { phrases })
   const contentLabels = items
     .filter((item) => item.action.type !== 'emergency' && item.action.type !== 'back')
     .map((item) => item.label)
@@ -236,36 +235,28 @@ export interface HomeMenuOptions {
   morseEnabled?: boolean
   /** 介助者が編集したフレーズ(Issue #8)。省略時は既定のプリセット */
   phrases?: PhraseSets
-  /** 伝達直後の2周だけ true。渡された値に関わらず emergencyActive 中は無視する */
-  showUndo: boolean
-  /** 緊急中は取り消しを出さない（requirements.md §4.3: 本人のスイッチ入力で上書き・取り消しされない）。
-   *  この判定を App 側に置かず、ここで一元的に保証する。 */
-  emergencyActive: boolean
   /** 緊急詳細ですでに伝えた状態。候補と選択済み表示を重複させないため除外する。 */
   emergencyDetails?: readonly string[]
   /** 文字盤の文字段階(lettersRow)で表示する行の添字(LETTER_ROWS)。省略時は先頭の行 */
   letterRow?: number
 }
 
-export function buildHomeMenu(options: HomeMenuOptions): MenuItem[] {
-  const showUndo = options.showUndo && !options.emergencyActive
+export function buildHomeMenu(options: HomeMenuOptions = {}): MenuItem[] {
   return homeScreen([
     // 緊急の次に常設(Issue #123)。聞き逃されたとき、同じ選択をやり直さずに直前の伝達をもう一度伝える。
-    // 伝達が無いときも位置を空けない(出入りで はい・いいえ の位置を動かさない。Issue #102 と同じ考え方)
+    // 伝達が無いときも位置を空けない(出入りで はい・いいえ の位置を動かさない)
     { id: 'repeat', label: 'もう一度', action: { type: 'repeat' } },
+    // はい・いいえ は添字 2・3。2 列・4 列・5 列のどの格子でも同じ段で左右に隣り合う(Issue #126)
     message('yes', 'はい', 'はい。'),
     message('no', 'いいえ', 'いいえ。'),
-    // 取り消しは「いいえ」の直後(Issue #102)。出入りしても「はい」「いいえ」の位置と到達時間を変えない
-    ...(showUndo ? [{ id: 'undo', label: '取り消し', action: { type: 'undo' } } as MenuItem] : []),
     // 並びは 快 → 不快 → 要望(Issue #93)。続けて・やめて・変えて(質問への受動の答え)を
     // 先に、要望(会話寄り)を後ろに置く
     navigate('comfort-nav', '快', 'comfort', options.phrases),
     navigate('discomfort-nav', '不快', 'discomfort', options.phrases),
     navigate('requests-nav', '要望', 'requests', options.phrases),
     navigate('letters-nav', '文字盤', 'letters'),
-    // 上級者向けの逃げ道。文字盤より後ろ(優先度は最下位)。取り消しが出ている間(伝達直後の2周だけ)は
-    // 入口を畳み、ホームを常に8項目以内に保つ(固定格子に収め、はい・いいえを小さくしない。Issue #93)
-    ...(options.morseEnabled && !showUndo ? [navigate('morse-nav', 'モールス', 'morse')] : []),
+    // 上級者向けの逃げ道。文字盤より後ろ(優先度は最下位)
+    ...(options.morseEnabled ? [navigate('morse-nav', 'モールス', 'morse')] : []),
   ])
 }
 
@@ -430,7 +421,7 @@ export function buildMorseMenu(): MenuItem[] {
   return subScreen([])
 }
 
-export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions): MenuItem[] {
+export function buildMenu(screen: ScreenId, homeOptions: HomeMenuOptions = {}): MenuItem[] {
   switch (screen) {
     case 'home':
       return buildHomeMenu(homeOptions)

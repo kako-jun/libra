@@ -404,12 +404,6 @@ describe('App', () => {
     selectByLabel(container, 'はい')
     expect(confirmation()).toBeNull() // ordinary message
     expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
-    selectByLabel(container, '取り消し')
-    expect(confirmation()).toBeNull() // undo
-    // Issue #94: 取り消すと直前に伝えたこと自体が消える(1つ前の「あ」には戻らない)
-    expect(container.querySelector('.message-panel h1')?.textContent).toBe(
-      '選んだ内容がここに大きく出ます。',
-    )
 
     selectByLabel(container, '緊急') // emergency
     expect(confirmation()).toBeNull()
@@ -506,35 +500,32 @@ describe('App', () => {
     ).toEqual(['ホーム', '文字盤', 'わ行', '文字盤・文字'])
   })
 
-  it('緊急中はホームに取り消しが出ない', () => {
+  it('緊急中のホームも通常と同じ 8 項目(Issue #125/#127)', () => {
     const { container } = render(() => <App />)
+    const normal = tileLabels(container)
     fireEvent.keyDown(window, { key: ' ' }) // 緊急選択
     vi.advanceTimersByTime(HEAD_HOLD_MS)
     fireEvent.keyDown(window, { key: ' ' }) // 戻る → home
-    expect(tileLabels(container)).not.toContain('取り消し')
+    expect(tileLabels(container)).toEqual(normal)
   })
 
-  it('伝達直後の2周だけ取り消しが出て、2周後に消え、消えた後もカーソルは正しい項目を指す', () => {
+  it('伝達してもホームの項目は変わらず、取り消しは出ない。2周しても同じ並びを巡る(Issue #125)', () => {
     const { container } = render(() => <App />)
+    const home = ['緊急', 'もう一度', 'はい', 'いいえ', '快', '不快', '要望', '文字盤']
+    expect(tileLabels(container)).toEqual(home)
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // home index2=はい
-    fireEvent.keyDown(window, { key: ' ' }) // はい を選択 → home に戻る、取り消し表示
-    expect(tileLabels(container)).toContain('取り消し')
-    expect(tileLabels(container).length).toBe(9)
-
-    // 1周(9項目)分進めて index が 0 に戻っても、まだ2周目なので取り消しは残る
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 8)
-    expect(tileLabels(container)).toContain('取り消し')
-    // 2周目の終わりで消える
-    vi.advanceTimersByTime(INTERVAL_MS * 9)
-    expect(tileLabels(container)).not.toContain('取り消し')
-    expect(tileLabels(container).length).toBe(8)
+    fireEvent.keyDown(window, { key: ' ' }) // はい を選択 → home に戻る
+    expect(h1Text(container)).toBe('はい。')
+    expect(tileLabels(container)).toEqual(home)
     expect(scanningLabel(container)).toBe('緊急')
-
-    // ずれ回帰: 取り消しが消えた後も次の項目は正しく「もう一度」「はい」の順に指す
-    vi.advanceTimersByTime(INTERVAL_MS)
-    expect(scanningLabel(container)).toBe('もう一度')
-    vi.advanceTimersByTime(INTERVAL_MS)
-    expect(scanningLabel(container)).toBe('はい')
+    vi.advanceTimersByTime(HEAD_HOLD_MS)
+    const seen = [scanningLabel(container)]
+    for (let i = 1; i < home.length * 2; i += 1) {
+      vi.advanceTimersByTime(INTERVAL_MS)
+      seen.push(scanningLabel(container))
+      expect(tileLabels(container)).toEqual(home)
+    }
+    expect(seen).toEqual([...home.slice(1), ...home, home[0]])
   })
 
   it('介助者ボタンの mouse pointerdown で直ちにメニューが開き、スイッチ扱いにならない', () => {
@@ -912,24 +903,29 @@ describe('App', () => {
     expect(h1Text(container)).not.toBe('緊急です。来てください。')
   })
 
-  it('Issue #6: 押している間に項目の並びが変わったら、別の項目(緊急など)を実行せず無視する', () => {
-    window.localStorage.setItem('libra', JSON.stringify({ minHoldMs: 1500 }))
+  it('Issue #6: 押している間に項目の並びが変わったら、同じ位置の別の項目を実行せず無視する', () => {
+    window.localStorage.setItem('libra', JSON.stringify({ activateOn: 'release' }))
     const { container } = render(() => <App />)
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index2=はい
-    expect(scanningLabel(container)).toBe('はい')
-    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
-    vi.advanceTimersByTime(1500)
-    fireEvent.keyUp(window, { key: ' ', code: 'Space' }) // はい → home(取り消しが2周だけ出る)
-    expect(h1Text(container)).toBe('はい。')
-
-    // 取り消しを含む9項目の末尾(文字盤)で押し始める。押している間に2周が終わって取り消しが消える
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 7 + 500 + INTERVAL_MS * 9) // 2周目の末尾
-    expect(scanningLabel(container)).toBe('文字盤')
-    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
-    vi.advanceTimersByTime(1500)
+    // 押している指/キーと別の入力(タイルの直接タップ)で画面を進める
+    const tapTile = (label: string) => {
+      vi.advanceTimersByTime(600) // 連打無視を超える
+      const target = Array.from(container.querySelectorAll<HTMLElement>('.tile')).find(
+        (el) => el.querySelector('.tile-label')?.textContent === label,
+      ) as HTMLElement
+      fireEvent.pointerDown(target, { pointerId: 7 })
+      fireEvent.pointerUp(target.isConnected ? target : document.body, { pointerId: 7 })
+    }
+    tapTile('緊急') // → 緊急詳細: 戻る,苦しい,痛い,…
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
+    expect(scanningLabel(container)).toBe('苦しい')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' }) // 苦しい(index1)で押し始める
+    tapTile('苦しい') // 別の入力で苦しいを伝える → home
+    tapTile('緊急') // 同じ緊急詳細へ戻る。苦しいは候補から消え、index1 は「痛い」
+    expect(tileLabels(container).slice(0, 2)).toEqual(['戻る', '痛い'])
+    vi.advanceTimersByTime(600)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
-    expect(h1Text(container)).toBe('はい。')
-    expect(container.querySelector('.letter-strip')).toBeNull()
+    expect(container.querySelector('.emergency-details')?.textContent).not.toContain('痛い')
+    expect(tileLabels(container).slice(0, 2)).toEqual(['戻る', '痛い']) // 画面も変わらない
   })
 
   it('Issue #6: 離して決定モードでは押下中は実行されず、離した時点で実行される', () => {
@@ -963,17 +959,6 @@ describe('App', () => {
     selectByLabel(container, '頭')
     selectByLabel(container, '場所だけ')
     expect(h1Text(container)).toBe('頭が痛いです。')
-  })
-
-  it('Issue #12: 痛みを伝えた直後は「取り消し」で戻せる', () => {
-    const { container } = render(() => <App />)
-    selectByLabel(container, '不快')
-    selectByLabel(container, '痛い')
-    selectByLabel(container, '頭')
-    selectByLabel(container, '少し')
-    expect(h1Text(container)).toBe('頭が少し痛いです。')
-    selectByLabel(container, '取り消し')
-    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
   })
 
   it('Issue #12/#44: 緊急中の痛みは緊急状態を保ち、独立した直前の伝達に出る', () => {
@@ -1615,7 +1600,7 @@ describe('App', () => {
     vi.advanceTimersByTime(600) // 連打無視を超える。urgentDetail index0=戻る
     fireEvent.keyDown(window, { key: ' ' }) // home へ戻る(緊急は継続)
 
-    // home(緊急中、取り消し無し): 0緊急,1もう一度,2はい,3いいえ,...
+    // home: 0緊急,1もう一度,2はい,3いいえ,...
     vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index2=はい
 
     const calls = captureSpeechCalls()
@@ -1652,32 +1637,6 @@ describe('App', () => {
     expect(detailsText).toContain('痛い')
   })
 
-  it('S2: 緊急発生時に取り消しの猶予を終わらせ、解除後も取り消しが復活しない', () => {
-    const { container } = render(() => <App />)
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // home index2=はい
-    fireEvent.keyDown(window, { key: ' ' }) // はい → home、取り消し表示
-    expect(tileLabels(container)).toContain('取り消し')
-
-    vi.advanceTimersByTime(600) // 連打無視を超えて次の押下を有効にする(先頭待機中なのでindex0のまま)
-    fireEvent.keyDown(window, { key: ' ' }) // 緊急を選択
-    expect(h1Text(container)).toBe('緊急です。来てください。')
-
-    const button = container.querySelector('.caregiver-button') as HTMLElement
-    fireEvent.pointerDown(button)
-    fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
-    vi.advanceTimersByTime(2000) // 介助者メニューが開く
-    const clearButton = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('緊急を解除'),
-    ) as HTMLElement
-    fireEvent.click(clearButton)
-    const closeButton = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent === '閉じる',
-    ) as HTMLElement
-    fireEvent.click(closeButton)
-
-    expect(tileLabels(container)).not.toContain('取り消し')
-  })
-
   it('Issue #43: 緊急選択・緊急中の周期経過・解除のどれでも音(oscillator)が鳴らない', () => {
     const { container } = render(() => <App />)
     expect(oscillatorStartCount).toBe(0)
@@ -1697,35 +1656,6 @@ describe('App', () => {
     fireEvent.click(clearButton)
     vi.advanceTimersByTime(10000)
     expect(oscillatorStartCount).toBe(0)
-  })
-
-  it('Issue #94: 取り消すと直前の伝達が空になり、1つ前の「はい」は復元されない。トーンは neutral(#77)', () => {
-    const { container } = render(() => <App />)
-    // 「はい」を表示させてから「いいえ」を選び、取り消すと何も伝えていない状態になる
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // home index2=はい
-    fireEvent.keyDown(window, { key: ' ' }) // はい → home
-    expect(document.documentElement.dataset.messageTone).toBe('neutral')
-
-    // home(取り消しあり): 0緊急,1もう一度,2はい,3いいえ,4取り消し,...
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // index3=いいえ
-    expect(scanningLabel(container)).toBe('いいえ')
-    fireEvent.keyDown(window, { key: ' ' }) // いいえ(neutral) → home
-    expect(document.documentElement.dataset.messageTone).toBe('neutral')
-
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 3) // home index4=取り消し
-    expect(scanningLabel(container)).toBe('取り消し')
-    fireEvent.keyDown(window, { key: ' ' }) // 取り消し → 空(「はい」には戻らない)
-    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
-    expect(document.documentElement.dataset.messageTone).toBe('neutral')
-    expect(tileLabels(container)).not.toContain('取り消し')
-    expect(scanningLabel(container)).toBe('緊急') // スキャンは先頭から再開
-
-    // 取り消したあとに再び「はい」を伝えると「はい。」が出て、取り消しも再度出る
-    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // home index2=はい
-    expect(scanningLabel(container)).toBe('はい')
-    fireEvent.keyDown(window, { key: ' ' })
-    expect(h1Text(container)).toBe('はい。')
-    expect(tileLabels(container)).toContain('取り消し')
   })
 
   it('Issue #5: 介助者メニューに Wake Lock 取得中の状態が表示される', () => {
@@ -1974,7 +1904,7 @@ describe('App', () => {
       expect(speak).not.toHaveBeenCalled()
     })
 
-    it('解除→伝達→取り消しでも、緊急でないのに赤い緊急文言は戻らない', () => {
+    it('解除→伝達でも、緊急でないのに赤い緊急文言は戻らない', () => {
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
       expect(h1Text(container)).toBe('緊急です。来てください。')
@@ -1983,25 +1913,20 @@ describe('App', () => {
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // home index2=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい
       expect(h1Text(container)).toBe('はい。')
-      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 3) // home index4=取り消し
-      fireEvent.keyDown(window, { key: ' ' }) // 取り消し
-      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
     })
 
-    it('緊急なしの解除ボタンは無効で何も起きない(A→解除→B→取り消し→空。Aには戻らない)', () => {
+    it('緊急なしの解除ボタンは無効で何も起きない(A→解除→B)', () => {
       const { container } = render(() => <App />)
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // home index2=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい (A)
       expect(h1Text(container)).toBe('はい。')
       clearEmergencyViaMenu(container) // 緊急なしの解除ボタン(disabled で何も起きない)
+      expect(h1Text(container)).toBe('はい。') // 直前の伝達は消えない
       closeCaregiverMenu(container)
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 2) // 緊急→もう一度→はい→いいえ
       fireEvent.keyDown(window, { key: ' ' }) // いいえ (B)
       expect(h1Text(container)).toBe('いいえ。')
-      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS * 3) // home index4=取り消し
-      fireEvent.keyDown(window, { key: ' ' }) // 取り消し
-      expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
     })
 
     it('介助者メニューの緊急解除で保存が消え、再マウントで通常起動・警告音なし', () => {
@@ -2241,47 +2166,44 @@ describe('App', () => {
       window.dispatchEvent(new Event('resize'))
     }
 
-    it('Issue #47/#93/#123: 横長でホーム8項目なら固定の 5列×2行(10セル)、タイルは引き延ばさず空きセルが2つ残る(取り消しが出て9項目なら1)', () => {
+    it('Issue #127: 横長でホーム 8 項目は固定の 4列×2行で空きセルが無い', () => {
       const { container } = render(() => <App />)
       expect(tileLabels(container)).toHaveLength(8)
       setViewport(1000, 500)
-      expect(container.querySelectorAll('.tile-empty')).toHaveLength(2)
-      // 「はい」を選んで home+取り消しの9項目状態にする(緊急,もう一度,はい,いいえ,取り消し,快,不快,要望,文字盤)
-      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS)
-      fireEvent.keyDown(window, { key: ' ' }) // はい選択 → home(取り消し表示)
-      expect(tileLabels(container)).toHaveLength(9)
-
-      setViewport(1000, 500)
-
       const board = container.querySelector('.grid-board') as HTMLElement
       expect(board.classList.contains('grid-fill')).toBe(true)
       expect(board.classList.contains('grid-home')).toBe(true)
-      expect(board.style.getPropertyValue('--cols')).toBe('5')
+      expect(board.style.getPropertyValue('--cols')).toBe('4')
       expect(board.style.getPropertyValue('--rows')).toBe('2')
-
       const tiles = Array.from(container.querySelectorAll('.tile'))
       expect(tiles.every((tile) => (tile as HTMLElement).style.gridColumn === '')).toBe(true)
-      expect(container.querySelectorAll('.tile-empty')).toHaveLength(1)
+      expect(container.querySelectorAll('.tile-empty')).toHaveLength(0)
     })
 
-    it('Issue #47/#93/#123: 横長ホーム8項目の空きセルは aria-hidden', () => {
+    it('Issue #127: モールス使用の横長ホーム 9 項目は 5列×2行で、空きセル 1 つは aria-hidden', () => {
+      window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true }))
       const { container } = render(() => <App />)
       setViewport(1000, 500)
-      const empty = container.querySelector('.tile-empty')
-      expect(empty?.getAttribute('aria-hidden')).toBe('true')
+      expect(tileLabels(container)).toHaveLength(9)
+      const board = container.querySelector('.grid-board') as HTMLElement
+      expect(board.style.getPropertyValue('--cols')).toBe('5')
+      expect(board.style.getPropertyValue('--rows')).toBe('2')
+      const empties = container.querySelectorAll('.tile-empty')
+      expect(empties).toHaveLength(1)
+      expect(empties[0].getAttribute('aria-hidden')).toBe('true')
     })
 
-    it('向きが変わると固定格子が切り替わる(ホームは横長 5列×2行 / 縦長 2列×5行。下位画面は 4列×2行 / 2列×4行)', () => {
+    it('向きが変わると固定格子が切り替わる(8 項目のホームも下位画面も 横長 4列×2行 / 縦長 2列×4行)', () => {
       const { container } = render(() => <App />)
 
       setViewport(1000, 500)
       const board = container.querySelector('.grid-board') as HTMLElement
-      expect(board.style.getPropertyValue('--cols')).toBe('5')
+      expect(board.style.getPropertyValue('--cols')).toBe('4')
       expect(board.style.getPropertyValue('--rows')).toBe('2')
 
       setViewport(500, 1000)
       expect(board.style.getPropertyValue('--cols')).toBe('2')
-      expect(board.style.getPropertyValue('--rows')).toBe('5')
+      expect(board.style.getPropertyValue('--rows')).toBe('4')
 
       // 下位画面(不快)は標準の8セル格子
       selectByLabel(container, '不快')
