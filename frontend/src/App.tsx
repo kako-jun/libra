@@ -14,6 +14,7 @@ import {
 import { advanceIdleSteps, UNDO_LAPS } from './lib/idleLaps'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import {
+  DEBOUNCE_MS_MIN,
   MORSE_WORD_GAP_MARGIN_MS,
   loadSettings,
   resetSettingsSection,
@@ -102,6 +103,20 @@ function isCaregiverTabNavKey(event: KeyboardEvent): boolean {
   return CAREGIVER_TAB_NAV_KEYS.includes(event.key)
 }
 type CaregiverTabId = (typeof CAREGIVER_TABS)[number]['id']
+
+/**
+ * それ自身の操作だけをする要素(パネル・ボタン・矢印・パンくずのリンク等)。ここ以外の場所の押下は、
+ * 黄色のパネルを選ぶ(Issue #134)。押せない状態のボタンもボタンなので、ここに含める
+ */
+const OWN_OPERATION_SELECTOR =
+  'button, a[href], input, select, textarea, label, summary, [role="button"], [role="tab"]'
+const ownOperationElement = (target: EventTarget | null): Element | null =>
+  target instanceof Element ? target.closest(OWN_OPERATION_SELECTOR) : null
+
+/** 本人画面の指示文の近くに常に出す、パネル以外の押し方の案内(Issue #134) */
+const PRESS_ANYWHERE_HINT = 'ボタン以外を押すと、黄色を選びます'
+/** モールス画面には黄色のパネルが無く、同じ押し方は符号になる */
+const MORSE_PRESS_ANYWHERE_HINT = 'ボタン以外を押すと、符号を入力します'
 
 /** 介助者用メニュー内の操作が途絶えたときに自動で閉じるまでの時間(requirements.md §6) */
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
@@ -1085,27 +1100,62 @@ export default function App() {
     })
   })
 
-  // 本人の入力は2経路だけ。①タイルの直接タップ/クリック(押したタイルを実行。onTilePointerDown)
-  // ②任意キー / Bluetooth シャッター(キー入力として届く。現在のスキャン対象を実行)。
-  // 画面の背景(タイル以外)へのタップは何も実行しない。ここではポインターの「離し・取り消し」だけ拾い、
-  // 押下(離して決定・押下時間の下限)の解放を取りこぼさないようにする。
-  // pointerdown を見たポインターの記録(ポインター単位)。続く click は同じ操作の一部なので実行しない。
+  // 本人の入力は2経路。①パネルの直接タップ/クリック(押したパネルを実行。onTilePointerDown)
+  // ②黄色のパネル(現在のスキャン対象)を実行する「オン」。任意キー / Bluetooth シャッターと、
+  // パネル・ボタン・リンク以外の場所の押下(Issue #134)がこれに当たる。介助者用メニュー表示中は働かない。
+  // pointerdown を見たポインターの記録(ポインター単位)。続く click は同じ操作の一部なのでパネルは実行しない。
   // pointerdown を伴わない click だけを支援技術の合成として実行する。背景・オーバーレイ・介助者
-  // メニューの押下も記録し、メニューを閉じた押下の click が下のタイルへ届いても実行されないようにする。
-  // downAt: pointerdown の時刻 / upAt: pointerup の時刻(押下中は null)
-  const pointerSeen = new Map<number, { downAt: number; upAt: number | null }>()
+  // メニューの押下も記録し、メニューを閉じた押下の click が下のパネルへ届いても実行されないようにする。
+  // control: 押し始めた、それ自身の操作を持つ要素(背景なら null)。タッチでは、押した瞬間に画面が変わると、
+  // 同じタップの click が指の下に現れた別のボタンへ届く(Issue #112: 開いた直後の「閉じる」)。
+  // そのため click は押し始めた要素にだけ届け、別のボタンへは届けない(1回の押下で操作は1つ)
+  // downAt: pointerdown の時刻 / upAt: pointerup の時刻(押下中は null) / x, y: 押した位置、離した後は離した位置
+  type PointerRecord = {
+    downAt: number
+    upAt: number | null
+    control: Element | null
+    x: number
+    y: number
+  }
+  const pointerSeen = new Map<number, PointerRecord>()
+  // いま画面に触れているポインター(指・ペン・押したままのマウス)。手のひらや 2 本の指が同時に触れても、
+  // 背景の分で操作が重ならないようにする(はい → 緊急 のように続けて選ばれると危ない)。
+  // selectsByBackground: 背景の押下として受け付けたもの
+  const contacts = new Map<
+    number,
+    { type: string; downAt: number; selectsByBackground: boolean }
+  >()
   const POINTER_CLICK_WINDOW_MS = 1000 // pointerup 後、click を待つ上限(取りこぼし記録の破棄)
   const POINTER_STALE_MS = 10000 // pointerup/pointercancel が届かなかった記録の破棄(保険)
+  // click の pointerId が pointerdown と違う環境で、同じタップの click とみなす範囲(離してからの時間と距離)
+  const SAME_TAP_CLICK_MS = 700
+  const SAME_TAP_CLICK_DISTANCE_PX = 25
   // 直近の click(capture で判定)が pointerdown に裏付けられていたか。タイルの click が読む
   let clickBackedByPointer = false
-  // 介助者用メニューを開いた pointerdown のポインター(Issue #112)。タッチでは、同じタップの click が
-  // 開いた直後のパネル(右上の「閉じる」は「介助者用」ボタンと同じ位置)へ届き、開いた瞬間に閉じていた。
-  // その 1 回の click だけをパネルへ届けない。次の押下が始まったら忘れる
-  let menuOpeningPointer: number | null = null
   onMount(() => {
     const onPointerDownCapture = (event: PointerEvent) => {
-      menuOpeningPointer = null
-      pointerSeen.set(event.pointerId, { downAt: Date.now(), upAt: null })
+      const now = Date.now()
+      const control = ownOperationElement(event.target)
+      pointerSeen.set(event.pointerId, {
+        downAt: now,
+        upAt: null,
+        control,
+        x: event.clientX,
+        y: event.clientY,
+      })
+      // 離した通知を取りこぼした接触が残ると、背景の押下が効かなくなる。同じ種類の最初の接触(isPrimary)が
+      // 始まったら、その種類の古い接触はもう無い。時間でも捨てる
+      for (const [id, contact] of contacts) {
+        const gone = event.isPrimary && contact.type === event.pointerType
+        if (id === event.pointerId || gone || now - contact.downAt > POINTER_STALE_MS) {
+          contacts.delete(id)
+        }
+      }
+      contacts.set(event.pointerId, {
+        type: event.pointerType,
+        downAt: now,
+        selectsByBackground: control === null && event.button === 0 && contacts.size === 0,
+      })
       heldInputs.add(`pointer:${event.pointerId}`)
       idleSteps = 0
     }
@@ -1118,9 +1168,23 @@ export default function App() {
       // pointerId が実際にどうなるかは未確認で、実機確認事項(Issue #38)。
       // 一致する記録は、期限切れの判定より先に探して消費する(メインスレッドが1秒以上止まっても、
       // その押下の click を合成扱いして二重実行しないため)
-      let consumed: number | undefined
-      if (typeof pointerId === 'number') {
-        if (pointerSeen.delete(pointerId)) consumed = pointerId
+      let consumed = typeof pointerId === 'number' ? pointerSeen.get(pointerId) : undefined
+      if (typeof pointerId === 'number') pointerSeen.delete(pointerId)
+      // click の pointerId が pointerdown と違う環境への備え: 位置を持つ実際の押下の click(detail が 1 以上。
+      // キー操作・プログラムの click は 0)が、離したばかりの押下と同じ位置なら、その押下の続きとみなす
+      if (!consumed && typeof pointerId === 'number' && event.detail > 0) {
+        let match: [number, PointerRecord] | undefined
+        for (const entry of pointerSeen) {
+          const rec = entry[1]
+          if (rec.upAt === null || now - rec.upAt > SAME_TAP_CLICK_MS) continue
+          const distance = Math.hypot(event.clientX - rec.x, event.clientY - rec.y)
+          if (distance > SAME_TAP_CLICK_DISTANCE_PX) continue
+          if (!match || rec.upAt >= (match[1].upAt as number)) match = entry
+        }
+        if (match) {
+          pointerSeen.delete(match[0])
+          consumed = match[1]
+        }
       }
       // 期限切れの記録は、消費した記録以外だけを対象に破棄する
       for (const [id, rec] of pointerSeen) {
@@ -1131,20 +1195,31 @@ export default function App() {
         if (expired) pointerSeen.delete(id)
       }
       if (consumed === undefined && typeof pointerId !== 'number') {
-        const first = pointerSeen.keys().next()
-        if (!first.done) {
-          pointerSeen.delete(first.value)
-          consumed = first.value
+        // click は離した直後に届くので、いちばん新しく離した押下のもの。それより前に離した記録は、
+        // click が出なかった押下(iOS は押せない場所のタップに click を出さないことがある)なので、
+        // 次の click を誤って止めないように捨てる。離した記録が無ければ、先頭の記録を使う
+        const released = [...pointerSeen]
+          .filter(([, rec]) => rec.upAt !== null)
+          .sort((a, b) => (a[1].upAt as number) - (b[1].upAt as number))
+        const latest = released.at(-1)
+        const picked = latest ?? [...pointerSeen][0]
+        if (picked) {
+          consumed = picked[1]
+          pointerSeen.delete(picked[0])
+          for (const [id] of released) pointerSeen.delete(id)
         }
       }
       clickBackedByPointer = consumed !== undefined
-      if (menuOpeningPointer !== null) {
-        const sameGesture = typeof pointerId === 'number' ? pointerId === menuOpeningPointer : true
-        menuOpeningPointer = null
-        if (sameGesture && caregiverMenuOpen()) {
-          event.stopPropagation()
-          event.preventDefault()
-        }
+      // pointerId の無い click は記録を推定で消費しているので、まだ押している記録は元の押下とみなさない
+      // (click は離した後に届く)
+      if (!consumed || (typeof pointerId !== 'number' && consumed.upAt === null)) return
+      const clicked = ownOperationElement(event.target)
+      if (clicked && clicked !== consumed.control) {
+        event.stopPropagation()
+        event.preventDefault()
+        // タッチでは、同じタップの mousedown で指の下のボタンへフォーカスが移ることがある。残すと、
+        // 次のキー(本人のスイッチ)の Enter / Space がそのボタンを押してしまうので外す
+        if (clicked instanceof HTMLElement && document.activeElement === clicked) clicked.blur()
       }
     }
     const onPointerDown = (event: PointerEvent) => {
@@ -1170,12 +1245,23 @@ export default function App() {
         return
       }
 
-      // 背景(タイル以外)のタップは本人入力として扱わない。タイルは onTilePointerDown が処理する
+      // パネル・ボタン・リンクはそれ自身の操作だけをする(パネルは onTilePointerDown が処理する)。
+      // それ以外の場所の押下は、キーと同じ「オン」: 押し始めに黄色だったパネルを実行する(モールス画面では
+      // 符号になる)。主ボタン(タッチ・左クリック・ペン先)だけ。判定は capture で取った押し始めの要素を使う
+      // (パネルの押下で画面が切り替わると、ここへ来た時点で target は DOM から外れている)
+      // 別の指などが触れたままの背景の押下は、記録だけして何もしない(1回の接触で操作を重ねない)
+      if (!contacts.get(event.pointerId)?.selectsByBackground) return
+      input.down(`pointer:${event.pointerId}`)
     }
 
     const onPointerUp = (event: PointerEvent) => {
       const rec = pointerSeen.get(event.pointerId)
-      if (rec) rec.upAt = Date.now()
+      if (rec) {
+        rec.upAt = Date.now()
+        rec.x = event.clientX
+        rec.y = event.clientY
+      }
+      contacts.delete(event.pointerId)
       heldInputs.delete(`pointer:${event.pointerId}`)
       idleSteps = 0 // 離した時点から数え直す
       input.up(`pointer:${event.pointerId}`)
@@ -1183,6 +1269,7 @@ export default function App() {
     // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
     const onPointerCancel = (event: PointerEvent) => {
       pointerSeen.delete(event.pointerId) // 他のポインターの記録は残す
+      contacts.delete(event.pointerId)
       heldInputs.delete(`pointer:${event.pointerId}`)
       idleSteps = 0
       input.cancel(`pointer:${event.pointerId}`)
@@ -1245,6 +1332,7 @@ export default function App() {
     // 画面が見えなくなった・フォーカスを失った押下は、離す動作を取りこぼすので取り消す
     const releaseAll = () => {
       heldInputs.clear()
+      contacts.clear()
       idleSteps = 0
       input.cancelAll()
     }
@@ -1303,6 +1391,10 @@ export default function App() {
     // 主ボタン(タッチ・左クリック・ペン先)以外(右/中クリック・ペンのバレルボタン)では実行しない
     if (event.button !== 0) return
     if (caregiverMenuOpen()) return
+    // 背景の押下が続いている間に触れたパネルは実行しない(手のひらや 2 本の指が同時に触れたとき)
+    for (const [id, contact] of contacts) {
+      if (id !== event.pointerId && contact.selectsByBackground) return
+    }
     idleSteps = 0
     resumeToneAudioContext()
     input.down(`pointer:${event.pointerId}`, {
@@ -1365,9 +1457,8 @@ export default function App() {
     queueMicrotask(updateTabScroll)
   })
 
-  const openCaregiverMenu = (openingPointerId?: number) => {
+  const openCaregiverMenu = () => {
     if (caregiverMenuOpen()) return
-    menuOpeningPointer = openingPointerId ?? null
     idleSteps = 0
     input.cancelAll()
     setCaregiverTab('status')
@@ -1508,7 +1599,12 @@ export default function App() {
               </For>
             </ol>
           </nav>
-          <h2>{currentScreenGuidance()}</h2>
+          <div class="screen-guide-text">
+            <h2>{currentScreenGuidance()}</h2>
+            <p class="screen-guide-hint">
+              {screen() === 'morse' ? MORSE_PRESS_ANYWHERE_HINT : PRESS_ANYWHERE_HINT}
+            </p>
+          </div>
         </div>
 
         {/* Issue #122: 介助者が選んだ好きな画像。未設定なら何も出さない(余白も増やさない) */}
@@ -1521,7 +1617,7 @@ export default function App() {
             type="button"
             class="caregiver-button"
             data-caregiver-control
-            onPointerDown={(event) => openCaregiverMenu(event.pointerId)}
+            onPointerDown={() => openCaregiverMenu()}
             onClick={() => openCaregiverMenu()}
             onContextMenu={(event) => event.preventDefault()}
             aria-label="介助者用メニューを開く"
@@ -1816,7 +1912,7 @@ export default function App() {
                 <div class="caregiver-item">
                   <RangeField
                     name="連打無視"
-                    min={0}
+                    min={DEBOUNCE_MS_MIN}
                     max={3000}
                     step={100}
                     value={settings().debounceMs}

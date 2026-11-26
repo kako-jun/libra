@@ -86,12 +86,29 @@ describe('normalizeSettings', () => {
     })
   })
 
-  describe('debounceMs の範囲(0〜3000)', () => {
-    it('下限-1(-1)は既定値にフォールバックする', () => {
-      expect(normalizeSettings({ debounceMs: -1 }).debounceMs).toBe(DEFAULT_SETTINGS.debounceMs)
+  describe('debounceMs の範囲(100〜3000。Issue #164)', () => {
+    it.each([-1, 0, 1, 50, 99])('下限未満の数値(%d)は下限の 100 にする', (value) => {
+      expect(normalizeSettings({ debounceMs: value }).debounceMs).toBe(100)
     })
-    it('下限(0)はそのまま通過する', () => {
-      expect(normalizeSettings({ debounceMs: 0 }).debounceMs).toBe(0)
+    it.each([100, 101])('下限以上(%d)はそのまま通過する', (value) => {
+      expect(normalizeSettings({ debounceMs: value }).debounceMs).toBe(value)
+    })
+    it.each(['0', null, Number.NaN, Number.NEGATIVE_INFINITY])(
+      '数値でない値・有限でない値(%s)は既定値にフォールバックする',
+      (value) => {
+        expect(normalizeSettings({ debounceMs: value }).debounceMs).toBe(DEFAULT_SETTINGS.debounceMs)
+      },
+    )
+    it('既定値は 500 のまま', () => {
+      expect(DEFAULT_SETTINGS.debounceMs).toBe(500)
+    })
+    it('保存値の 0 は読み込むと 100 になる', () => {
+      window.localStorage.setItem('libra', JSON.stringify({ debounceMs: 0 }))
+      expect(loadSettings().debounceMs).toBe(100)
+    })
+    it('取り込みの 0.1 秒未満は、今の値に関わらず 100 になる', () => {
+      const text = JSON.stringify({ app: 'libra', version: 1, debounceMs: 0 })
+      expect(parseSettingsJson(text, { ...DEFAULT_SETTINGS, debounceMs: 1200 })?.debounceMs).toBe(100)
     })
     it('上限(3000)はそのまま通過する', () => {
       expect(normalizeSettings({ debounceMs: 3000 }).debounceMs).toBe(3000)
