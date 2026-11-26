@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [offline, navigation, layout, theme]
+        suite: [offline, navigation, layout, theme, font]
     defaults:
       run:
         working-directory: frontend

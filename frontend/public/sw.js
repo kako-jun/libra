@@ -34,7 +34,7 @@ self.addEventListener('install', (event) => {
         // 含む)した時点で残り全部の fetch を abort する。どの1件が失敗しても install は
         // どうせ失敗する(all-or-nothing)ため、既に失敗が確定した後に他のURLの取得を続けて
         // 通信量を無駄にしない(不安定な回線で5分おきに再試行するたび、最大 precache 総量
-        // 〈約2.7MB〉を律儀に取得し切ってから失敗していた)
+        // 〈約4.6MB〉を律儀に取得し切ってから失敗していた)
         const abortController = new AbortController()
         const fetched = await Promise.all(
           PRECACHE_URLS.map(async (url) => {

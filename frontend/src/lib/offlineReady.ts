@@ -22,7 +22,7 @@ const CACHE_NAME_QUERY_TIMEOUT_MS = 2000
 const MIN_RECHECK_INTERVAL_MS = 5 * 60 * 1000
 /**
  * PR#11 4巡目 should-2: install 失敗が続く環境(例えば恒常的に不安定な回線)では、固定の
- * 5分おきのままだと最大 2.7MB(precache 対象の総サイズ)を延々と再取得し続けてしまう。
+ * 5分おきのままだと最大 約4.6MB(precache 対象の総サイズ)を延々と再取得し続けてしまう。
  * 未完了が続くたびに間隔を倍にしていき(指数バックオフ)、この上限で打ち止めにする。
  * ready になったら MIN_RECHECK_INTERVAL_MS へリセットする。
  */
@@ -42,7 +42,7 @@ function getRequiredUrls(): string[] {
   // all-or-nothing(1件でも取得失敗すれば install 自体が失敗する)なので、本体HTML/JS/CSSが
   // キャッシュにあるなら、同じ install で precache されたフォントも論理的には必ずある。
   // 逐一確認しないことで、判定を本当に「起動に要る最小限」に絞り、フォントの巨大な
-  // blob(日本語サブセットはMB単位)を毎回 match するコストも避ける。
+  // blob(1ウェイトが 2MB 超)を毎回 match するコストも避ける。
   return [...urls]
 }
 
