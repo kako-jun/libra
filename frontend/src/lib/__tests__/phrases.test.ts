@@ -120,6 +120,15 @@ describe('緊急と取り違える項目・画面の項目数', () => {
     expect(phraseProblem({ id: 'a', label: ' いいえ ', text: 'x' })).not.toBeNull()
   })
 
+  it('「取り消し」は予約ラベルではない。その名前のフレーズを作れて、画面の項目になる(Issue #125)', () => {
+    const phrase = { id: 'custom-1', label: '取り消し', text: 'さっきのは取り消します。' }
+    expect(phraseProblem(phrase)).toBeNull()
+    const phrases = normalizePhraseSets({ moodRequest: [phrase] })
+    expect(phrasesFor('moodRequest', phrases).map((p) => p.label)).toEqual(['取り消し'])
+    const item = buildMenu('requests', { phrases }).find((i) => i.label === '取り消し')
+    expect(item?.action).toEqual({ type: 'message', text: 'さっきのは取り消します。' })
+  })
+
   it('普通のフレーズは使える', () => {
     expect(phraseProblem({ id: 'a', label: 'テレビ', text: 'テレビを見たいです' })).toBeNull()
   })

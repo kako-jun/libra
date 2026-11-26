@@ -30,6 +30,10 @@
   --urgent-bg: #b3261e;
   --urgent-text: #ffffff;
   --urgent-text-muted: #ffd9d6;
+  /* Issue #136: 押すと伝達欄が赤くなるパネルの面(文字は --text のまま)と、その区切り線。
+     通常の --grid-line は、この面の上では見えにくい(1.12:1)ので専用の色を持つ */
+  --tile-urgent-bg: #ffe3e3;
+  --tile-urgent-line: #d49a9a;
   --scan-ring: #facc15;
   /* Issue #33: 黄色一本の枠を隣接色に対し3:1以上で見せるため、スキャン中のタイルは
      暗い面に反転する(白縁・二重枠は持たない)。文字色もここで反転する */
@@ -63,6 +67,9 @@
   --urgent-text: #ffffff;
   /* Issue #81: 夜間の赤地(#d7263d)で #ffd9d6 は 3.81:1 だった。4.5:1 以上に明るくする */
   --urgent-text-muted: #fff5f4;
+  /* Issue #136: 押すと伝達欄が赤くなるパネルの面と区切り線(--grid-line はこの面の上で 1.15:1) */
+  --tile-urgent-bg: #663f2a;
+  --tile-urgent-line: #a87459;
   --scan-ring: #facc15;
   --scan-text: #eafaf1;
   --scan-text-muted: #c9ecd9;
@@ -101,6 +108,8 @@
   --surface-calm: #d7f4e2;
   --text-muted: #33463e;
   --grid-line: #6b9b83;
+  /* Issue #136: 面は通常と同じ #ffe3e3 を引き継ぎ、区切り線だけ面に対し 3:1 以上にする */
+  --tile-urgent-line: #a85c5c;
 }
 
 :root[data-theme='dark'][data-high-contrast='true'] {
@@ -112,6 +121,8 @@
   --message-text: #ffffff;
   --text-muted: #c9ecd9;
   --grid-line: #4a8a68;
+  /* Issue #136: 面は通常と同じ #663f2a を引き継ぎ、区切り線だけ面に対し 3:1 以上にする */
+  --tile-urgent-line: #c69a80;
 }
 
 /* ===================================================================
@@ -598,7 +609,7 @@ h1[data-fit='single'] {
          よらない(下の .tile-nav .tile-label) */
       calc((100cqi + 2 * var(--ring-extra) - var(--label-nav-reserve)) / var(--label-fit-chars))
     ),
-    min(calc(var(--font-scale) * 4.8vh), 3.4rem)
+    min(calc(var(--font-scale) * 4.8vh), var(--label-max, 3.4rem))
   );
   /* Issue #82: 遷移タイルの予告(.tile-preview)の文字サイズ。ラベルの約50%、最小でも
      0.85rem 相当(--label-ratio で文字サイズ設定に追従)。予告の font-size・2行モードの
@@ -641,11 +652,18 @@ h1[data-fit='single'] {
   user-select: none;
 }
 
-/* Issue #36: 赤は上部メッセージ欄(.message-panel の urgent 色調と .emergency-status)だけ。
-   タイルは赤くしない(tone: 'urgent' のタイルも、緊急入口も通常面)。
-   Issue #77: 肯定/穏やかのトーンは廃止。全タイルが同じ通常面(.tile の --surface)。
-   --surface-calm は案内枠など非タイル用途。緊急入口は色や面で
-   区別せず、ラベル「緊急」・固定位置(ホーム先頭/下位画面2番目)・上部の緊急状態帯の文言で示す */
+/* Issue #36: 赤(--urgent-bg)は上部メッセージ欄(.message-panel の urgent 色調と .emergency-status)だけ。
+   パネルは真っ赤にしない。Issue #136: 押すと伝達欄が赤くなるパネル(.tile-urgent)だけは、赤みのある専用の面
+   (--tile-urgent-bg)にする。ほかのパネルは通常面(.tile の --surface)で、肯定/穏やかの色分けは無い(#77)。
+   --surface-calm は案内枠などパネル以外の用途。緊急入口は色や面で
+   区別せず、ラベル「緊急」・固定位置(ホーム先頭/下位画面2番目)・上部の緊急状態帯の文言で示す。
+   現在位置(.scanning)では面も区切り線も通常のパネルと同じにするので、:not(.scanning) に限る。
+   区切り線は自分の右辺・下辺なので、--grid-line を差し替えると同じ色のパネルどうしの境目に効く */
+.tile-urgent:not(.scanning) {
+  --grid-line: var(--tile-urgent-line);
+  background: var(--tile-urgent-bg);
+}
+
 /* Issue #3/#33: スキャン対象は遠目でも一目で分かる強調にする。
    隙間なしの格子では拡大(scale)すると隣のセルと重なるため使わない。
    代わりに、そのセルだけ暗い面に反転し(--surface-scanning)、セル内側に収まる
@@ -2096,18 +2114,27 @@ h1[data-fit='single'] {
   --label-cqb-min: 29;
 }
 
-/* アイコンを上に置くセルでは、アイコン(1.9em + 下の余白 0.12em)・ラベル 1 行(1.15em)・予告 2 行
-   (2.2 × --tile-preview-font ≒ 1.1em)を縦に積むので、合わせて約 4.4em がセルの高さに収まる大きさ
-   (cqb の係数 22.5)にする。上の下限(--label-cqb-min 29)のままだと、8 セルのタブレット縦などで
-   ラベルが予告に重なる(Issue #127)。ラベルが予告を避ける下の余白も、予告 2 行ぶんちょうどにする */
+/* アイコンを上に置くセルでは、アイコン・ラベル 1 行(1.15em)・予告 2 行(2.2 × --tile-preview-font ≒ 1.1em)を
+   縦に積む。8 セル・10 セルのタブレット縦はセルが低いので、そのままではラベルが予告に重なる(Issue #127)。
+   文字は小さくせず、収まらないぶんはアイコンを縮める(下の .tile-icon。セルに余裕があれば 1.9em のまま)。
+   ラベルが予告を避ける下の余白は、予告 2 行ぶんちょうどにする。
+   文字の大きさの上限(--label-max)は文字サイズ設定の比率(--label-ratio)に比例させる(標準は 0.85 × 4rem =
+   ほかの画面と同じ 3.4rem。大・特大はその上まで)。一律 3.4rem のままだと、大きい画面で標準が上限に近づき、
+   特大にしても大きくならない */
 @container (min-height: 150px) {
   .grid-board.grid-home .tile > * {
     --label-fit-chars: 4.02;
-    --tile-cqb: 22.5;
+    --label-max: calc(var(--label-ratio) * 4rem);
   }
 
   .grid-board.grid-home .tile-nav .tile-label {
     margin-bottom: calc(2.2 * var(--tile-preview-font));
+  }
+
+  /* 2.45em = ラベル 1.15em + 予告 2 行 1.1em + アイコン下の余白 0.12em + 丸めの余裕 0.08em */
+  .grid-board.grid-home .tile-icon {
+    width: min(1.9em, calc(100cqb - 2.45em));
+    height: min(1.9em, calc(100cqb - 2.45em));
   }
 }
 

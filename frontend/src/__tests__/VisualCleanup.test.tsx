@@ -1,4 +1,4 @@
-// Issue #36(赤は上部メッセージ欄だけ・タイルの赤ベタ塗り廃止)/ #33(スキャン枠の白縁・二重枠の撤去、
+// Issue #36(赤は上部メッセージ欄だけ・タイルの赤ベタ塗り廃止)/ #136(押すと伝達欄が赤くなるパネルだけ赤みの面)/ #33(スキャン枠の白縁・二重枠の撤去、
 // 選択状態は黄色枠一本)の見た目の約束を固定する。
 // jsdom は CSS を計算せず変数も展開しないため、CSS の静的解析(ルール/トークンの存在・不在・参照関係・
 // 色値からのコントラスト計算)+ DOM の属性(class / data-message-tone)で縛る。
@@ -7,8 +7,8 @@
 // デシジョンテーブル(テーマ × 高コントラスト × 画面 × タイル種 → 背景トークン / 枠 / 文字色)
 //   テーマ   | HC | 画面                 | タイル種                  | 背景トークン            | 枠(通常時) | 文字色
 //   明/夜    | -  | ホーム               | 緊急入口(.tile-emergency) | 通常面(--surface 系)     | なし   | --text
-//   明/夜    | -  | 不快/痛み/緊急詳細   | tone:'urgent'(苦しい等)   | 通常面(赤でない)         | なし   | --text
-//   明/夜    | -  | 緊急中の各画面       | tone:'urgent' / 通常      | 通常面(赤タイルなし)     | なし   | --text
+//   明/夜    | -  | 不快/痛みの強さ      | 押すと伝達欄が赤(苦しい等)| --tile-urgent-bg(#136)   | なし   | --text
+//   明/夜    | -  | 痛い場所/緊急詳細    | 画面遷移(胸)・緊急の詳細  | 通常面                   | なし   | --text
 //   明/夜    | -  | 全画面               | スキャン中(緊急入口含む)  | --surface-scanning       | 黄 ::after 1本 | --scan-text(-muted)
 //   明/夜    | 有 | 全画面               | スキャン中                | 同上(HC は枠だけ 9px に太る) | 黄 1本 | 同上
 //   全て     | 全 | 上部メッセージ欄     | urgent 色調/緊急状態帯    | --urgent-bg(赤はここだけ) | -   | --urgent-text
@@ -256,8 +256,19 @@ describe('Issue #36: 赤(--urgent-bg)の使用箇所は上部メッセージ欄�
     }
   })
 
-  it('.tile-urgent は CSS にルールを持たない(tone:urgent のタイルは通常面)', () => {
-    expect(stripComments(css)).not.toMatch(/\.tile-urgent/)
+  it('#136: .tile-urgent の CSS ルールは現在位置でないときの1つだけで、面と区切り線の変数だけを差し替える(赤 --urgent-* は使わない)', () => {
+    const src = stripComments(css)
+    expect(src.match(/\.tile-urgent[^{},]*(?=[{,])/g)?.map((x) => x.trim())).toEqual([
+      '.tile-urgent:not(.scanning)',
+    ])
+    const decls = blocksOf('.tile-urgent:not(.scanning)')
+      .split(';')
+      .map((d) => d.trim().replace(/\s+/g, ' '))
+      .filter(Boolean)
+    expect(decls).toEqual([
+      '--grid-line: var(--tile-urgent-line)',
+      'background: var(--tile-urgent-bg)',
+    ])
   })
 
   it('肯定・穏やかのトーンは復活しない(#77: .tile-positive / .tile-calm / data-message-tone=positive / --surface-positive が CSS に無い)', () => {
@@ -284,6 +295,52 @@ describe('Issue #36: 赤(--urgent-bg)の使用箇所は上部メッセージ欄�
     for (const m of src.matchAll(/([a-z-]+)\s*:\s*[^;{}]*#(?:b3261e|d7263d)[^;{}]*;/gi)) {
       expect(m[1], m[0]).toBe('--urgent-bg')
     }
+  })
+})
+
+describe('Issue #136: 押すと伝達欄が赤くなるパネルの色', () => {
+  for (const [theme, hc] of THEMES) {
+    const name = `${theme === 'light' ? '明るい' : '夜間'}${hc ? '+高コントラスト' : ''}`
+    const get = (t: string) => effective(theme, hc, t) as string
+
+    it(`${name}: 面は決定値(高コントラストでも同じ)で、真っ赤でも通常面でもない`, () => {
+      expect(get('--tile-urgent-bg')).toBe(theme === 'light' ? '#ffe3e3' : '#663f2a')
+      expect(isRed(get('--tile-urgent-bg'))).toBe(false)
+      expect(get('--tile-urgent-bg')).not.toBe(get('--surface'))
+    })
+
+    it(`${name}: 文字(--text。ライトは濃い色・夜間は白系)が面に対し 4.5:1 以上`, () => {
+      const textLum = lum(get('--text'))
+      if (theme === 'light') expect(textLum).toBeLessThan(0.05)
+      else expect(textLum).toBeGreaterThan(0.8)
+      expect(contrast(get('--text'), get('--tile-urgent-bg'))).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it(`${name}: 区切り線が、同じ色の面の上で通常の区切り線の通常面上の下限以上に見える(高コントラストは 3:1)`, () => {
+      // 通常テーマの下限は、既存の通常パネルの区切り線(ライト 1.35:1 / 夜間 1.66:1)。高コントラストは非テキストの 3:1
+      const floor = hc ? 3 : contrast(get('--grid-line'), get('--surface'))
+      expect(contrast(get('--tile-urgent-line'), get('--tile-urgent-bg'))).toBeGreaterThanOrEqual(
+        floor,
+      )
+    })
+
+    it(`${name}: 黄枠は面に対し 3:1 以上(夜間)。現在位置の面とは区別できる`, () => {
+      // 明るいテーマの淡い面と黄枠は、通常の白面と同じく 3:1 に届かない(現在位置は暗い面への反転で示す)
+      if (theme === 'dark')
+        expect(contrast(get('--scan-ring'), get('--tile-urgent-bg'))).toBeGreaterThanOrEqual(3)
+      // 夜間の現在位置 #6b5510 と決定色 #663f2a の明るさの比は 1.27:1。通常面の下限 1.3(上の検査。変えていない)に
+      // 届かないので、この面だけ下限を 1.25 にする(Issue #136。現在位置は黄枠でも示す)
+      expect(contrast(get('--surface-scanning'), get('--tile-urgent-bg'))).toBeGreaterThanOrEqual(
+        theme === 'dark' ? 1.25 : 1.3,
+      )
+    })
+  }
+
+  it('現在位置の色と黄枠は変わらない', () => {
+    expect(effective('light', false, '--surface-scanning')).toBe('#0f241d')
+    expect(effective('dark', false, '--surface-scanning')).toBe('#6b5510')
+    expect(effective('light', false, '--scan-ring')).toBe('#facc15')
+    expect(effective('dark', false, '--scan-ring')).toBe('#facc15')
   })
 })
 
@@ -375,12 +432,12 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     expect(all[1].classList.contains('tile-emergency')).toBe(true)
     const suffering = all.find((t) => labelOf(t) === '苦しい') as HTMLElement
     expect(suffering).toBeTruthy()
-    expect(suffering.classList.contains('tile-urgent')).toBe(true) // 意味(tone)は DOM に残る
-    expect(suffering.classList.contains('tile-emergency')).toBe(false) // 見た目は通常面
+    expect(suffering.classList.contains('tile-urgent')).toBe(true) // 押すと伝達欄が赤くなる(#136)
+    expect(suffering.classList.contains('tile-emergency')).toBe(false)
     expectNoRedTiles(container)
   })
 
-  it('痛み(場所): 緊急入口は2番目に固定、tone:urgent の「胸」は赤タイルではない', () => {
+  it('痛み(場所): 緊急入口は2番目に固定、画面遷移の「胸」は tone:urgent でも色を付けない(#136)', () => {
     const { container } = render(() => <App />)
     press(container, '不快')
     press(container, '痛い')
@@ -388,7 +445,7 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     expect(labelOf(all[1])).toBe('緊急')
     const chest = all.find((t) => labelOf(t) === '胸') as HTMLElement
     expect(chest, '痛み(場所)画面に「胸」が無い').toBeTruthy()
-    expect(chest.classList.contains('tile-urgent')).toBe(true)
+    expect(chest.classList.contains('tile-urgent')).toBe(false)
     expect(chest.classList.contains('tile-emergency')).toBe(false)
     expectNoRedTiles(container)
   })
@@ -402,10 +459,8 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     expect(all.some((t) => t.classList.contains('tile-emergency'))).toBe(false)
     expect(all.length).toBeGreaterThan(0)
     for (const t of all) {
-      // 緊急詳細の各候補は tone:urgent(意味)だが赤面ルールは無い。戻る・「緊急を解除」(Issue #108 の遷移項目)は通常の見た目
-      expect(t.classList.contains('tile-urgent'), labelOf(t)).toBe(
-        labelOf(t) !== '戻る' && labelOf(t) !== '緊急を解除',
-      )
+      // 緊急詳細の各候補は、赤くなるのが緊急の帯で伝達欄ではないので、色を付けない(#136)
+      expect(t.classList.contains('tile-urgent'), labelOf(t)).toBe(false)
     }
     expectNoRedTiles(container)
     // 緊急帯の中のテキストは帯のラベルであり、タイル(.tile)の子孫ではない
@@ -438,7 +493,7 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
     }
   })
 
-  it('メニュー定義: tone:urgent のタイルは(画面ごと)ラベルを持ち、緊急入口(action:emergency)だけが .tile-emergency の対象', () => {
+  it('メニュー定義: 緊急入口(action:emergency)は画面ごとに1つまでで、ほかのパネルに同じラベルは無い', () => {
     const screens: ScreenId[] = [
       'home',
       'urgentDetail',
@@ -455,8 +510,8 @@ describe('Issue #36/#33: App の DOM(赤タイルが無い・緊急入口の色�
       const emergencyItems = items.filter((i) => i.action.type === 'emergency')
       for (const e of emergencyItems) expect(e.label).toBe('緊急')
       expect(emergencyItems.length).toBeLessThanOrEqual(1)
-      // 緊急以外の urgent タイルに、緊急入口と同じラベルは無い(色以外で区別できる)
-      for (const i of items.filter((x) => x.tone === 'urgent' && x.action.type !== 'emergency')) {
+      // 緊急以外のパネルに、緊急入口と同じラベルは無い(色以外で区別できる)
+      for (const i of items.filter((x) => x.action.type !== 'emergency')) {
         expect(i.label).not.toBe('緊急')
       }
     }

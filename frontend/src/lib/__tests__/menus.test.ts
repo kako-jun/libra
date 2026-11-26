@@ -13,6 +13,7 @@ import {
   buildUrgentDetailMenu,
   buildEmergencyReleaseMenu,
   type ScreenId,
+  transmissionTone,
 } from '../menus'
 
 const ALL_SCREENS: ScreenId[] = [...PATIENT_SCREEN_IDS]
@@ -545,9 +546,12 @@ describe('痛みの強さ・快/要望・気分(Issue #12)', () => {
 
   it('「とても」は緊急色、場所の色(胸=緊急色)は少し/かなり/場所だけにも引き継ぐ', () => {
     const head1 = buildMenu('painIntensity', { ...homeOptions, pain: head })
-    const tone = (items: typeof head1, label: string) => items.find((i) => i.label === label)?.tone
+    const tone = (items: typeof head1, label: string) => {
+      const item = items.find((i) => i.label === label)
+      return item ? transmissionTone(item.action) : undefined
+    }
     expect(tone(head1, 'とても')).toBe('urgent')
-    expect(tone(head1, '少し')).toBeUndefined()
+    expect(tone(head1, '少し')).toBe('neutral')
     const chest1 = buildMenu('painIntensity', { ...homeOptions, pain: chest })
     expect(tone(chest1, '少し')).toBe('urgent')
     expect(tone(chest1, '場所だけ')).toBe('urgent')

@@ -652,9 +652,11 @@ async function checkFontSizeMonotonicity(chromium, port) {
       // ホーム(390x844)。10 セル(縦 2×5)のときの実測 28.39px を基準にした下限 27 を、8 セル(2×4、#127)でも保つ
       { vw: 390, vh: 844, screenName: 'home', keys: [], minPx: 27 },
       { vw: 390, vh: 844, screenName: 'discomfort', keys: ['6'], minPx: 21 },
-      // 旧実測41.17px(min 34)。タブレット縦のホームは 2×4(#126 で 3×3 をやめた)。下限は元の 34 のまま
-      // (PR #124 レビュー S1)
-      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 34 },
+      // タブレット縦のホームは 2×4(#126 で 3×3 をやめた)。下限は、3×3 だったときの実測
+      // (768x1024 37.47 / 820x1180 40.27 / 1024x1366 51.25px)を下回らないこと(旧下限: 768x1024 は 34)
+      { vw: 768, vh: 1024, screenName: 'home', keys: [], minPx: 37.4 },
+      { vw: 820, vh: 1180, screenName: 'home', keys: [], minPx: 40.2 },
+      { vw: 1024, vh: 1366, screenName: 'home', keys: [], minPx: 51.2 },
       // 実測28.79px
       { vw: 1024, vh: 768, screenName: 'discomfort', keys: ['6'], minPx: 27 },
     ]
@@ -1673,7 +1675,10 @@ async function checkRepeatPulseReducedMotion(chromium, port) {
  * - 丸ごと空く行が無い
  * - はい と いいえ は同じ段(上端・下端が一致)で、いいえ が はい のすぐ右に接する
  * - 全タイルが画面内で、ラベルはタイルからはみ出さない
- * 起動直後・伝達後・緊急中(詳細を伝えてホームへ戻った状態)で確かめる
+ * - ラベルは下の予告に重ならない。アイコンはラベルの文字に重ならず、出ているときは文字の 0.85 倍以上
+ *   (高さが足りないセルではアイコンを縮める。標準の配色ではほぼ文字と同じ大きさが下限。高コントラストは
+ *   標準より小さくならないよう文字だけが数 px 大きくなる(#34)ぶん、アイコンは文字の約 0.87 倍まで下がる)
+ * 起動直後・伝達後・緊急中(詳細を伝えてホームへ戻った状態)× 文字サイズ 標準/大/特大 × 高コントラスト OFF/ON で確かめる
  */
 async function checkHomeGrid(chromium, port) {
   const server = await startServer('plain', port)
@@ -1685,6 +1690,9 @@ async function checkHomeGrid(chromium, port) {
     [600, 600],
     [600, 960],
     [768, 1024],
+    [800, 1280],
+    [820, 1180],
+    [834, 1194],
     [1024, 1366],
     [568, 320],
     [667, 375],
@@ -1692,6 +1700,10 @@ async function checkHomeGrid(chromium, port) {
     [1024, 768],
     [1280, 720],
   ]
+  const looks = ['standard', 'large', 'xlarge'].flatMap((size) => [
+    [size, false],
+    [size, true],
+  ])
   const states = [
     ['起動直後', []],
     ['伝達後', ['3']],
@@ -1700,14 +1712,14 @@ async function checkHomeGrid(chromium, port) {
   try {
     for (const [width, height] of viewports) {
       for (const morseEnabled of [false, true]) {
-        for (const fontSize of ['standard', 'xlarge']) {
+        for (const [fontSize, highContrast] of looks) {
           for (const [stateName, keys] of states) {
-            const name = `[home-grid ${width}x${height} ${morseEnabled ? 'モールス' : '通常'} ${fontSize} ${stateName}]`
+            const name = `[home-grid ${width}x${height} ${morseEnabled ? 'モールス' : '通常'} ${fontSize}${highContrast ? ' 高コントラスト' : ''} ${stateName}]`
             const context = await browser.newContext({ viewport: { width, height } })
             const page = await context.newPage()
             await page.addInitScript(
               (value) => window.localStorage.setItem('libra', JSON.stringify(value)),
-              { intervalMs: 60000, debounceMs: 0, morseEnabled, fontSize },
+              { intervalMs: 60000, debounceMs: 0, morseEnabled, fontSize, highContrast },
             )
             await page.goto(`http://localhost:${port}/?dev`)
             await page.waitForTimeout(150)
@@ -1728,7 +1740,32 @@ async function checkHomeGrid(chromium, port) {
                 const l = label ? range.getBoundingClientRect() : null
                 const preview = el.querySelector('.tile-preview')
                 const pr = preview ? preview.getBoundingClientRect() : null
+                // アイコンと、ラベルの文字(テキストノードの行矩形)の交差。縦横どちらも食い込んだ量を見る
+                const icon = el.querySelector('.tile-icon')
+                const shown = icon && getComputedStyle(icon).display !== 'none'
+                const ir = shown ? icon.getBoundingClientRect() : null
+                let iconOverlap = 0
+                if (ir && label) {
+                  const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT)
+                  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                    if (!n.textContent.trim()) continue
+                    const text = document.createRange()
+                    text.selectNodeContents(n)
+                    for (const x of text.getClientRects()) {
+                      iconOverlap = Math.max(
+                        iconOverlap,
+                        Math.min(
+                          Math.min(ir.right, x.right) - Math.max(ir.left, x.left),
+                          Math.min(ir.bottom, x.bottom) - Math.max(ir.top, x.top),
+                        ),
+                      )
+                    }
+                  }
+                }
                 return {
+                  iconOverlap,
+                  // 出ているアイコンの大きさ ÷ ラベルの文字の大きさ
+                  iconRatio: ir ? ir.height / parseFloat(getComputedStyle(label).fontSize) : null,
                   previewOverlap: l && pr && pr.height > 0 ? l.bottom - pr.top : 0,
                   text: label?.textContent ?? '',
                   display: getComputedStyle(el).display,
@@ -1799,6 +1836,16 @@ async function checkHomeGrid(chromium, port) {
               if (t.previewOverlap > 1) {
                 failures.push(
                   `${name} 「${t.text}」のラベルと予告が ${t.previewOverlap.toFixed(1)}px 重なる`,
+                )
+              }
+              if (t.iconOverlap > 1) {
+                failures.push(
+                  `${name} 「${t.text}」のアイコンがラベルの文字に ${t.iconOverlap.toFixed(1)}px 重なる`,
+                )
+              }
+              if (t.iconRatio !== null && t.iconRatio < 0.85) {
+                failures.push(
+                  `${name} 「${t.text}」のアイコンが小さすぎる(文字の ${t.iconRatio.toFixed(2)} 倍)`,
                 )
               }
               if (t.labelOut > 1) {
