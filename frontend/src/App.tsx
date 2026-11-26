@@ -31,6 +31,8 @@ import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
 import TileIcon, { hasTileIcon } from './TileIcon'
+import RangeField from './RangeField'
+import InstallSection from './InstallSection'
 import { clearPhoto, fileToPhotoDataUrl, loadPhoto, savePhoto } from './lib/photo'
 import {
   APP_BUILD_DATE,
@@ -58,7 +60,7 @@ import {
   type MorseState,
   type MorseSymbol,
 } from './lib/morse'
-import { buildBehaviorNoteMap, buildCaregiverMenuNotes, buildScreenNotes } from './lib/guidance'
+import { buildBehaviorNoteMap, buildScreenNotes } from './lib/guidance'
 import { clearEmergencyState, loadEmergencyState, saveEmergencyState } from './lib/emergencyState'
 
 /** 案内を短縮形にする画面(globals.css の低い/狭い画面のブレークポイントと同じ) */
@@ -71,19 +73,21 @@ const EMERGENCY_RELEASED_MESSAGE = '緊急を解除しました。'
  * (例「緊急（息ができない・痛い）を解除しました。」)。詳細が無ければ「緊急を解除しました。」
  */
 export const emergencyReleasedMessage = (details: readonly string[]) =>
-  details.length === 0 ? EMERGENCY_RELEASED_MESSAGE : `緊急（${details.join('・')}）を解除しました。`
+  details.length === 0
+    ? EMERGENCY_RELEASED_MESSAGE
+    : `緊急（${details.join('・')}）を解除しました。`
 /** 緊急の詳細を伝達履歴に積むときの文(読み上げと同じ、緊急の主文(EMERGENCY_MESSAGE)＋詳細) */
 const emergencyDetailHistoryText = (label: string) => `${EMERGENCY_MESSAGE}${label}`
 /** 振り返れる伝達の件数の上限(Issue #120)。古いものから捨てる */
 const HISTORY_MAX = 50
-/** 介助者用メニューのカテゴリタブ(Issue #31)。並びは requirements.md §4.1.1 の木に合わせる */
+/** 介助者用メニューのカテゴリタブ(Issue #31)。重要なものほど左、関係の近いものは隣(Issue #140)。矢印キーの移動順もこの並び */
 const CAREGIVER_TABS = [
-  { id: 'status', label: '端末の状態' },
+  { id: 'status', label: '使用準備' },
   { id: 'scan', label: 'スキャン' },
-  { id: 'input', label: 'モールス' },
   { id: 'feedback', label: '音と振動' },
   { id: 'display', label: '表示' },
   { id: 'phrases', label: 'フレーズ' },
+  { id: 'input', label: 'モールス' },
   { id: 'backup', label: 'データ' },
   { id: 'about', label: 'このアプリ' },
 ] as const
@@ -422,18 +426,6 @@ export default function App() {
     const onChange = () => setCompactNotes(compactQuery.matches)
     compactQuery.addEventListener?.('change', onChange)
     onCleanup(() => compactQuery.removeEventListener?.('change', onChange))
-  })
-  // 介助者用メニュー上部の案内を短縮形にするのは、高さが足りない画面だけ(Issue #111。縦長スマホは通常の文言)
-  const lowScreenQuery =
-    typeof window !== 'undefined' && window.matchMedia
-      ? window.matchMedia('(max-height: 500px)')
-      : null
-  const [lowScreen, setLowScreen] = createSignal(lowScreenQuery?.matches === true)
-  onMount(() => {
-    if (!lowScreenQuery) return
-    const onChange = () => setLowScreen(lowScreenQuery.matches)
-    lowScreenQuery.addEventListener?.('change', onChange)
-    onCleanup(() => lowScreenQuery.removeEventListener?.('change', onChange))
   })
   // Issue #58/#79: 画面下の固定案内は緊急中の振動だけ。通常時は空で、帯ごと出さない
   const screenNotes = createMemo(() =>
@@ -1685,14 +1677,16 @@ export default function App() {
             <div class="caregiver-header">
               <div class="caregiver-header-grid">
                 <h2>介助者用メニュー</h2>
-                <button
-                  type="button"
-                  class="caregiver-action caregiver-emergency-clear"
-                  onClick={clearEmergency}
-                  disabled={!emergencyActive()}
-                >
-                  緊急を解除{emergencyActive() ? '' : '（緊急なし）'}
-                </button>
+                {/* Issue #137: 緊急が無いときは、解除ボタンごと出さない */}
+                <Show when={emergencyActive()}>
+                  <button
+                    type="button"
+                    class="caregiver-action caregiver-emergency-clear"
+                    onClick={clearEmergency}
+                  >
+                    緊急を解除
+                  </button>
+                </Show>
                 <button
                   type="button"
                   class="caregiver-action caregiver-close"
@@ -1702,17 +1696,6 @@ export default function App() {
                 </button>
               </div>
             </div>
-
-            <ul class="caregiver-notes" aria-label="介助者用メニューの自動で起きること">
-              <For
-                each={buildCaregiverMenuNotes(CAREGIVER_MENU_IDLE_TIMEOUT_MS, {
-                  morseEnabled: settings().morseEnabled,
-                  compact: lowScreen(),
-                })}
-              >
-                {(note) => <li>{note}</li>}
-              </For>
-            </ul>
 
             {/* Issue #111: タブが横に続くときは、続きがある側にだけ矢印を出す。タップで表示範囲を動かす */}
             <div class="caregiver-tabs">
@@ -1776,9 +1759,10 @@ export default function App() {
                 aria-labelledby="caregiver-tab-status"
                 tabindex="0"
               >
-                {/* Issue #111: ここは端末の状態の表示だけ(操作できる設定は無い)。ボタンに見える囲みにしない */}
+                {/* Issue #111: 状態の表示は、ボタンに見える囲みにしない。変えられる設定は無い。
+                    このタブの操作はインストール(Issue #158)だけ */}
                 <p class="caregiver-lead">
-                  この端末のいまの状態です。ここで変える設定はありません。
+                  この端末の使用準備の状態です。ここで変える設定はありません。
                 </p>
                 <StatusRow
                   label={WAKE_LOCK_LABELS[wakeLockStatus()]}
@@ -1788,6 +1772,7 @@ export default function App() {
                   label={OFFLINE_READY_LABELS[offlineReadyStatus()]}
                   ok={offlineReadyStatus() === 'ready'}
                 />
+                <InstallSection />
               </div>
             </Show>
 
@@ -1799,72 +1784,58 @@ export default function App() {
                 aria-labelledby="caregiver-tab-scan"
                 tabindex="0"
               >
-                <label class="caregiver-field">
-                  <span>スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒</span>
-                  <input
-                    type="range"
-                    min="500"
-                    max="5000"
-                    step="100"
-                    value={settings().intervalMs}
-                    onInput={(event) =>
-                      updateSettings({ intervalMs: Number(event.currentTarget.value) })
-                    }
-                  />
-                </label>
+                <RangeField
+                  name="スキャン間隔"
+                  min={500}
+                  max={5000}
+                  step={100}
+                  value={settings().intervalMs}
+                  onValue={(intervalMs) => updateSettings({ intervalMs })}
+                >
+                  スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒
+                </RangeField>
 
-                <label class="caregiver-field">
-                  <span>
-                    先頭待機倍率: 間隔 × {Number(settings().headHoldMultiplier.toFixed(1))}（約
-                    {((settings().intervalMs * settings().headHoldMultiplier) / 1000).toFixed(1)}
-                    秒）
-                  </span>
-                  {/* 倍率は 1/3 刻み（既定 4/3 を丸めずに選べる）。値は整数（3倍した値）で扱う */}
-                  <input
-                    type="range"
-                    min="3"
-                    max="15"
-                    step="1"
-                    value={Math.round(settings().headHoldMultiplier * 3)}
-                    onInput={(event) =>
-                      updateSettings({ headHoldMultiplier: Number(event.currentTarget.value) / 3 })
-                    }
-                  />
-                </label>
+                {/* 倍率は 1/3 刻み（既定 4/3 を丸めずに選べる）。値は整数（3倍した値）で扱う */}
+                <RangeField
+                  name="先頭待機倍率"
+                  min={3}
+                  max={15}
+                  step={1}
+                  value={Math.round(settings().headHoldMultiplier * 3)}
+                  onValue={(thirds) => updateSettings({ headHoldMultiplier: thirds / 3 })}
+                >
+                  先頭待機倍率: 間隔 × {Number(settings().headHoldMultiplier.toFixed(1))}（約
+                  {((settings().intervalMs * settings().headHoldMultiplier) / 1000).toFixed(1)}
+                  秒）
+                </RangeField>
 
                 <div class="caregiver-item">
-                  <label class="caregiver-field">
-                    <span>連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="3000"
-                      step="100"
-                      value={settings().debounceMs}
-                      onInput={(event) =>
-                        updateSettings({ debounceMs: Number(event.currentTarget.value) })
-                      }
-                    />
-                  </label>
+                  <RangeField
+                    name="連打無視"
+                    min={0}
+                    max={3000}
+                    step={100}
+                    value={settings().debounceMs}
+                    onValue={(debounceMs) => updateSettings({ debounceMs })}
+                  >
+                    連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒
+                  </RangeField>
                   <Show when={behaviorNotes().debounce}>
                     {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
                   </Show>
                 </div>
 
                 <div class="caregiver-item">
-                  <label class="caregiver-field">
-                    <span>押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="2000"
-                      step="100"
-                      value={settings().minHoldMs}
-                      onInput={(event) =>
-                        updateSettings({ minHoldMs: Number(event.currentTarget.value) })
-                      }
-                    />
-                  </label>
+                  <RangeField
+                    name="押下時間の下限"
+                    min={0}
+                    max={2000}
+                    step={100}
+                    value={settings().minHoldMs}
+                    onValue={(minHoldMs) => updateSettings({ minHoldMs })}
+                  >
+                    押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒
+                  </RangeField>
 
                   <div class="caregiver-field">
                     <span>決定のタイミング</span>
@@ -1937,64 +1908,49 @@ export default function App() {
 
                 <Show when={settings().morseEnabled}>
                   <div class="caregiver-sub">
-                    <label class="caregiver-field">
-                      <span>
-                        長押し（－）の境目: {(settings().morseDashMs / 1000).toFixed(1)} 秒
-                        {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
-                        settings().morseDashMs
-                          ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
-                          : ''}
-                      </span>
-                      <input
-                        type="range"
-                        min="150"
-                        max="1500"
-                        step="50"
-                        value={settings().morseDashMs}
-                        onInput={(event) =>
-                          updateSettings({ morseDashMs: Number(event.currentTarget.value) })
-                        }
-                      />
-                    </label>
-                    <label class="caregiver-field">
-                      <span>
-                        文字の確定までの無入力: {(settings().morseLetterGapMs / 1000).toFixed(1)}{' '}
-                        秒
-                      </span>
-                      <input
-                        type="range"
-                        min="500"
-                        max="3000"
-                        step="100"
-                        value={settings().morseLetterGapMs}
-                        onInput={(event) => {
-                          const letterGap = Number(event.currentTarget.value)
-                          // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
-                          updateSettings({
-                            morseLetterGapMs: letterGap,
-                            morseWordGapMs: Math.max(
-                              settings().morseWordGapMs,
-                              letterGap + MORSE_WORD_GAP_MARGIN_MS,
-                            ),
-                          })
-                        }}
-                      />
-                    </label>
-                    <label class="caregiver-field">
-                      <span>
-                        語の区切りまでの無入力: {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
-                      </span>
-                      <input
-                        type="range"
-                        min="1500"
-                        max="8000"
-                        step="100"
-                        value={settings().morseWordGapMs}
-                        onInput={(event) =>
-                          updateSettings({ morseWordGapMs: Number(event.currentTarget.value) })
-                        }
-                      />
-                    </label>
+                    <RangeField
+                      name="長押しの境目"
+                      min={150}
+                      max={1500}
+                      step={50}
+                      value={settings().morseDashMs}
+                      onValue={(morseDashMs) => updateSettings({ morseDashMs })}
+                    >
+                      長押し（－）の境目: {(settings().morseDashMs / 1000).toFixed(1)} 秒
+                      {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
+                      settings().morseDashMs
+                        ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
+                        : ''}
+                    </RangeField>
+                    <RangeField
+                      name="文字の確定までの無入力"
+                      min={500}
+                      max={3000}
+                      step={100}
+                      value={settings().morseLetterGapMs}
+                      onValue={(letterGap) =>
+                        // 語の区切りは文字の確定より常に長くする。足りなければ一緒に延ばす
+                        updateSettings({
+                          morseLetterGapMs: letterGap,
+                          morseWordGapMs: Math.max(
+                            settings().morseWordGapMs,
+                            letterGap + MORSE_WORD_GAP_MARGIN_MS,
+                          ),
+                        })
+                      }
+                    >
+                      文字の確定までの無入力: {(settings().morseLetterGapMs / 1000).toFixed(1)} 秒
+                    </RangeField>
+                    <RangeField
+                      name="語の区切りまでの無入力"
+                      min={1500}
+                      max={8000}
+                      step={100}
+                      value={settings().morseWordGapMs}
+                      onValue={(morseWordGapMs) => updateSettings({ morseWordGapMs })}
+                    >
+                      語の区切りまでの無入力: {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
+                    </RangeField>
                   </div>
                 </Show>
 
@@ -2253,8 +2209,8 @@ export default function App() {
                   <h3 class="caregiver-lead">使い方</h3>
                   <ul>
                     <li>
-                      本人は、黄色い枠（カーソル）が伝えたい項目に来たときに、スイッチ（キーや Bluetooth
-                      シャッター）を1回押します。タイルを直接タップしても選べます。
+                      本人は、黄色い枠（カーソル）が伝えたい項目に来たときに、スイッチ（キーや
+                      Bluetooth シャッター）を1回押します。タイルを直接タップしても選べます。
                     </li>
                     <li>
                       急ぎのときは先頭の「緊急」を選びます。緊急の表示は、介助者がこのメニューの「緊急を解除」を押すか、本人が
@@ -2315,7 +2271,7 @@ export default function App() {
   )
 }
 
-/** 介助者用メニュー「端末の状態」の1行。操作できない状態表示なので、ボタンに見える囲みにしない(Issue #111) */
+/** 介助者用メニュー「使用準備」の1行。操作できない状態表示なので、ボタンに見える囲みにしない(Issue #111) */
 function StatusRow(props: { label: string; ok: boolean }) {
   // 「項目: 値 — 必要な対応」を、状態と対応に分けて出す
   const parts = () => props.label.split(' — ')
@@ -2370,7 +2326,11 @@ function TabReset(props: { tabLabel: string; targets: string; onReset: () => voi
       </Show>
       <div class="phrase-actions">
         <Show when={armed()}>
-          <button type="button" class="caregiver-action caregiver-reset-cancel" onClick={() => setArmed(false)}>
+          <button
+            type="button"
+            class="caregiver-action caregiver-reset-cancel"
+            onClick={() => setArmed(false)}
+          >
             やめる
           </button>
         </Show>

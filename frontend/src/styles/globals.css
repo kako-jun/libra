@@ -870,8 +870,10 @@ h1[data-fit='single'] {
 /* Issue #31: 見出し・緊急解除・閉じるはカテゴリ切替と独立して常に見える(スクロールしない)
    Issue #91: 「閉じる」はどの幅でもパネル右上の角(padding の内側)に固定する。flex-wrap の落ち方には頼らず、
    grid-template-areas で明示する。DOM 順は 見出し → 緊急解除 → 閉じる のまま(Tab 順を変えない)。
-   幅に余裕がある(ヘッダが 28em 以上)ときは 1 行 [見出し | 緊急解除 | 閉じる]、足りないときは
-   1 行目 [見出し | 閉じる]・2 行目 [緊急解除] にする。em はブラウザ既定の文字サイズに追従する(アプリの文字サイズ設定は介助者用メニューに影響しないので、標準と特大で切替幅は同じ)。
+   Issue #152: 緊急解除はヘッダの左右の中央に置く。幅に余裕がある(ヘッダが 34em 以上)ときは 1 行
+   [見出し | 緊急解除 | 閉じる](左右の列を同じ幅にして中央をそろえる)、足りないときは 1 行目
+   [見出し | 閉じる]・2 行目 [緊急解除](中央)にする。緊急が無いときは緊急解除が無い(Issue #137)ので、
+   2 行目の余白は行の gap でなくボタンの margin で取る。em はブラウザ既定の文字サイズに追従する(アプリの文字サイズ設定は介助者用メニューに影響しないので、標準と特大で切替幅は同じ)。
    「閉じる」は align-self: start で、見出しが折り返しても 1 行目の上端(パネルの右上の角)に固定する。 */
 .caregiver-header {
   flex: none;
@@ -885,7 +887,7 @@ h1[data-fit='single'] {
     'title close'
     'emergency emergency';
   align-items: center;
-  gap: 8px 12px;
+  gap: 0 12px;
 }
 
 .caregiver-header h2 {
@@ -895,22 +897,24 @@ h1[data-fit='single'] {
 
 .caregiver-header .caregiver-emergency-clear {
   grid-area: emergency;
-  justify-self: start;
+  justify-self: center;
+  margin-top: 8px;
 }
 
 .caregiver-header .caregiver-close {
   grid-area: close;
   align-self: start;
+  justify-self: end;
 }
 
-@container (min-width: 28em) {
+@container (min-width: 34em) {
   .caregiver-header-grid {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     grid-template-areas: 'title emergency close';
   }
 
   .caregiver-header .caregiver-emergency-clear {
-    justify-self: auto;
+    margin-top: 0;
   }
 }
 
@@ -1022,13 +1026,11 @@ h1[data-fit='single'] {
   gap: 12px;
 }
 
-/* 上の設定が ON のときだけ効く設定。左の線と字下げで従属を示す */
+/* 上の設定が ON のときだけ効く設定。字下げと余白で従属を示す(縦線は引かない。Issue #142) */
 .caregiver-sub {
   display: grid;
   gap: 16px;
-  margin-left: 12px;
-  padding-left: 14px;
-  border-left: 4px solid var(--caregiver-status-ok-border);
+  padding-left: 30px;
 }
 
 .caregiver-tabpanel > .caregiver-sub {
@@ -1067,11 +1069,54 @@ h1[data-fit='single'] {
   color: var(--text-muted);
 }
 
-/* 文字サイズのサンプル。本人画面のタイルと同じ式(.tile と共有する --tile-label-font)で描く */
+/* Issue #141: スライダーと、その左右の 1 段階ずつの矢印。矢印の場所は上下限でも残す */
+.caregiver-range-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+}
+
+.caregiver-range-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+}
+
+.caregiver-range-step {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  color: var(--text);
+  background: var(--caregiver-status-ok-bg);
+  border: 2px solid var(--caregiver-action-bg);
+  border-radius: 8px;
+}
+
+/* 上限・下限では外側の矢印を出さない(場所は残る) */
+.caregiver-range-step:disabled {
+  visibility: hidden;
+}
+
+.caregiver-range-step svg {
+  width: 14px;
+  height: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 文字サイズのサンプル。本人画面のタイルと同じ式(.tile と共有する --tile-label-font)で描く。
+   中央に置き(Issue #143)、高さは固定(特大の文字が入る高さ)なので、サイズを変えても下の項目は動かない */
 .font-size-sample {
   display: grid;
   place-items: center;
-  justify-self: end;
+  justify-self: center;
   width: min(100%, 320px);
   height: 150px;
   padding: var(--scan-ring-inset);
@@ -1079,6 +1124,16 @@ h1[data-fit='single'] {
   background: var(--surface);
   border: var(--grid-line-width) solid var(--grid-line);
   overflow: hidden;
+}
+
+/* Issue #158: ページのボタンからインストールできない環境で示す手順 */
+.install-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 1.3em;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 /* 広い画面で中身が間延びしないよう、タブ内の子要素だけ読みやすい幅に抑える(パネル・ヘッダ・タブ列は全幅) */
@@ -1754,8 +1809,8 @@ h1[data-fit='single'] {
 /* ===================================================================
    Issue #58/#79: 操作と自動で起きることの常時案内。
    本人画面は画面下端の固定帯(.screen-notes)。Issue #79 で緊急中の振動の行だけに絞り、通常時は帯ごと出さない。
-   設定に応じた挙動の説明は介助者用メニュー「状態」タブの「いまの動作」(.caregiver-behavior)、
-   自動で起きること(60秒閉じる等)は上部の固定帯(.caregiver-notes)。隠す操作は無い。
+   設定に応じた挙動の説明は介助者用メニュー「スキャン」タブの原因の設定の下(.caregiver-behavior)。
+   隠す操作は無い。
    本人はスクロールできないため、帯は高さ分だけタイル/メッセージ領域を縮め、はみ出さない。
    =================================================================== */
 .app-shell {
@@ -1780,25 +1835,12 @@ h1[data-fit='single'] {
   list-style: none;
 }
 
-.screen-notes li,
-.caregiver-notes li {
+.screen-notes li {
   /* 文として続けて流し込み、行を無駄にしない(1項目1行にすると帯が高くなる) */
   display: inline;
   margin-right: 1em;
   overflow-wrap: anywhere;
   line-break: strict;
-}
-
-.caregiver-notes {
-  flex: none;
-  margin: 0;
-  list-style: none;
-  padding: 6px 10px;
-  color: var(--text);
-  background: var(--caregiver-status-ok-bg);
-  border: 1px solid var(--caregiver-status-ok-border);
-  font-size: 1rem;
-  line-height: 1.35;
 }
 
 @media (max-width: 480px), (max-height: 500px) {
@@ -1827,19 +1869,9 @@ h1[data-fit='single'] {
     padding: 3px 12px;
   }
 
-  /* 帯が増えた分、短い画面では設定ペインの下限を詰める(ペインはスクロールする) */
+  /* 短い画面では設定ペインの下限を詰める(ペインはスクロールする) */
   .caregiver-tabpanel {
     min-height: 4.5rem;
-  }
-
-}
-
-/* 介助者用メニュー上部の案内を詰めるのは、高さが足りない画面だけ(Issue #111。縦長スマホは通常の大きさと文言) */
-@media (max-height: 500px) {
-  .caregiver-notes {
-    font-size: 0.8rem;
-    line-height: 1.2;
-    padding: 3px 8px;
   }
 }
 

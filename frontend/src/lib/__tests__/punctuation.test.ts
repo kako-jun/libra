@@ -54,7 +54,6 @@ import {
 } from '../menus'
 import {
   buildBehaviorNotes,
-  buildCaregiverMenuNotes,
   buildScreenNotes,
   type BehaviorNotesContext,
   type ScreenNotesContext,
@@ -329,11 +328,6 @@ describe('Issue #46 文言の規則(静的検査)', () => {
             }
           }
         }
-      }
-    }
-    for (const compact of [false, true]) {
-      for (const morseEnabled of [false, true]) {
-        out.push(...buildCaregiverMenuNotes(60000, { morseEnabled, compact }))
       }
     }
     return out
