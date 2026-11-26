@@ -5,6 +5,8 @@
 //
 // - back-navigation-and-emergency-retention: 緊急詳細の戻る・状態保持、通常下位画面の戻る→緊急順、痛い場所から不快への親戻り
 // - breadcrumb-not-truncated: パンくずが省略されず、折り返した祖先ボタンで正しい画面へ戻れる(#69/#81)
+// - press-anywhere: ボタン以外を押すと黄色を選ぶ(#134)。タッチとマウスで、背景の押下で画面が変わって指の下に
+//   現れたボタンへ同じ押下の click が届いても動かないこと、パネル・ボタンは自分の操作だけをすることを実描画で踏む
 
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
@@ -277,6 +279,182 @@ async function checkBreadcrumbNotTruncated(chromium, port) {
   return failures
 }
 
+async function checkPressAnywhere(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+
+  try {
+    for (const mode of ['touch', 'mouse']) {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: mode === 'touch',
+        isMobile: mode === 'touch',
+      })
+      const page = await context.newPage()
+      const state = () =>
+        page.evaluate(() => {
+          const h1 = document.querySelector('.message-panel h1')
+          return {
+            path: [...document.querySelectorAll('.screen-breadcrumb li')]
+              .map((li) => li.textContent.trim())
+              .join('>'),
+            message: h1 && h1.getClientRects().length > 0 ? h1.textContent : null,
+            panelLabel: document.querySelector('.message-panel-label')?.textContent,
+            emergency: !!document.querySelector('.emergency-status'),
+            menu: !!document.querySelector('.caregiver-overlay'),
+          }
+        })
+      const expectState = async (name, expected) => {
+        await page.waitForTimeout(300)
+        const actual = await state()
+        for (const [key, value] of Object.entries(expected)) {
+          if (actual[key] !== value) {
+            failures.push(
+              `[press-anywhere ${mode}] ${name}: ${key}=${JSON.stringify(actual[key])} (期待 ${JSON.stringify(value)})`,
+            )
+          }
+        }
+      }
+      const load = async (settings = {}) => {
+        await page.goto(`http://localhost:${port}/`)
+        await page.evaluate((extra) => {
+          localStorage.clear()
+          localStorage.setItem('libra', JSON.stringify({ intervalMs: 2000, ...extra }))
+        }, settings)
+        await page.reload()
+        await page.waitForSelector('.tile.scanning')
+        await page.evaluate(() => document.fonts.ready)
+      }
+      const waitYellow = (label) =>
+        page.waitForFunction(
+          (l) => document.querySelector('.tile.scanning .tile-label')?.textContent === l,
+          label,
+          { timeout: 40000, polling: 20 },
+        )
+      const at = async (selector, ratioX = 0.5) => {
+        const box = await page.locator(selector).first().boundingBox()
+        return { x: box.x + box.width * ratioX, y: box.y + box.height / 2 }
+      }
+      const pressAt = async ({ x, y }) => {
+        if (mode === 'touch') await page.touchscreen.tap(x, y)
+        else await page.mouse.click(x, y)
+      }
+      const tapTile = async (label) => {
+        await page.waitForTimeout(600)
+        await pressAt(await at(`.grid-board .tile[aria-label="${label}"]`))
+      }
+
+      // 現在地の「ホーム」はリンクでない(背景)。押して下位画面になると、同じ場所に「ホーム」のリンクが現れる
+      await load()
+      const homeText = await at('.screen-breadcrumb li', 0.8)
+      await waitYellow('不快')
+      await pressAt(homeText)
+      await expectState('背景で黄色の不快。現れたリンクは動かない', { path: 'ホーム>不快' })
+      await page.waitForTimeout(600)
+      await pressAt(await at('.breadcrumb-link'))
+      await expectState('次の押下ではリンクが効き、黄色は選ばない', {
+        path: 'ホーム',
+        emergency: false,
+        message: null,
+      })
+
+      // 伝達欄の端を押して 2 件目を伝えると、同じ場所に矢印が現れる
+      await load()
+      await tapTile('いいえ')
+      await waitYellow('はい')
+      await pressAt(await at('.message-panel', 0.03))
+      await expectState('背景で黄色のはい。現れた矢印は動かない', {
+        message: 'はい。',
+        panelLabel: '直前に伝えたこと',
+      })
+
+      // パネルは押したパネルだけ。「介助者用」は開くだけで、閉じても背後へ届かない
+      await load()
+      await waitYellow('はい')
+      await pressAt(await at('.grid-board .tile[aria-label="いいえ"]'))
+      await expectState('パネルは押したパネルだけ', { message: 'いいえ。', emergency: false })
+      await load()
+      await pressAt(await at('.caregiver-button'))
+      await expectState('介助者用はメニューを開くだけ', { menu: true, emergency: false })
+      await pressAt(await at('.caregiver-close'))
+      await expectState('閉じる押下は背後へ届かない', {
+        menu: false,
+        emergency: false,
+        path: 'ホーム',
+        message: null,
+      })
+
+      // 2 本の指。2 本目は連打無視の下限(0.1 秒)より後に着く(同時刻だと連打無視が防ぎ、接触の対策を検査できない)
+      if (mode === 'touch') {
+        const cdp = await context.newCDPSession(page)
+        const touch = (type, touchPoints) =>
+          cdp.send('Input.dispatchTouchEvent', { type, touchPoints })
+        const twoFingers = async (firstPoint, secondPoint) => {
+          const first = { ...firstPoint, id: 1 }
+          await touch('touchStart', [first])
+          await page.waitForTimeout(250)
+          await touch('touchStart', [first, { ...secondPoint, id: 2 }])
+          await page.waitForTimeout(150)
+          await touch('touchEnd', [])
+        }
+        const cases = [
+          ['背景と背景', 'background', 'background', {}, 'はい。'],
+          [
+            '背景と背景(離して決定)',
+            'background',
+            'background',
+            { activateOn: 'release' },
+            'はい。',
+          ],
+          ['背景を先にパネル', 'background', 'tile', {}, 'はい。'],
+          ['パネルを先に背景', 'tile', 'background', {}, 'いいえ。'],
+        ]
+        for (const [name, firstKind, secondKind, extra, message] of cases) {
+          await load({ debounceMs: 100, ...extra })
+          await page.evaluate(() => {
+            window.__vibrations = 0
+            navigator.vibrate = () => {
+              window.__vibrations += 1
+              return true
+            }
+          })
+          const points = {
+            background: await at('.screen-guide h2', 0.2),
+            tile: await at('.grid-board .tile[aria-label="いいえ"]'),
+          }
+          const other =
+            firstKind === secondKind ? await at('.screen-guide-hint', 0.7) : points[secondKind]
+          await waitYellow('はい')
+          await twoFingers(points[firstKind], other)
+          await expectState(`2 本の指(${name})は操作 1 つ`, {
+            message,
+            emergency: false,
+            path: 'ホーム',
+          })
+          // 受理と伝達の振動の 2 回だけ
+          const count = await page.evaluate(() => window.__vibrations)
+          if (count !== 2) {
+            failures.push(`[press-anywhere touch] 2 本の指(${name}): 振動 ${count} 回(期待 2)`)
+          }
+        }
+        // 全部離れた後の 1 本は効く
+        await page.waitForTimeout(600)
+        await waitYellow('はい')
+        await pressAt(await at('.screen-guide h2', 0.2))
+        await expectState('2 本の指の後の 1 本は効く', { message: 'はい。' })
+      }
+      await context.close()
+    }
+  } catch (error) {
+    failures.push(`[press-anywhere] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
     {
@@ -284,6 +462,7 @@ await runChecks(
       run: checkBackNavigationAndEmergencyRetention,
     },
     { name: 'breadcrumb-not-truncated', run: checkBreadcrumbNotTruncated },
+    { name: 'press-anywhere', run: checkPressAnywhere },
   ],
   { basePort: 4720 },
 )

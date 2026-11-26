@@ -119,13 +119,13 @@ describe('App', () => {
     expect(h1Text(container)).not.toBe('選んだ内容がここに大きく出ます。')
   })
 
-  it('画面背景（タイル以外）のタップは何も実行しない', () => {
+  it('画面背景（タイル以外）のタップは黄色のタイルを実行する(Issue #134)', () => {
     const { container } = render(() => <App />)
-    vi.advanceTimersByTime(HEAD_HOLD_MS)
+    vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // カーソルは「はい」
+    expect(scanningLabel(container)).toBe('はい')
     const board = container.querySelector('.grid-board') as HTMLElement
     fireEvent.pointerDown(board)
-    fireEvent.pointerDown(document.body)
-    expect(h1Text(container)).toBe('選んだ内容がここに大きく出ます。')
+    expect(h1Text(container)).toBe('はい。')
   })
 
   it('event.repeat の keydown は無視される', () => {

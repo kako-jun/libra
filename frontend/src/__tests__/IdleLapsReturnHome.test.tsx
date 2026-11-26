@@ -282,19 +282,19 @@ describe('Issue #76: 下位画面の無入力3周でホームへ自動復帰', (
       expect(isHome(container)).toBe(true)
     })
 
-    it('背景(タイルの外)に触れても数え直しになり、触れている間は戻らない', () => {
+    it('何も選ばない押下(背景の主ボタン以外)でも数え直しになり、触れている間は戻らない', () => {
       const { container } = render(() => <App />)
       openDiscomfort(container)
       const n = tileCount(container)
       const board = container.querySelector('.grid-board') as HTMLElement
       advanceSteps(container, n * 2 + 1) // あと少しで戻る状態
       expect(isHome(container)).toBe(false)
-      fireEvent.pointerDown(board, { pointerId: 7 })
+      fireEvent.pointerDown(board, { pointerId: 7, button: 2 })
       advanceSteps(container, n * 3 + 5) // 触れたまま 3周ぶん超過
       expect(isHome(container)).toBe(false)
       expect(screenLabel(container)).toContain('不快')
       fireEvent.pointerUp(window, { pointerId: 7 })
-      expect(screenLabel(container)).toContain('不快') // 背景は何も実行しない
+      expect(screenLabel(container)).toContain('不快') // 主ボタン以外は何も実行しない
       advanceToJustBeforeReturn(container, n)
       expect(isHome(container)).toBe(false) // 離してから 3周ぶんに足りない
       advanceSteps(container, 1)

@@ -15,7 +15,7 @@
 //   縦長/横長             | 8(home)   | 通常/緊急中/伝達メッセージ/特大文字 | 状態によらず同一 | 0          | true
 //   縦長/横長             | 9(home・モールス) | -                   | 2x5 / 5x2 | 1          | true
 //   縦長/横長             | 15(文字盤行) | -                      | fill:false。緊急タイルが sticky(従来どおり)・空きセルなし
-//   空きセルの操作        | pointerdown / click / キー / スキャン / 聴覚スキャン → 何も起きない・対象外
+//   空きセルの操作        | click 単独 / キー / スキャン / 聴覚スキャン → 対象外。押下は背景と同じで黄色のタイルを選ぶ(Issue #134)
 //   高コントラスト        | --scan-ring-inset: 標準 12px(=4+6+2)、高コントラスト 15px(=4+9+2)
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
@@ -286,7 +286,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
   })
 
   describe('空きセルは操作・スキャン・読み上げの対象外', () => {
-    it('空きセルへの pointerdown / click / pointerup は何も実行しない(メッセージ・緊急・画面不変)', () => {
+    it('空きセルの click 単独は何も実行しない(メッセージ・緊急・画面不変)', () => {
       setViewport(390, 844)
       setSettings({ morseEnabled: true })
       const { container } = render(() => <App />)
@@ -295,8 +295,6 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       const labelsBefore = labels(container)
       expect(emptyCells(container)).toHaveLength(1)
       for (const cell of Array.from(emptyCells(container))) {
-        fireEvent.pointerDown(cell, { pointerId: 1 })
-        fireEvent.pointerUp(cell, { pointerId: 1 })
         fireEvent.click(cell)
         fireEvent(
           cell,
@@ -308,6 +306,23 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       expect(container.querySelector('.emergency-status')).toBeNull()
       expect(board(container).getAttribute('aria-label')).toBe(screenBefore)
       expect(labels(container)).toEqual(labelsBefore)
+    })
+
+    it('空きセルの押下は、黄色のタイルを 1 回だけ実行する(Issue #134)', () => {
+      setViewport(390, 844)
+      // ホームの空きセルはモールス使用の 9 項目のときだけある(Issue #127)
+      setSettings({ intervalMs: INTERVAL_MS, morseEnabled: true })
+      const { container } = render(() => <App />)
+      vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS)
+      expect(container.querySelector('.tile.scanning .tile-label')?.textContent).toBe('はい')
+      const cell = emptyCells(container)[0] as HTMLElement
+      fireEvent.pointerDown(cell, { pointerId: 1 })
+      fireEvent.pointerUp(document.body, { pointerId: 1 })
+      fireEvent(
+        document.body,
+        new PointerEvent('click', { pointerId: 1, bubbles: true, cancelable: true }),
+      )
+      expect(container.querySelector('h1')?.textContent).toBe('はい。')
     })
 
     it('スキャンは全タイルを順に巡回し、最後の項目の次は先頭へ戻る(周期=項目数。空きセルには止まらない)', () => {
@@ -416,9 +431,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
           vi.advanceTimersByTime(INTERVAL_MS)
         }
 
-        // 空きセルのクリックでは何も実行されない
-        fireEvent.pointerDown(cell, { pointerId: 1 })
-        fireEvent.pointerUp(cell, { pointerId: 1 })
+        // 空きセルの click 単独では何も実行されない(押下は黄色を選ぶ。上の Issue #134 のテスト)
         fireEvent.click(cell)
         expect(container.querySelector('h1')?.textContent).toBe(hBefore)
         expect(labels(container)).toEqual(labelsBefore)
@@ -580,7 +593,7 @@ describe('Issue #47: App の固定格子・空きセル', () => {
     })
   })
 
-  describe('回帰: タイル直接タップ・背景タップ・常時案内', () => {
+  describe('回帰: タイル直接タップ・背景の click・常時案内', () => {
     it('タイル直接タップは押したタイルを実行する(縦長/横長とも)', () => {
       for (const [w, h] of [
         [390, 844],
@@ -594,13 +607,13 @@ describe('Issue #47: App の固定格子・空きセル', () => {
       }
     })
 
-    it('背景(grid-board 自体・container)タップは何も実行しない', () => {
+    it('背景(grid-board 自体・container)の主ボタン以外の押下と click は何も実行しない', () => {
       setViewport(390, 844)
       const { container } = render(() => <App />)
       const hBefore = container.querySelector('h1')?.textContent
-      fireEvent.pointerDown(board(container), { pointerId: 1 })
+      fireEvent.pointerDown(board(container), { pointerId: 1, button: 2 })
       fireEvent.click(board(container))
-      fireEvent.pointerDown(container.firstElementChild as Element, { pointerId: 1 })
+      fireEvent.pointerDown(container.firstElementChild as Element, { pointerId: 1, button: 1 })
       expect(container.querySelector('h1')?.textContent).toBe(hBefore)
       expect(container.querySelector('.emergency-status')).toBeNull()
     })

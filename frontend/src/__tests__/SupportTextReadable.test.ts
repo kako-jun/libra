@@ -53,6 +53,7 @@ const SUPPORT_SELECTORS = [
   '.screen-breadcrumb',
   '.breadcrumb-link',
   '.screen-guide h2',
+  '.screen-guide-hint',
   '.emergency-status .emergency-detail-label',
 ]
 

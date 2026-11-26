@@ -8,7 +8,7 @@ It does not replace a nurse call or hospital system. It sits beside them: a last
 
 ## Features
 
-- **Two patient input paths only** — Any key press / Bluetooth shutter (arrives as a key press) is a single "on" that runs the current scan target; scanning alone can carry every message. A direct tap on a tile is an additional path that runs the tapped tile itself, regardless of the scan position. Taps on the background (anything that is not a tile) do nothing.
+- **Two patient input paths only** — Any key press / Bluetooth shutter (arrives as a key press) is a single "on" that runs the current scan target; scanning alone can carry every message. A direct tap on a tile is an additional path that runs the tapped tile itself, regardless of the scan position. Pressing anywhere other than a tile, button, arrow or breadcrumb link works like the key: it picks the yellow tile.
 - **Always-on auto scan** — Scanning runs from app startup; there is no start/stop control in the patient's path, since a stopped scan can't be restarted by someone who can't reach a "start" button.
 - **Safety-ordered screens** — Home starts with Emergency, followed by "もう一度" (Again: repeats the last transmission so a missed message does not have to be re-selected from scratch), then Yes/No; ordinary sub-screens start with Back, then Emergency; the urgent-detail screen starts with Back followed by the remaining detail choices. Free-text letter board sits behind the structured menus, never in front.
 - **Large grid UI** — Not fixed to Esuna's 9-grid rule, but keeps the same easy-to-press grid feeling. Every home item and "Back" carries an icon (same colour as the text, not read aloud).

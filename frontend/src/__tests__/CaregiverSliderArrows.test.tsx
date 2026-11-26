@@ -26,7 +26,7 @@ const stored = () => JSON.parse(window.localStorage.getItem('libra') ?? '{}')
 const SLIDERS = [
   ['スキャン', 'スキャン間隔', 'intervalMs', 500, 5000, 100, 1],
   ['スキャン', '先頭待機倍率', 'headHoldMultiplier', 3, 15, 1, 3],
-  ['スキャン', '連打無視', 'debounceMs', 0, 3000, 100, 1],
+  ['スキャン', '連打無視', 'debounceMs', 100, 3000, 100, 1],
   ['スキャン', '押下時間の下限', 'minHoldMs', 0, 2000, 100, 1],
   ['モールス', '長押しの境目', 'morseDashMs', 150, 1500, 50, 1],
   ['モールス', '文字の確定までの無入力', 'morseLetterGapMs', 500, 3000, 100, 1],
