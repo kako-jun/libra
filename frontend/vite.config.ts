@@ -2,11 +2,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import solidPlugin from 'vite-plugin-solid'
-// @ts-expect-error 型定義の無い .mjs
 import { releaseDate } from './scripts/release-date.mjs'
 
 // Issue #146: 介助者用メニュー「このアプリ」に出す日付(公開版の最後の変更日。日本時間)を埋め込む
-const lastChangeDate: string = releaseDate(fileURLToPath(new URL('.', import.meta.url)))
+const lastChangeDate = releaseDate(fileURLToPath(new URL('.', import.meta.url)))
 
 // Issue #156: 同梱フォントを配るので、ライセンス(OFL 1.1)の全文も配信物に入れる。原本は1つだけにして
 // ビルド時にそのまま写す(dist/ に入るので Service Worker の precache にも含まれる)

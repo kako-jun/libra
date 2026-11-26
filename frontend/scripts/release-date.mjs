@@ -20,6 +20,8 @@ export function releaseDate(cwd) {
   const out = execFileSync('git', ['log', '-1', '--format=%ct', 'HEAD'], {
     cwd,
     encoding: 'utf-8',
+    // git の stderr は端末へ流さず、失敗したときの例外に含める
+    stdio: ['ignore', 'pipe', 'pipe'],
   }).trim()
   if (!/^\d+$/.test(out)) throw new Error(`HEAD のコミット日時を取れない: ${JSON.stringify(out)}`)
   return toJstDate(Number(out))

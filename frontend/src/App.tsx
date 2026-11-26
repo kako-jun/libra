@@ -183,6 +183,23 @@ const THEME_LABELS: Record<Settings['theme'], string> = {
   auto: 'OSの設定',
 }
 
+/** 文字を入力する input の種類。これと textarea だけが「文字を入力する欄」 */
+const TEXT_INPUT_TYPES = ['text', 'search', 'url', 'email', 'tel', 'password', 'number']
+const SLIDER_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
+
+/**
+ * 介助者用メニューの中で、閉じずにその部品の操作として扱う打鍵か(requirements.md §6)。
+ * 文字を入力する欄の文字入力・編集のキーと、スライダーの矢印キーだけ。ラジオ・チェックボックスなど
+ * ほかの部品にフォーカスが残っていても、本人のスイッチとして扱う(値を変えずに閉じる)
+ */
+function isFieldEditingKey(event: KeyboardEvent): boolean {
+  const el = event.target
+  if (el instanceof HTMLTextAreaElement) return isTextEditingKey(event)
+  if (!(el instanceof HTMLInputElement)) return false
+  if (el.type === 'range') return SLIDER_KEYS.includes(event.key)
+  return TEXT_INPUT_TYPES.includes(el.type) && isTextEditingKey(event)
+}
+
 /** 入力欄で文字を打つ・編集するキーか。Enter・Space(変換中以外)・Tab・メディア/音量キー等は含めない */
 function isTextEditingKey(event: KeyboardEvent): boolean {
   if (event.isComposing || event.key === 'Process') return true
@@ -1280,14 +1297,12 @@ export default function App() {
       resumeToneAudioContext()
 
       if (caregiverMenuOpen()) {
-        // Issue #8: フレーズ編集の入力欄での「文字を打つキー」では閉じない。入力欄にフォーカスが
-        // 残ったまま本人がスイッチ(Enter・音量キー・Space 等)を押しても、従来どおり閉じて
-        // 本人が取り残されないよう、文字入力・編集に使うキーだけを例外にする。無操作 60 秒の
+        // Issue #8: 文字を入力する欄での「文字を打つキー」と、スライダーの矢印キーでは閉じない。欄に
+        // フォーカスが残ったまま本人がスイッチ(Enter・音量キー・Space 等)を押しても、従来どおり閉じて
+        // 本人が取り残されないよう、その部品の操作に使うキーだけを例外にする。無操作 60 秒の
         // 自動クローズ(§6)は打鍵では延ばさない(入力欄のタップ・フォーカスで延びる)
-        const inField = (event.target as HTMLElement | null)?.closest?.(
-          '.caregiver-panel input, .caregiver-panel textarea',
-        )
-        if (inField && isTextEditingKey(event)) return
+        const target = event.target as HTMLElement | null
+        if (target?.closest?.('.caregiver-panel') && isFieldEditingKey(event)) return
         // Issue #31: カテゴリタブにフォーカスがあるときの左右/Home/End だけは、タブ移動(ARIA tablist)に使う。
         // Enter/Space など他のキーは従来どおり本人のスイッチ入力として扱い、閉じてスキャンへ戻す
         const onTab = (event.target as HTMLElement | null)?.closest?.('.caregiver-tab')
@@ -2194,7 +2209,7 @@ export default function App() {
                 <div class="caregiver-item">
                   <div class="caregiver-field">
                     <span>好きな画像（本人画面の「介助者用」ボタンの左に表示）</span>
-                    <div class="phrase-actions photo-actions">
+                    <div class="phrase-actions">
                       <button
                         type="button"
                         class="caregiver-action"

@@ -3,7 +3,8 @@
 //
 // 観点
 //   値の欄       | 5 欄すべてラジオ(ボタンではない)。名前と順番・今の値がチェックされる・選ぶと保存・グループ名
-//   打鍵         | ラジオにフォーカス中の矢印は閉じない(他の入力欄と同じ)。本人のスイッチ(Enter / Space)は閉じる
+//   打鍵         | ラジオ・チェックボックス(フレーズの編集先を含む)にフォーカスが残っていても、どのキーも
+//                | 本人のスイッチ: 既定の動作を止めて閉じ、値は変わらない。スライダーは矢印だけ閉じない
 //   実行する操作 | 画像を選ぶ・消すはボタンのまま
 //   編集先       | パネルの階層と順・快は選べない・読み上げ名は道順・選ぶと一覧が替わる・警告と初期値に戻すも道順
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -124,27 +125,87 @@ describe('Issue #148: 値を選ぶ欄はラジオボタン', () => {
     expect(radioByName(panel, 'OSの設定').checked).toBe(true)
   })
 
-  // ラジオは input なので、フォーカス中の打鍵はスライダーやチェックボックスと同じ扱い(requirements.md §6)
-  it.each(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])(
-    'ラジオにフォーカス中の %s では閉じない',
+  // 安全: 介助者がラジオを押すとフォーカスが残る。そのまま本人が矢印キー型などのスイッチを押しても、
+  // 値を変えずにメニューを閉じる(requirements.md §6)
+  const SWITCH_KEYS = [
+    'ArrowLeft',
+    'ArrowRight',
+    'ArrowUp',
+    'ArrowDown',
+    'Home',
+    'End',
+    'a',
+    'Backspace',
+    'Enter',
+    ' ',
+    'Tab',
+    'AudioVolumeUp',
+    'Escape',
+  ]
+
+  it.each(SWITCH_KEYS)(
+    'ラジオにフォーカスが残っていて「%s」を押すと、閉じて、値は変わらない',
     (key) => {
-      const { container, panel } = openTab('表示')
-      const radio = radioByName(panel, 'ダーク')
+      const { container, panel } = openTab('音と振動')
+      chooseRadio(panel, '全部読む')
+      const radio = radioByName(panel, '全部読む')
       radio.focus()
-      fireEvent.keyDown(radio, { key })
+      expect(fireEvent.keyDown(radio, { key })).toBe(false) // 既定の動作(値の移動・選択)を止める
+      expect(menuOpen(container)).toBe(false)
+      expect(saved().voiceMode).toBe('full')
+    },
+  )
+
+  it.each(SWITCH_KEYS)('フレーズの編集先にフォーカスが残っていて「%s」を押すと、閉じる', (key) => {
+    const { container, panel } = openTab('フレーズ')
+    const radio = radioByName(panel, '不快')
+    radio.focus()
+    expect(fireEvent.keyDown(radio, { key })).toBe(false)
+    expect(menuOpen(container)).toBe(false)
+  })
+
+  it.each(SWITCH_KEYS)(
+    'チェックボックスにフォーカスが残っていて「%s」を押すと、閉じて、値は変わらない',
+    (key) => {
+      const { container, panel } = openTab('音と振動')
+      const checkbox = panel.querySelector('input[type="checkbox"]') as HTMLInputElement
+      checkbox.focus()
+      expect(fireEvent.keyDown(checkbox, { key })).toBe(false)
+      expect(menuOpen(container)).toBe(false)
+      expect(saved().hapticsEnabled).toBe(true)
+    },
+  )
+
+  it.each(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])(
+    'スライダーの矢印キー「%s」は、閉じず、既定の動作(値の調整)を止めない',
+    (key) => {
+      const { container, panel } = openTab('スキャン')
+      const slider = panel.querySelector('input[type="range"]') as HTMLInputElement
+      slider.focus()
+      expect(fireEvent.keyDown(slider, { key })).toBe(true)
       expect(menuOpen(container)).toBe(true)
     },
   )
 
-  it.each(['Enter', ' ', 'Tab', 'AudioVolumeUp', 'Escape'])(
-    'ラジオにフォーカスが残っていても、本人のスイッチ(%s)でメニューは閉じ、値は変わらない',
+  it.each(['a', 'Backspace', 'Home', 'End', 'Enter', ' ', 'AudioVolumeUp'])(
+    'スライダーでも、矢印キー以外の「%s」は本人のスイッチとして閉じる',
     (key) => {
-      const { container, panel } = openTab('表示')
-      const radio = radioByName(panel, 'ダーク')
-      radio.focus()
-      expect(fireEvent.keyDown(radio, { key })).toBe(false) // 既定の動作(ラジオの選択)を止める
+      const { container, panel } = openTab('スキャン')
+      const slider = panel.querySelector('input[type="range"]') as HTMLInputElement
+      slider.focus()
+      expect(fireEvent.keyDown(slider, { key })).toBe(false)
       expect(menuOpen(container)).toBe(false)
-      expect(saved().theme).toBeUndefined()
+    },
+  )
+
+  it.each(['a', 'Backspace', 'ArrowLeft', 'Home', 'End'])(
+    '設定データの textarea の「%s」は、文字の入力・編集なので閉じない',
+    (key) => {
+      const { container, panel } = openTab('データ')
+      const area = panel.querySelector('textarea') as HTMLTextAreaElement
+      area.focus()
+      expect(fireEvent.keyDown(area, { key })).toBe(true)
+      expect(menuOpen(container)).toBe(true)
     },
   )
 
