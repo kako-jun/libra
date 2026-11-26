@@ -40,8 +40,7 @@ export function startScan(
 
 /**
  * 表示中メニューの項目数に合わせてカーソルを範囲内へ補正する。
- * メニューの項目数が本人操作を経ずに変化した場合（例: 「取り消し」が
- * 2周後に消える）に、カーソルと実際の項目のずれを防ぐ。
+ * メニューの項目数が画面遷移を経ずに減っても、カーソルが項目の外を指さないようにする。
  */
 export function resync(state: ScanState, itemCount: number): ScanState {
   if (itemCount <= 0) {

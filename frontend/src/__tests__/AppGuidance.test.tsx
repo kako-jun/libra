@@ -154,11 +154,11 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(container.querySelector('.screen-notes')).toBeNull()
     })
 
-    it('伝達直後(取り消し猶予中)・下位画面・文字盤でも .screen-notes は無い', () => {
+    it('伝達直後・下位画面・文字盤でも .screen-notes は無い', () => {
       const { container } = render(() => <App />)
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // index1 は「もう一度」、index2 が「はい」
-      fireEvent.keyDown(window, { key: ' ' }) // はい → home(取り消し)
-      expect(tileLabels(container)).toContain('取り消し')
+      fireEvent.keyDown(window, { key: ' ' }) // はい → home
+      expect(container.querySelector('.message-panel h1')?.textContent).toBe('はい。')
       expect(container.querySelector('.screen-notes')).toBeNull()
       selectByLabel(container, '文字盤')
       expect(container.querySelector('.screen-notes')).toBeNull()
@@ -196,14 +196,13 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       expect(container.querySelector('.screen-notes')).toBeNull()
     })
 
-    it('緊急中のホームでも出るのは振動の1行だけ(取り消しなし・押し方・先頭待機は書かない)。解除で帯ごと消える', () => {
+    it('緊急中のホームでも出るのは振動の1行だけ(押し方・先頭待機は書かない)。解除で帯ごと消える', () => {
       const { container } = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
       vi.advanceTimersByTime(HEAD_HOLD_MS)
       fireEvent.keyDown(window, { key: ' ' }) // 戻る → home
       expect(screenNotes(container)).toHaveLength(1)
       expect(notesText(container)).toContain(VIBRATION_FRAGMENT)
-      expect(notesText(container)).not.toContain('取り消し')
       clearEmergencyViaMenu(container)
       expect(container.querySelector('.screen-notes')).toBeNull()
     })

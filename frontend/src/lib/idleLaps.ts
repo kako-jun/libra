@@ -1,9 +1,6 @@
 // 下位画面の「無入力周回」の数え方。副作用なし(周回の発生は引数で受け取る)。
 // 正本: docs/requirements.md §3 / Issue #76
 
-/** 取り消しタイルが残る周回数(伝達直後から数える) */
-export const UNDO_LAPS = 2
-
 /** 入力がないまま、この周回数だけ回ったら下位画面からホームへ戻る。将来は設定へ出せるよう定数で持つ */
 export const IDLE_LAPS_BEFORE_HOME = 3
 
