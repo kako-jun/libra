@@ -4,7 +4,7 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-const SUITES = ['offline', 'navigation', 'layout', 'theme']
+const SUITES = ['offline', 'navigation', 'layout', 'theme', 'font']
 const failed = []
 for (const suite of SUITES) {
   console.log(`\n===== e2e: ${suite} =====`)

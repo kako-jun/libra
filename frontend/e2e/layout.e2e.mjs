@@ -568,7 +568,7 @@ async function checkFontSizeMonotonicity(chromium, port) {
             await page.waitForTimeout(80)
           }
           await page.waitForTimeout(150)
-          // BIZ UDPGothic(日本語, 数百KB〜1.7MB)の読み込み前はフォールバックフォントで
+          // BIZ UDGothic(1ウェイト約2.2MB)の読み込み前はフォールバックフォントで
           // 描画され、行送り・折返しが変わってラベル/見出しの高さが一時的にずれることが
           // ある。document.fonts.ready を待たないと、この読み込みタイミングのブレだけで
           // 誤って「文字サイズを上げたら縮んだ」と判定してしまう(実際のUIロジックの
@@ -593,8 +593,10 @@ async function checkFontSizeMonotonicity(chromium, port) {
           // 1.25倍差になる設計。1.15はその下に余裕を持たせた下限値)
           if (font === 'xlarge' && size != null && standardSize != null) {
             // 320x568 のホームは下限に張り付いていても免除しない(以前は下限に固定され、特大にしても
-            // 文字が変わらなかった。ラベルが取れない場合も失敗にする)
-            const mustGrow = vw === 320 && vh === 568 && screenName.startsWith('home')
+            // 文字が変わらなかった)。緊急中のホームは、緊急の帯でセルの中身が 30px を切り、ラベルを
+            // 大きくすると予告に重なるので、この必須条件の対象外(下限の扱いは他の画面と同じ)
+            const mustGrow =
+              vw === 320 && vh === 568 && (screenName === 'home' || screenName === 'home+undo')
             const atFloor = !mustGrow && standardSize <= LABEL_FLOOR_PX + 0.5
             // ホーム(10 セル格子 #123)・文字盤(15 セル格子 #121)も他の画面と同じ 1.15 倍を求める
             // (PR #124 レビュー S1。一時 1.05 倍に緩めていたのを、ラベルの式を直して戻した)
@@ -1137,7 +1139,7 @@ async function checkTilePreviewTwoLineOverlap(chromium, port) {
       await page.waitForTimeout(300)
       for (const label of path) await hold(page, label)
       if (goHome) await hold(page, '戻る')
-      // BIZ UDPGothic の読み込み前は代替フォントで折り返しが変わるので、測定の直前に待つ
+      // BIZ UDGothic の読み込み前は代替フォントで折り返しが変わるので、測定の直前に待つ
       await page.evaluate(() => document.fonts.ready)
       const result = await page.evaluate(() => {
         // 見えている行だけ: 要素の箱の外(-webkit-line-clamp で隠れた行)は除き、箱でクリップする
@@ -1786,7 +1788,20 @@ async function checkMessagePanelFixed(chromium, port) {
                 }
                 const colors = { normal: color('--message-bg'), urgent: color('--urgent-bg') }
                 probe.remove()
+                const overlaps = (a, b) =>
+                  Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 &&
+                  Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5
+                // 見出しの文字そのものの範囲(要素の箱でなく)
+                const glyphs = document.createRange()
+                glyphs.selectNodeContents(label)
+                const textRects = [...glyphs.getClientRects()]
                 return {
+                  labelClipped: textRects.some(
+                    (r) => r.left < rect(panel).left - 0.5 || r.right > rect(panel).right + 0.5,
+                  ),
+                  arrowOverLabel: [...panel.querySelectorAll('.history-nav, .history-gap')].some(
+                    (a) => textRects.some((r) => overlaps(rect(a), r)),
+                  ),
                   display: style.display,
                   height: rect(panel).height,
                   guideTop: rect(document.querySelector('.screen-guide')).top,
@@ -1829,10 +1844,9 @@ async function checkMessagePanelFixed(chromium, port) {
                   `${tag} ${state}: 文が欄に収まらない(text=${m.textBottom} box=${m.boxBottom} panel=${m.panelBottom} x=${m.textOverflowX} y=${m.scrollOverflow} font=${m.fontSize})`,
                 )
               }
-              // 320px 未満は「直前に伝えたこと（もう一度）」が 1 行に入らないので、行数は 320px 以上で見る
-              if (width >= 320 && m.labelLines !== 1) {
-                failures.push(`${tag} ${state}: 見出しが ${m.labelLines} 行`)
-              }
+              if (m.labelLines !== 1) failures.push(`${tag} ${state}: 見出しが ${m.labelLines} 行`)
+              if (m.labelClipped) failures.push(`${tag} ${state}: 見出しが欄からはみ出す`)
+              if (m.arrowOverLabel) failures.push(`${tag} ${state}: 矢印が見出しに重なる`)
               if (m.background !== m.colors[expected]) {
                 failures.push(
                   `${tag} ${state}: 背景色が ${m.background}(期待 ${expected}=${m.colors[expected]})`,

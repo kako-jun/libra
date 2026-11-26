@@ -177,11 +177,9 @@
   --hold-progress-fill: #ffd54a;
   color: var(--text);
   background: var(--bg);
-  /* BIZ UDPGothic を同梱（index.tsx で import）。system-ui 等の汎用指定は
-     Linux 等で中国語フォントへ落ちうるため、日本語書体より前に置かない。 */
-  font-family:
-    'BIZ UDPGothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Yu Gothic',
-    'Noto Sans JP', sans-serif;
+  /* Issue #156: フォントは同梱の BIZ UDGothic(fonts.css)の1種類だけ。予備フォントは指定しない。
+     書体に無い文字だけはブラウザが OS の書体で描く(CSS では止められない) */
+  font-family: 'BIZ UDGothic';
 }
 
 * {
@@ -235,10 +233,25 @@ button {
   font: inherit;
 }
 
+/* Issue #156: 入力欄・選択部品・ボタンはブラウザの既定で独自の書体を持つので、全部を親の書体に
+   そろえる(textarea の既定は等幅) */
+button,
+input,
+textarea,
+select,
+optgroup {
+  font-family: inherit;
+}
+
+input::file-selector-button {
+  font-family: inherit;
+}
+
 /* Issue #3: 見出し・ラベル類の文節改行。対応ブラウザでは意味の区切りで折り返し、
    語の途中(「ゆっく/り」等)での改行を避ける。未対応ブラウザでは overflow-wrap が
    安全弁になる（タイル自体の余裕はコンテナクエリで確保する）。 */
 .message-panel h1,
+.emergency-status-message,
 .emergency-details,
 .tile-label {
   word-break: auto-phrase;
@@ -1962,6 +1975,21 @@ h1[data-fit='wrap'] {
   background: var(--urgent-bg);
 }
 
+/* Issue #156: BIZ UDGothic は仮名が全角幅なので、狭い画面では余白を詰めて文の幅を確保する
+   (伝達欄の余白と矢印との間隔は、下の「狭い・低い画面」の規則が持つ) */
+@media (max-width: 480px) {
+  /* 案内欄を詰める。左の余白と、文字と「介助者用」ボタンの間隔。詰めないと 390px 幅で
+     押し方の案内(全角17字 = 272px。Issue #134)が2行になり、格子が約18px低くなって2行の予告が消える。
+     ボタンの大きさと、ボタンの上・右・下の余白(Issue #109)は変えない */
+  .screen-guide {
+    padding-left: 8px;
+  }
+
+  .screen-guide .message-panel-controls {
+    margin-left: 4px;
+  }
+}
+
 .message-panel-body {
   display: flex;
   flex: 1 1 auto;
@@ -2048,6 +2076,19 @@ h1[data-fit='wrap'] {
   .message-panel {
     height: clamp(72px, 9.6vh, 96px);
     height: clamp(72px, 9.6dvh, 96px);
+  }
+}
+
+/* スマホの縦長では本文の列が狭く、全角仮名の見出し(「直前に伝えたこと（もう一度）」は約 240px。
+   Issue #156)が入らない。見出しは左右の矢印の列まで使って 1 行にし、矢印は下端に寄せて重ねない。
+   -48px は矢印の列 44px + 列の間隔 4px */
+@media (max-width: 480px) and (min-height: 501px) {
+  .message-panel-label {
+    margin-inline: -48px;
+  }
+
+  .history-slot {
+    align-items: end;
   }
 }
 
@@ -2180,8 +2221,9 @@ h1[data-fit='wrap'] {
    余白と重ねない): 2 行を想定した下限(content 高さ / 2.4)に
    張り付いて、文字サイズを特大にしてもラベルが変わらなかった。ホームのラベルは 1 行なので、高さの係数を
    上げて下限より上で文字サイズ設定が効くようにする。遷移タイルのラベルが予告を避ける下の余白も、
-   予告 1 行ぶんまで詰める(詰めないと、大きくしたラベルが上のスキャン枠の帯に入る) */
-@container not (min-height: 72px) {
+   予告 1 行ぶんまで詰める(詰めないと、大きくしたラベルが上のスキャン枠の帯に入る)。
+   32px 未満(320x568 の緊急中のホーム)は、大きくするとラベルが予告に重なるので対象外 */
+@container (min-height: 32px) and (not (min-height: 72px)) {
   .grid-board.grid-home .tile > * {
     --label-cqb-min: 48;
   }
