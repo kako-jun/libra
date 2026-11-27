@@ -215,22 +215,22 @@ describe('Issue #46 composePainText', () => {
     ['胸が痛いです。', 'little', '胸が少し痛いです。'],
     ['背中・腰が痛いです。', 'quite', '背中・腰がかなり痛いです。'],
     ['その他の場所が痛いです。', 'very', 'その他の場所がとても痛いです。'],
-    // 「痛いです」を含まない: 句点つきは括弧を句点の前へ
-    ['ずきずきします。', 'very', 'ずきずきします（とても）。'],
-    ['痛い。', 'little', '痛い（少し）。'],
-    // 句点なしは末尾に括弧
-    ['ずきずきします', 'very', 'ずきずきします（とても）'],
-    ['ずきずきします！', 'quite', 'ずきずきします！（かなり）'],
+    // 「痛いです」を含まない: 元の文の後ろに一文を足す(かっこは使わない。Issue #153)
+    ['ずきずきします。', 'very', 'ずきずきします。強さは「とても」です。'],
+    ['痛い。', 'little', '痛い。強さは「少し」です。'],
+    // 句点なしは句点を足してから続ける。！などで終わる文には句点を足さない
+    ['ずきずきします', 'very', 'ずきずきします。強さは「とても」です。'],
+    ['ずきずきします！', 'quite', 'ずきずきします！強さは「かなり」です。'],
   ]
   it.each(cases)('%s × %s → %s', (text, intensity, expected) => {
     expect(composePainText(text, intensity)).toBe(expected)
   })
 
-  it('句点つき文の出力に「。（」は現れない・句点は1つだけ末尾', () => {
+  it('句点つき文の出力に「。。」は現れず、足した一文も句点で終わる', () => {
     for (const i of ['little', 'quite', 'very'] as PainIntensity[]) {
       const out = composePainText('ずきずきします。', i)
-      expect(out).not.toContain('。（')
-      expect(out.match(/。/g)?.length).toBe(1)
+      expect(out).not.toContain('。。')
+      expect(out.startsWith('ずきずきします。')).toBe(true)
       expect(out.endsWith('。')).toBe(true)
     }
   })

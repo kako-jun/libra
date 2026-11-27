@@ -7,6 +7,7 @@ import {
   type InstallGuide,
   type InstallState,
 } from './lib/install'
+import { ButtonIcon } from './TileIcon'
 
 const STEPS: Record<InstallGuide, readonly string[]> = {
   ios: ['共有ボタンを押します。', '「ホーム画面に追加」を選びます。', '「追加」を押します。'],
@@ -58,6 +59,7 @@ export default function InstallSection() {
                 class="caregiver-action install-button"
                 onClick={() => void promptInstall()}
               >
+                <ButtonIcon name="install" />
                 アプリをインストール
               </button>
             </div>

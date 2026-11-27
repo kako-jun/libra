@@ -32,7 +32,7 @@ import {
 import { computeGridLayout } from './lib/gridLayout'
 import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
-import TileIcon, { hasTileIcon } from './TileIcon'
+import TileIcon, { ButtonIcon, tileIconName } from './TileIcon'
 import RangeField from './RangeField'
 import ChoiceField from './ChoiceField'
 import InstallSection from './InstallSection'
@@ -73,12 +73,12 @@ const DEFAULT_MESSAGE = '選んだ内容がここに大きく出ます。'
 const EMERGENCY_RELEASED_MESSAGE = '緊急を解除しました。'
 /**
  * 本人が緊急を解除したときの伝達文。選んだ詳細があれば文に含め、解除した後も緊急の中身が分かるようにする
- * (例「緊急（息ができない・痛い）を解除しました。」)。詳細が無ければ「緊急を解除しました。」
+ * (例: 「息ができない・痛い」の緊急を解除しました。)。詳細が無ければ「緊急を解除しました。」
  */
 export const emergencyReleasedMessage = (details: readonly string[]) =>
   details.length === 0
     ? EMERGENCY_RELEASED_MESSAGE
-    : `緊急（${details.join('・')}）を解除しました。`
+    : `「${details.join('・')}」の緊急を解除しました。`
 /** 緊急の詳細を伝達履歴に積むときの文(読み上げと同じ、緊急の主文(EMERGENCY_MESSAGE)＋詳細) */
 const emergencyDetailHistoryText = (label: string) => `${EMERGENCY_MESSAGE}${label}`
 /** 語の区切りのスライダーで選べる下限。文字の確定より余白ぶん長い値を、100ms の目盛りへ切り上げる */
@@ -1554,9 +1554,9 @@ export default function App() {
         <div class="message-panel-body">
           <p class="message-panel-label">
             {pastEntry() !== null
-              ? `過去に伝えたこと（${historyBack()}件前）`
+              ? `${historyBack()}件前に伝えたこと`
               : repeatedMessage()
-                ? '直前に伝えたこと（もう一度）'
+                ? '直前に伝えたことをもう一度'
                 : '直前に伝えたこと'}
           </p>
           {/* 見出しの残りの高さ。h1 はこの箱に全文が収まる大きさにする(lib/fitHeading.ts) */}
@@ -1661,6 +1661,7 @@ export default function App() {
             onContextMenu={(event) => event.preventDefault()}
             aria-label="介助者用メニューを開く"
           >
+            <ButtonIcon name="caregiver" />
             介助者用
           </button>
         </div>
@@ -1690,8 +1691,8 @@ export default function App() {
           </p>
           <ul class="morse-legend" aria-label="モールスの操作と自動で起きること">
             <li>
-              <b>短く押す</b>＝短点（・）、
-              <b>{(morseConfig().dashMs / 1000).toFixed(1)}秒以上押す</b>＝長点（－）。
+              <b>短く押す</b>と短点の・、
+              <b>{(morseConfig().dashMs / 1000).toFixed(1)}秒以上押す</b>と長点の－。
             </li>
             <Show when={settings().minHoldMs > 0}>
               <li>
@@ -1699,16 +1700,16 @@ export default function App() {
               </li>
             </Show>
             <li>
-              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・（<b>休まず続けて</b>
+              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・。<b>休まず続けて</b>
               {'打つと、待たずにすぐ。'}
               <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>
-              {'休むと数え直し）。'}
+              {'休むと数え直し。'}
             </li>
             <li>
-              <b>・・・・・</b>（・を5つ）→ <b>待つと</b>スキャンへ戻る。
+              <b>・を5つ</b> → <b>待つと</b>スキャンへ戻る。
             </li>
             <li>
-              <b>・・・・・・</b>（・を6つ）→ <b>待つと</b>1字消す。
+              <b>・を6つ</b> → <b>待つと</b>1字消す。
             </li>
             <li>
               <b>・－・－・－</b> → <b>待つと</b>確定して伝える。
@@ -1756,6 +1757,11 @@ export default function App() {
                 scanning: scanState().index === index(),
                 'tile-nav': item.action.type === 'navigate',
                 'tile-emergency': item.action.type === 'emergency',
+                // Issue #155: アイコンと文字が 1 行に入る大きさにする(globals.css)
+                'tile-icon-short':
+                  ['backspace', 'commit'].includes(tileIconName(item) ?? '') ||
+                  item.action.type === 'emergencyRelease',
+                'tile-icon-long': item.id === 'emergency-release-nav',
                 // Issue #123: もう一度伝えるものが無い間は薄く見せる(押しても何も伝えない)
                 'tile-unavailable': item.action.type === 'repeat' && !canRepeat(),
               }}
@@ -1768,9 +1774,7 @@ export default function App() {
               <span class="tile-number">{index() + 1}</span>
               <span class="tile-label">
                 {/* Issue #115: ラベルの左にアイコンを併記する(同じ行。入りきらない幅ではアイコンが上の行に回る) */}
-                <Show when={hasTileIcon(item.id)}>
-                  <TileIcon itemId={item.id} />
-                </Show>
+                <Show when={tileIconName(item)}>{(name) => <TileIcon name={name()} />}</Show>
                 {item.label}
               </span>
               <Show when={item.detail}>
@@ -1823,6 +1827,7 @@ export default function App() {
                     class="caregiver-action caregiver-emergency-clear"
                     onClick={clearEmergency}
                   >
+                    <ButtonIcon name="release" />
                     緊急を解除
                   </button>
                 </Show>
@@ -1831,6 +1836,7 @@ export default function App() {
                   class="caregiver-action caregiver-close"
                   onClick={closeCaregiverMenu}
                 >
+                  <ButtonIcon name="close" />
                   閉じる
                 </button>
               </div>
@@ -1943,9 +1949,8 @@ export default function App() {
                   value={Math.round(settings().headHoldMultiplier * 3)}
                   onValue={(thirds) => updateSettings({ headHoldMultiplier: thirds / 3 })}
                 >
-                  先頭待機倍率: 間隔 × {Number(settings().headHoldMultiplier.toFixed(1))}（約
-                  {((settings().intervalMs * settings().headHoldMultiplier) / 1000).toFixed(1)}
-                  秒）
+                  先頭待機倍率: 間隔 × {Number(settings().headHoldMultiplier.toFixed(1))}、約{' '}
+                  {((settings().intervalMs * settings().headHoldMultiplier) / 1000).toFixed(1)} 秒
                 </RangeField>
 
                 <div class="caregiver-item">
@@ -1997,7 +2002,7 @@ export default function App() {
                         updateSettings({ auditoryScan: event.currentTarget.checked })
                       }
                     />
-                    <span>聴覚スキャン（カーソルが進むたびに項目名を読み上げる）</span>
+                    <span>聴覚スキャン: カーソルが進むたびに項目名を読み上げる</span>
                   </label>
                   <Show when={behaviorNotes().speech}>
                     {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
@@ -2029,10 +2034,11 @@ export default function App() {
                         updateSettings({ morseEnabled: event.currentTarget.checked })
                       }
                     />
-                    <span>モールス入力を使う（上級者向け）</span>
+                    <span>上級者向けのモールス入力を使う</span>
                   </label>
                   <p class="caregiver-hint">
-                    押下と解放を同時に送るシャッターでは長押しが使えず、緊急のSOS（・・・－－－・・・）も出せません。
+                    押下と解放を同時に送るシャッターでは長押しが使えず、緊急のSOS ・・・－－－・・・
+                    も出せません。
                   </p>
                 </div>
 
@@ -2046,10 +2052,10 @@ export default function App() {
                       value={settings().morseDashMs}
                       onValue={(morseDashMs) => updateSettings({ morseDashMs })}
                     >
-                      長押し（－）の境目: {(settings().morseDashMs / 1000).toFixed(1)} 秒
+                      長押しの境目: {(settings().morseDashMs / 1000).toFixed(1)} 秒
                       {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
                       settings().morseDashMs
-                        ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
+                        ? `。押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒`
                         : ''}
                     </RangeField>
                     <RangeField
@@ -2102,7 +2108,7 @@ export default function App() {
                 tabindex="0"
               >
                 <ChoiceField
-                  label="音声モード（伝えた内容の読み上げ）"
+                  label="伝えた内容を読み上げる音声モード"
                   options={VOICE_MODES}
                   labels={VOICE_LABELS}
                   value={settings().voiceMode}
@@ -2117,7 +2123,7 @@ export default function App() {
                       updateSettings({ hapticsEnabled: event.currentTarget.checked })
                     }
                   />
-                  <span>本人に振動で知らせる（入力の受理・はい/いいえ・緊急）</span>
+                  <span>入力の受理、はい・いいえ、緊急を本人に振動で知らせる</span>
                 </label>
 
                 <Show when={settings().hapticsEnabled}>
@@ -2139,7 +2145,7 @@ export default function App() {
                         }
                       />
                       <span>
-                        振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
+                        振動に加えて、いつも短い効果音でも知らせる。振動モーターのない端末向け
                       </span>
                     </label>
 
@@ -2174,14 +2180,18 @@ export default function App() {
               >
                 <div class="caregiver-item">
                   <ChoiceField
-                    label="文字サイズ（選ぶタイルの文字）"
+                    label="パネルの文字サイズ"
                     options={FONT_SIZES}
                     labels={FONT_SIZE_LABELS}
                     value={settings().fontSize}
                     onSelect={(fontSize) => updateSettings({ fontSize })}
                   />
                   {/* Issue #111: 文字サイズも明るさと同じくその場で分かるよう、本人画面のタイルと同じ式で描くサンプル */}
-                  <div class="font-size-sample" role="img" aria-label="文字サイズのサンプル">
+                  <div
+                    class="font-size-sample"
+                    role="img"
+                    aria-label="パネルの文字サイズのサンプル"
+                  >
                     <span class="tile-label">はい</span>
                   </div>
                 </div>
@@ -2207,17 +2217,19 @@ export default function App() {
 
                 <div class="caregiver-item">
                   <div class="caregiver-field">
-                    <span>好きな画像（本人画面の「介助者用」ボタンの左に表示）</span>
+                    <span>本人画面の「介助者用」ボタンの左に出す好きな画像</span>
                     <div class="phrase-actions">
                       <button
                         type="button"
                         class="caregiver-action"
                         onClick={() => photoInputEl?.click()}
                       >
+                        <ButtonIcon name="photo" />
                         {photo() ? '画像を変える' : '画像を選ぶ'}
                       </button>
                       <Show when={photo()}>
                         <button type="button" class="caregiver-action" onClick={removePhoto}>
+                          <ButtonIcon name="delete" />
                           画像を消す
                         </button>
                       </Show>
@@ -2242,7 +2254,7 @@ export default function App() {
                     {(src) => <img class="photo-preview" src={src()} alt="いまの画像" />}
                   </Show>
                   <p class="caregiver-hint">
-                    画像はこの端末の中だけに保存します（外へは送りません）。設定の書き出しには含まれません。
+                    画像はこの端末の中だけに保存し、外へは送りません。設定の書き出しには含まれません。
                   </p>
                   <Show when={photoStatus()}>
                     <p class="caregiver-status" role="status">
@@ -2253,7 +2265,7 @@ export default function App() {
 
                 <TabReset
                   tabLabel="表示"
-                  targets="文字サイズ・明るさ・高コントラスト・好きな画像"
+                  targets="パネルの文字サイズ・明るさ・高コントラスト・好きな画像"
                   onReset={() => {
                     resetSection('display')
                     clearPhoto()
@@ -2276,7 +2288,7 @@ export default function App() {
 
                 <TabReset
                   tabLabel="フレーズ"
-                  targets={`${PHRASE_GROUPS.map((g) => PHRASE_GROUP_LABELS[g]).join('、')} のフレーズ`}
+                  targets={`${PHRASE_GROUPS.map((g) => PHRASE_GROUP_LABELS[g]).join('、')}のフレーズ`}
                   onReset={() => resetSection('phrases')}
                 />
               </div>
@@ -2327,7 +2339,7 @@ export default function App() {
                     <dt>利用回数</dt>
                     <dd class="app-usage-count">
                       {usageCount() === null
-                        ? '取得できません（通信がないときは表示されません）'
+                        ? '取得できません。通信がないときは表示されません'
                         : `${usageCount()?.toLocaleString('ja-JP')} 回`}
                     </dd>
                   </div>
@@ -2386,8 +2398,8 @@ function TabReset(props: { tabLabel: string; targets: string; onReset: () => voi
       <Show when={armed()}>
         <p class="caregiver-status warn" role="status">
           <span class="caregiver-status-text">
-            「{props.tabLabel}」タブの設定（{props.targets}
-            ）が初期値に戻ります（元に戻せません）。ほかのタブの設定は変わりません。よければもう一度押してください。
+            「{props.tabLabel}」タブの設定が初期値に戻ります。対象は{props.targets}
+            です。元に戻せません。ほかのタブの設定は変わりません。よければもう一度押してください。
           </span>
         </p>
       </Show>
@@ -2405,11 +2417,15 @@ function TabReset(props: { tabLabel: string; targets: string; onReset: () => voi
             class="caregiver-action caregiver-reset-cancel"
             onClick={() => setArmed(false)}
           >
+            <ButtonIcon name="close" />
             やめる
           </button>
         </Show>
         <button type="button" class="caregiver-action caregiver-reset-button" onClick={press}>
-          {armed() ? 'もう一度押すと初期値に戻す' : `「${props.tabLabel}」タブの設定を初期値に戻す`}
+          <ButtonIcon name="reset" />
+          <span>
+            {armed() ? 'もう一度押すと初期値に戻す' : `「${props.tabLabel}」の設定を初期値に戻す`}
+          </span>
         </button>
       </div>
     </div>

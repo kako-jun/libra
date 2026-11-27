@@ -1349,7 +1349,7 @@ async function checkMorseLegendFit(chromium, port) {
  * - #113: パンくず先頭の家アイコンが文字と同じ色・高さ。パンくずと指示文の間隔が 10px(高さ 500px 以下は 4px)
  * - #115: ホームの全タイルのアイコンが見えていて、色は文字と同じ
  * - #120/#129: 履歴が 2 件になると左向きの矢印だけが見え(display:none でない)、押すと
- *         「過去に伝えたこと（1件前）」になって右向きだけになる。矢印の出入りで中央の文字の位置・大きさは
+ *         「1件前に伝えたこと」になって右向きだけになる。矢印の出入りで中央の文字の位置・大きさは
  *         変わらない。矢印は見出しの文字(h1)と重ならず、44px 以上の押せる大きさがある
  * - #122: 好きな画像が「介助者用」ボタンの左に見え、ボタン・タイルと重ならず、ホームの全セルが画面内に収まる
  */
@@ -1590,7 +1590,7 @@ async function checkRealDeviceFeedbackLayout(chromium, port) {
                 `[realdevice ${label}] #129 矢印の出入りで中央の文字の大きさが変わる(${m.h1Font} → ${after.h1Font})`,
               )
             }
-            if (after.label !== '過去に伝えたこと（1件前）' || after.h1 !== 'はい。') {
+            if (after.label !== '1件前に伝えたこと' || after.h1 !== 'はい。') {
               failures.push(
                 `[realdevice ${label}] #120 前の伝達を押しても過去の表示にならない(${after.label} / ${after.h1})`,
               )
@@ -1907,7 +1907,8 @@ async function checkCaregiverChoices(chromium, port) {
               const panel = document.querySelector('.caregiver-tabpanel')
               return panel.scrollWidth - panel.clientWidth
             })
-            if (overflow > 0) failures.push(`${name} ${tab}: タブの中身が横に ${overflow}px はみ出す`)
+            if (overflow > 0)
+              failures.push(`${name} ${tab}: タブの中身が横に ${overflow}px はみ出す`)
           }
           await context.close()
         }

@@ -420,7 +420,7 @@ async function checkPressAnywhere(chromium, port) {
       await tapTile('いいえ')
       await page.waitForTimeout(700)
       for (const [arrow, label] of [
-        ['前の伝達を表示', '過去に伝えたこと（1件前）'],
+        ['前の伝達を表示', '1件前に伝えたこと'],
         ['次の伝達を表示', '直前に伝えたこと'],
       ]) {
         const spot = await at(`.history-nav[aria-label="${arrow}"]`)

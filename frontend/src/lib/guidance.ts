@@ -39,7 +39,8 @@ export function formatSeconds(ms: number): string {
 }
 
 // 連打無視・押し方はモールス入力には当てはまらない(モールスの凡例に独自の規則がある)
-const SCREEN_CHANGE_NOTE_FULL = '押下中に画面や項目の並びが変わると無効。モールス入力を除く'
+const SCREEN_CHANGE_NOTE_FULL =
+  '押下中に画面や項目の並びが変わると無効です。モールス入力は除きます。'
 
 /**
  * 本人画面の下に常時出す案内。緊急中の周期振動まわりだけ(Issue #79)。
@@ -90,22 +91,22 @@ export function buildBehaviorNoteMap(context: BehaviorNotesContext): BehaviorNot
 
   if (settings.debounceMs > 0) {
     const s = formatSeconds(settings.debounceMs)
-    map.debounce = `${s}以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。`
+    map.debounce = `誤作動を防ぐため、${s}以内の連打は画面遷移直後も数えません。モールス入力は除きます。`
   }
   if (settings.minHoldMs > 0) {
     const s = formatSeconds(settings.minHoldMs)
     map.hold =
       settings.activateOn === 'release'
-        ? `${s}以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
-        : `${s}以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
+        ? `${s}以上押し続けて離すと決まります。短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}`
+        : `${s}以上押し続けると決まります。短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}`
   } else if (settings.activateOn === 'release') {
-    map.hold = `押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`
+    map.hold = `押して離すと決まります。押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}`
   }
   // 伝達の読み上げは、直後の1回だけ次のスキャン読み上げに割り込まれない(App.tsx の messageAnnounceGrace)。
   // 読み上げ自体が出るのは音声モードが「短く/全部」のときだけ
   if (settings.auditoryScan && (settings.voiceMode === 'short' || settings.voiceMode === 'full')) {
     map.speech =
-      '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。'
+      '伝達の読み上げは、直後の1項目分は割り込まれません。その後は次の読み上げで切れることがあります。'
   }
   return map
 }

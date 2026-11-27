@@ -210,7 +210,7 @@ describe('composePainText(痛みの強さ)', () => {
   })
 
   it('「痛いです」を含まない(介助者が編集した)全文は、末尾に強さを足す', () => {
-    expect(composePainText('首が重い', 'very')).toBe('首が重い（とても）')
+    expect(composePainText('首が重い', 'very')).toBe('首が重い。強さは「とても」です。')
   })
 
   it('既定の痛い場所はすべて強さを入れられる(「痛いです」を含む)', () => {

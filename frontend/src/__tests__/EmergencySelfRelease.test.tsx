@@ -250,7 +250,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(isEmergency(container)).toBe(false)
       expect(container.querySelector('.emergency-detail-status')).toBeNull()
       // 帯は消えるが、解除の文に選んだ詳細が残る(M1)
-      expect(shownMessage(container)).toBe('緊急（苦しい）を解除しました。')
+      expect(shownMessage(container)).toBe('「苦しい」の緊急を解除しました。')
     })
 
     it('解除のあと 2 周待っても、解除の文は残り、ホームの項目は変わらない', () => {
@@ -373,7 +373,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(isEmergency(container)).toBe(false)
       expect(savedEmergency()).toBeNull()
       // 復元した詳細も解除の文に入る
-      expect(shownMessage(container)).toBe('緊急（苦しい）を解除しました。')
+      expect(shownMessage(container)).toBe('「苦しい」の緊急を解除しました。')
     })
   })
 
@@ -387,7 +387,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(shownMessage(container)).toBe(RELEASED_MESSAGE)
       fireEvent.click(prevButton(container) as HTMLElement)
       expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
-      expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+      expect(panelLabel(container)).toBe('1件前に伝えたこと')
     })
 
     it('詳細を2つ選んで解除: 解除文に選んだ順で詳細が入り(読み上げも同じ)、矢印で詳細と緊急の呼び出しを振り返れる', () => {
@@ -401,8 +401,10 @@ describe('Issue #108: 本人による緊急の解除', () => {
       clearDeviceCalls()
       tap(container, '解除する')
 
-      expect(shownMessage(container)).toBe('緊急（息ができない・痛い）を解除しました。')
-      expect(spoken()).toEqual(['緊急（息ができない・痛い）を解除しました。'])
+      expect(shownMessage(container)).toBe(
+        '「息ができない・痛い」の緊急を解除しました。',
+      )
+      expect(spoken()).toEqual(['「息ができない・痛い」の緊急を解除しました。'])
 
       const prev = prevButton(container) as HTMLElement
       fireEvent.click(prev)
@@ -411,7 +413,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(shownMessage(container)).toBe(`${EMERGENCY_MESSAGE}息ができない`)
       fireEvent.click(prev)
       expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
-      expect(panelLabel(container)).toBe('過去に伝えたこと（3件前）')
+      expect(panelLabel(container)).toBe('3件前に伝えたこと')
       // それより前は無い(緊急の再選択・同じ詳細は二重に積まない)
       expect(prevButton(container)).toBeNull()
     })
@@ -428,7 +430,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       tap(container, '緊急')
       tap(container, '緊急を解除')
       tap(container, '解除する')
-      expect(shownMessage(container)).toBe('緊急（苦しい）を解除しました。')
+      expect(shownMessage(container)).toBe('「苦しい」の緊急を解除しました。')
       const prev = prevButton(container) as HTMLElement
       fireEvent.click(prev)
       expect(shownMessage(container)).toBe(`${EMERGENCY_MESSAGE}苦しい`)

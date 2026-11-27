@@ -162,14 +162,14 @@ describe('Issue #134: ボタン以外を押すと黄色のパネルを選ぶ', (
       press($(container, '.history-gap'))
       expect(isEmergency(container)).toBe(false)
       press(historyButton(container, '前').querySelector('path') as Element)
-      expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+      expect(panelLabel(container)).toBe('1件前に伝えたこと')
       expect(isEmergency(container)).toBe(false)
       // 押した矢印が消えた場所を続けて押しても、黄色(緊急)は選ばない
       expect(container.querySelector('.history-nav[aria-label="前の伝達を表示"]')).toBeNull()
       vi.advanceTimersByTime(600)
       press($(container, '.history-gap'))
       expect(isEmergency(container)).toBe(false)
-      expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+      expect(panelLabel(container)).toBe('1件前に伝えたこと')
     })
 
     it('戻れる伝達が無いときの矢印の場所は背景で、黄色を選ぶ', () => {
