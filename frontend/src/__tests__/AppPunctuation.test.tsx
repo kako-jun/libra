@@ -163,7 +163,7 @@ describe('Issue #46 句読点(App 結合)', () => {
     const lines = legendLines(container)
     expect(lines.length).toBe(10)
     for (const l of lines) expect(l.endsWith('。'), l).toBe(true)
-    expect(lines.find((l) => l.startsWith('緊急＝SOS'))?.endsWith('数え直し）。')).toBe(true)
+    expect(lines.find((l) => l.startsWith('緊急＝SOS'))?.endsWith('数え直し。')).toBe(true)
     for (const l of lines) {
       expect(l).not.toContain('。。')
       expect(l).not.toContain('？。')

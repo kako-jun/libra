@@ -1285,12 +1285,12 @@ describe('App', () => {
     selectCaregiverTab(container, 'モールス')
     const panel = container.querySelector('.caregiver-panel') as HTMLElement
     expect(panel.textContent).toContain('モールス入力を使う')
-    expect(panel.textContent).not.toContain('長押し（－）の境目')
+    expect(panel.textContent).not.toContain('長押しの境目')
     const checkbox = Array.from(panel.querySelectorAll('label'))
       .find((l) => l.textContent?.includes('モールス入力を使う'))
       ?.querySelector('input') as HTMLInputElement
     fireEvent.click(checkbox)
-    expect(panel.textContent).toContain('長押し（－）の境目')
+    expect(panel.textContent).toContain('長押しの境目')
     expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').morseEnabled).toBe(true)
   })
 
@@ -1310,11 +1310,11 @@ describe('App', () => {
     const { container } = enterMorse()
     const text = legendOf(container)
     for (const phrase of [
-      '短く押す＝短点（・）',
-      '0.5秒以上押す＝長点（－）',
-      '緊急＝SOS ・・・ －－－ ・・・（休まず続けて打つと、待たずにすぐ。1.5秒休むと数え直し）',
-      '・・・・・（・を5つ）→ 待つとスキャンへ戻る',
-      '・・・・・・（・を6つ）→ 待つと1字消す',
+      '短く押すと短点の・',
+      '0.5秒以上押すと長点の－',
+      '緊急＝SOS ・・・ －－－ ・・・。休まず続けて打つと、待たずにすぐ。1.5秒休むと数え直し',
+      '・を5つ → 待つとスキャンへ戻る',
+      '・を6つ → 待つと1字消す',
       '・－・－・－ → 待つと確定して伝える',
       '1.5秒押さないと、1文字が決まる',
       '4.0秒押さないと、語の区切りが入る',
@@ -1350,7 +1350,7 @@ describe('App', () => {
       morseWordGapMs: 6000,
     })
     const text = legendOf(container)
-    expect(text).toContain('0.8秒以上押す＝長点（－）')
+    expect(text).toContain('0.8秒以上押すと長点の－')
     expect(text).toContain('2.5秒押さないと、1文字が決まる')
     expect(text).toContain('2.5秒休むと数え直し') // SOS の数え直しも文字の確定時間に追従
     expect(text).toContain('6.0秒押さないと、語の区切りが入る')
@@ -1372,7 +1372,7 @@ describe('App', () => {
     vi.advanceTimersByTime(100)
     expect(container.querySelector('.morse-panel')).not.toBeNull()
     // 実効の境目 = 1000 + 100ms
-    expect(legendOf(container)).toContain('1.1秒以上押す＝長点（－）')
+    expect(legendOf(container)).toContain('1.1秒以上押すと長点の－')
   })
 
   it('Issue #57: 押下時間の下限(#6)があるときだけ「◯秒未満の押下は数えない」が出て、設定に追従する', () => {
@@ -1441,7 +1441,7 @@ describe('App', () => {
     openCaregiverMenu(container)
     selectCaregiverTab(container, 'モールス')
     const panel = container.querySelector('.caregiver-panel') as HTMLElement
-    expect(panel.textContent).toContain('SOS（・・・－－－・・・）も出せません')
+    expect(panel.textContent).toContain('SOS ・・・－－－・・・ も出せません')
   })
 
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
@@ -2697,7 +2697,7 @@ describe('App', () => {
   //   確認中    × やめる → 確認解除(設定不変)
   //   確認中    × タブ切替 / メニュー閉→再開 → なし(次の1回目は確認に戻る)
   describe('Issue #117: タブごとに設定を初期値に戻す', () => {
-    const RESET = (tab: string) => `「${tab}」タブの設定を初期値に戻す`
+    const RESET = (tab: string) => `「${tab}」の設定を初期値に戻す`
     const ARMED = 'もう一度押すと初期値に戻す'
     const saved = () => JSON.parse(window.localStorage.getItem('libra') ?? '{}')
     const resetButton = (root: Element) =>

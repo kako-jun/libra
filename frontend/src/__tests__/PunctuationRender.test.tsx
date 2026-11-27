@@ -142,8 +142,8 @@ describe('Issue #46 PhraseEditor の注意書きは全て句点で終わる(描�
     // 説明 + 注意 + 警告 + 理由2件
     expect(lines.length).toBeGreaterThanOrEqual(5)
     for (const l of lines) expect(KUTEN_END.test(l), l).toBe(true)
-    // 新しい composePainText の挙動(句点の前に入る)と注意書きが矛盾しない
-    expect(lines.join('\n')).toContain('句点で終わる')
+    // composePainText の挙動(元の文の後ろに一文を足す。Issue #153)と注意書きが矛盾しない
+    expect(lines.join('\n')).toContain('後ろに強さを伝える一文が付きます')
     cleanup()
   })
 })
@@ -180,7 +180,9 @@ describe('Issue #46 JSX テキストの静的走査(本文は句点・ラベル�
     expect(findings.filter((f) => f.kind === 'label').length).toBeGreaterThanOrEqual(5)
     // モールス凡例・PhraseEditor の注意書きを含む
     expect(findings.some((f) => f.tag === 'li' && f.text.includes('スキャンへ戻る'))).toBe(true)
-    expect(findings.some((f) => f.tag === 'p' && f.text.includes('末尾に（とても）'))).toBe(true)
+    expect(
+      findings.some((f) => f.tag === 'p' && f.text.includes('後ろに強さを伝える一文が付きます')),
+    ).toBe(true)
   })
 
   it('現行ソースに違反がない', () => {
@@ -194,8 +196,8 @@ describe('Issue #46 JSX テキストの静的走査(本文は句点・ラベル�
         'ここで編集できるのは下の定型文だけです',
       )
       .replace(
-        '（句点で終わる文は句点の前、句点がない文は末尾）。',
-        '（句点で終わる文は句点の前、句点がない文は末尾）',
+        'この文には「痛いです」が無いので、後ろに強さを伝える一文が付きます。',
+        'この文には「痛いです」が無いので、後ろに強さを伝える一文が付きます',
       )
     expect(noKuten).not.toBe(phraseEditorSrc)
     const v = jsxViolations(scanJsx('PhraseEditor.tsx', noKuten))

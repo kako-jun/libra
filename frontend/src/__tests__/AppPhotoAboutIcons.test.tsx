@@ -248,7 +248,7 @@ describe('Issue #118: 「このアプリ」タブ', () => {
     await Promise.resolve()
     const panel = openAbout(container)
     expect(panel.querySelector('.app-usage-count')?.textContent).toBe(
-      '取得できません（通信がないときは表示されません）',
+      '取得できません。通信がないときは表示されません',
     )
     closeCaregiverMenu(container)
     tap(container, 'はい')

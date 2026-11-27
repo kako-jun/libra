@@ -826,6 +826,43 @@ h1[data-fit='wrap'] {
   -webkit-touch-callout: none;
 }
 
+/* Issue #155: ボタンのアイコン。文字のラベルに添える。色は文字と同じ */
+.button-icon {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.caregiver-action,
+.phrase-row-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+}
+
+/* 「介助者用」はアイコンを文字の上に置き、横幅を増やさない(案内欄の文字の幅を残す) */
+.caregiver-button {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+/* 横幅に余裕のある画面と低い画面では 1 段に並べる。2 段のままだと案内欄が高くなり、格子やモールスの凡例を押し出す */
+@media (min-width: 600px), (max-height: 500px) {
+  .caregiver-button {
+    flex-direction: row;
+    gap: 0.35em;
+  }
+}
+
 .caregiver-overlay {
   position: fixed;
   inset: 0;
@@ -2271,6 +2308,49 @@ h1[data-fit='wrap'] {
     width: 1.9em;
     height: 1.9em;
     margin: 0 auto 0.12em;
+  }
+}
+
+/* Issue #155: 決まった操作のパネル(1字消す・確定・解除する・緊急を解除)は、アイコン + 文字が 1 行に入る
+   大きさをラベルの上限にする。アイコンを上に置くセル(高さ 150px 以上)は、文字だけが 1 行に入ればよい */
+.grid-board .tile.tile-icon-short {
+  --label-fit-chars: 5.3;
+}
+
+.grid-board .tile.tile-icon-long {
+  --label-fit-chars: 6.4;
+}
+
+/* 大・特大はホームと同じく文字の大きさを優先し、同じ行のアイコンは隠す(アイコンを上に置けるセルでは出す) */
+:root:is([data-font-size='large'], [data-font-size='xlarge'])
+  .grid-board
+  :is(.tile.tile-icon-short, .tile.tile-icon-long) {
+  --label-fit-chars: 4.02;
+}
+
+:root:is([data-font-size='large'], [data-font-size='xlarge'])
+  .grid-board
+  :is(.tile-icon-short, .tile-icon-long)
+  .tile-icon {
+  display: none;
+}
+
+@container (min-height: 150px) {
+  :root:is([data-font-size='large'], [data-font-size='xlarge'])
+    .grid-board
+    :is(.tile-icon-short, .tile-icon-long)
+    .tile-icon {
+    display: block;
+  }
+}
+
+@container (min-height: 150px) {
+  .grid-board .tile.tile-icon-short > * {
+    --label-fit-chars: 4.02;
+  }
+
+  .grid-board .tile.tile-icon-long > * {
+    --label-fit-chars: 5.02;
   }
 }
 

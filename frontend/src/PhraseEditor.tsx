@@ -20,6 +20,7 @@ import {
   type Phrase,
   type PhraseGroup,
 } from './lib/phrases'
+import { ButtonIcon } from './TileIcon'
 import { exportSettingsJson, parseSettingsJson, type Settings } from './lib/settings'
 
 /**
@@ -142,8 +143,11 @@ export default function PhraseEditor(props: PhraseEditorProps) {
 
       <Show when={group() === 'painLocation'}>
         <p class="phrase-note">
-          痛い場所を選ぶと、続けて強さ（場所だけ / 少し / かなり / とても）を選びます。伝える文に
-          「痛いです」を含めると「胸がとても痛いです。」のように強さが入ります（含まない文は、句点で終わるなら句点の前に「…変です（とても）。」のように、句点がなければ末尾に（とても）が付きます）。
+          {
+            '痛い場所を選ぶと、続けて強さを選びます。強さは「場所だけ」「少し」「かなり」「とても」です。'
+          }
+          {'伝える文に「痛いです」を含めると「胸がとても痛いです。」のように強さが入ります。'}
+          {'含まない文は、後ろに強さを伝える一文が付きます。'}
         </p>
       </Show>
 
@@ -153,7 +157,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
           {overGroups()
             .map(
               (g) =>
-                `${PHRASE_GROUP_LABELS[g]}（${screenItemCount(g, props.settings.phrases)} 項目）`,
+                `${PHRASE_GROUP_LABELS[g]}は ${screenItemCount(g, props.settings.phrases)} 項目`,
             )
             .join('、')}
           。スキャンが長くなり緊急に届くまで時間がかかるため、項目を減らしてください。
@@ -165,7 +169,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
           {(phrase, index) => (
             <li class="phrase-row">
               <label>
-                <span>表示ラベル（短く）</span>
+                <span>短い表示ラベル</span>
                 <input
                   type="text"
                   maxLength={PHRASE_LABEL_MAX}
@@ -190,7 +194,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
                 }
               >
                 <p class="phrase-note" role="note">
-                  この文には「痛いです」が無いので、強さは（とても）の形で付きます（句点で終わる文は句点の前、句点がない文は末尾）。
+                  この文には「痛いです」が無いので、後ろに強さを伝える一文が付きます。
                 </p>
               </Show>
               <Show when={phraseProblem(phrase())}>
@@ -207,7 +211,8 @@ export default function PhraseEditor(props: PhraseEditorProps) {
                   onClick={() => move(index, -1)}
                   aria-label="上へ"
                 >
-                  ↑
+                  <ButtonIcon name="up" />
+                  上へ
                 </button>
                 <button
                   type="button"
@@ -215,9 +220,11 @@ export default function PhraseEditor(props: PhraseEditorProps) {
                   onClick={() => move(index, 1)}
                   aria-label="下へ"
                 >
-                  ↓
+                  <ButtonIcon name="down" />
+                  下へ
                 </button>
                 <button type="button" onClick={() => remove(index)} aria-label="削除">
+                  <ButtonIcon name="delete" />
                   削除
                 </button>
               </div>
@@ -233,6 +240,7 @@ export default function PhraseEditor(props: PhraseEditorProps) {
           onClick={add}
           disabled={editable().length >= MAX_PHRASES_PER_GROUP}
         >
+          <ButtonIcon name="add" />
           フレーズを追加
         </button>
       </div>
@@ -256,7 +264,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
     const json = exportSettingsJson(props.settings)
     setBackupText(json)
     // 端末によってはクリップボードが使えない。使えなければ下の欄から手でコピーしてもらう
-    const fallback = () => setBackupStatus('書き出しました（下の欄からコピーしてください）。')
+    const fallback = () => setBackupStatus('書き出しました。下の欄からコピーしてください。')
     if (!navigator.clipboard) {
       fallback()
       return
@@ -290,7 +298,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
   return (
     <section class="settings-backup" aria-label="設定データ">
       <div class="caregiver-field">
-        <span>設定のバックアップ（端末の入れ替え用）</span>
+        <span>端末の入れ替え用の設定バックアップ</span>
         <textarea
           rows="4"
           value={backupText()}
@@ -302,9 +310,11 @@ export function SettingsBackup(props: SettingsBackupProps) {
         />
         <div class="phrase-actions">
           <button type="button" class="caregiver-action" onClick={doExport}>
+            <ButtonIcon name="export" />
             書き出し
           </button>
           <button type="button" class="caregiver-action" onClick={doImport}>
+            <ButtonIcon name="import" />
             取り込み
           </button>
         </div>

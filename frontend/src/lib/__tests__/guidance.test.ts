@@ -36,10 +36,10 @@ const NO_VIBRATE = 'この端末は振動できません。'
 const VIBRATION = '緊急中は3秒ごとに振動します。'
 const AWAIT_TOUCH = '画面に触れるかキーを押すと、振動を再開します。'
 const DEBOUNCE_DEFAULT =
-  '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。'
+  '誤作動を防ぐため、0.5秒以内の連打は画面遷移直後も数えません。モールス入力は除きます。'
 const AUDITORY =
-  '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。'
-const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効。モールス入力を除く'
+  '伝達の読み上げは、直後の1項目分は割り込まれません。その後は次の読み上げで切れることがあります。'
+const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効です。モールス入力は除きます。'
 
 type SettingsOverride = Partial<ScreenNotesContext['settings'] & BehaviorNotesContext['settings']>
 type BehaviorOverride = Partial<BehaviorNotesContext['settings']>
@@ -171,7 +171,7 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
   it('連打無視 0 なら出ず、>0 なら秒数に追従する(0.05 秒刻みも丸めない)', () => {
     expect(behavior({ debounceMs: 0 })).toEqual([])
     expect(behavior({ debounceMs: 1200 })[0]).toBe(
-      '1.2秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
+      '誤作動を防ぐため、1.2秒以内の連打は画面遷移直後も数えません。モールス入力は除きます。',
     )
     expect(behavior({ debounceMs: 1 })[0]).toContain('0.01秒未満以内')
     expect(behavior({ debounceMs: 50 })[0]).toContain('0.05秒以内')
@@ -180,19 +180,11 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
 
   const holdCases: Array<[number, 'press' | 'release', string | null]> = [
     [0, 'press', null],
-    [0, 'release', `押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE}）。`],
-    [500, 'press', `0.5秒以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE}）。`],
-    [
-      500,
-      'release',
-      `0.5秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
-    ],
-    [
-      2000,
-      'release',
-      `2.0秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
-    ],
-    [1, 'press', `0.01秒未満以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE}）。`],
+    [0, 'release', `押して離すと決まります。押した瞬間は決まりません。${SCREEN_CHANGE}`],
+    [500, 'press', `0.5秒以上押し続けると決まります。短押しは数えません。${SCREEN_CHANGE}`],
+    [500, 'release', `0.5秒以上押し続けて離すと決まります。短押しは数えません。${SCREEN_CHANGE}`],
+    [2000, 'release', `2.0秒以上押し続けて離すと決まります。短押しは数えません。${SCREEN_CHANGE}`],
+    [1, 'press', `0.01秒未満以上押し続けると決まります。短押しは数えません。${SCREEN_CHANGE}`],
   ]
   for (const [minHoldMs, activateOn, expected] of holdCases) {
     it(`押下下限 ${minHoldMs}ms × ${activateOn}: ${expected ?? '行なし'}`, () => {
@@ -221,8 +213,8 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
     expect(
       behavior({ debounceMs: 300, minHoldMs: 400, activateOn: 'release', ...SPEAKING }),
     ).toEqual([
-      '0.3秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
-      `0.4秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
+      '誤作動を防ぐため、0.3秒以内の連打は画面遷移直後も数えません。モールス入力は除きます。',
+      `0.4秒以上押し続けて離すと決まります。短押しは数えません。${SCREEN_CHANGE}`,
       AUDITORY,
     ])
   })
@@ -230,10 +222,12 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
   it('連打無視・押し方の行にはモールス入力に当てはまらない旨が付き、読み上げの行には付かない', () => {
     const all = behavior({ minHoldMs: 800, activateOn: 'release', ...SPEAKING })
     expect(all).toHaveLength(3)
-    expect(all[0]).toContain('モールス入力を除く')
-    expect(all[1]).toContain('モールス入力を除く')
+    expect(all[0]).toContain('モールス入力は除きます')
+    expect(all[1]).toContain('モールス入力は除きます')
     expect(all[2]).not.toContain('モールス')
-    expect(behavior({ debounceMs: 0, activateOn: 'release' })[0]).toContain('モールス入力を除く')
+    expect(behavior({ debounceMs: 0, activateOn: 'release' })[0]).toContain(
+      'モールス入力は除きます',
+    )
   })
 
   it('buildBehaviorNoteMap は原因の設定ごとに分けて持ち、該当しない項目は持たない(Issue #111)', () => {
@@ -246,14 +240,15 @@ describe('buildBehaviorNotes: 設定の表引き', () => {
         ctx({ debounceMs: 300, minHoldMs: 400, activateOn: 'release', ...SPEAKING }),
       ),
     ).toEqual({
-      debounce: '0.3秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
-      hold: `0.4秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
+      debounce:
+        '誤作動を防ぐため、0.3秒以内の連打は画面遷移直後も数えません。モールス入力は除きます。',
+      hold: `0.4秒以上押し続けて離すと決まります。短押しは数えません。${SCREEN_CHANGE}`,
       speech: AUDITORY,
     })
   })
 
   it('スクロールできる介助者用メニュー用なので短縮形を持たない(理由の語も残る)', () => {
-    expect(behavior()[0]).toContain('誤作動防止')
+    expect(behavior()[0]).toContain('誤作動を防ぐため')
   })
 })
 

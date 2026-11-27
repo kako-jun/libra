@@ -36,7 +36,7 @@ const FIELDS = [
   },
   {
     tab: '音と振動',
-    label: '音声モード（伝えた内容の読み上げ）',
+    label: '伝えた内容を読み上げる音声モード',
     options: ['OFF', '効果音だけ', '短く読む', '全部読む'],
     initial: 'OFF',
     pick: '短く読む',
@@ -54,7 +54,7 @@ const FIELDS = [
   },
   {
     tab: '表示',
-    label: '文字サイズ（選ぶタイルの文字）',
+    label: 'パネルの文字サイズ',
     options: ['標準', '大', '特大'],
     initial: '標準',
     pick: '大',
@@ -113,7 +113,7 @@ describe('Issue #148: 値を選ぶ欄はラジオボタン', () => {
 
   it('同じタブの別の組は、別の name を持つ(片方を選んでももう片方は外れない)', () => {
     const { panel } = openTab('音と振動')
-    chooseRadio(radioGroup(panel, '音声モード（伝えた内容の読み上げ）'), '全部読む')
+    chooseRadio(radioGroup(panel, '伝えた内容を読み上げる音声モード'), '全部読む')
     chooseRadio(radioGroup(panel, '振動の強さ'), '弱')
     expect(panel.querySelectorAll('input[type="radio"]:checked')).toHaveLength(2)
   })
@@ -363,12 +363,12 @@ describe('Issue #145: フレーズの編集先', () => {
     setSettings({ phrases: { feelings: many, painLocation: many } })
     const { container } = openTab('フレーズ')
     const warning = editor(container).querySelector('[role="alert"]')?.textContent ?? ''
-    expect(warning).toContain('快 › 気分（11 項目）')
-    expect(warning).toContain('不快 › 痛い（11 項目）')
+    expect(warning).toContain('快 › 気分は 11 項目')
+    expect(warning).toContain('不快 › 痛いは 11 項目')
     const reset = container.querySelector('.caregiver-reset-button') as HTMLElement
     fireEvent.click(reset)
     expect(container.querySelector('.caregiver-reset')?.textContent).toContain(
-      '（快 › 気分、不快、不快 › 痛い、不快 › その他、要望 のフレーズ）',
+      '対象は快 › 気分、不快、不快 › 痛い、不快 › その他、要望のフレーズです。',
     )
   })
 })
