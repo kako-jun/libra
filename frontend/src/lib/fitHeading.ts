@@ -97,17 +97,42 @@ export function measureTextWidthPerPx(text: string, weight: string, family: stri
   return width === null ? null : width / 100
 }
 
+/** 折り返すときの大きさを探す刻み(px)と下限。下限は「全文を収める」を優先して小さくする(Issue #131) */
+const WRAP_STEP_PX = 0.5
+const WRAP_FLOOR_PX = 1
+
 /**
- * h1 に fitHeadingSize を適用する(DOM 測定はここだけ。再計算の契機でだけ呼ぶ)。
- * 1 行にできれば data-fit="single" と --h1-fit を設定し、できなければ何も付けず従来表示にする。
+ * fits(size) が true になる最大の大きさ(WRAP_STEP_PX 刻み)を二分探索する。
+ * 小さいほど収まる前提。下限でも収まらなければ下限を返す
+ */
+export function largestFittingSize(maxSize: number, fits: (size: number) => boolean): number {
+  let low = Math.ceil(WRAP_FLOOR_PX / WRAP_STEP_PX)
+  let high = Math.max(low, Math.floor(maxSize / WRAP_STEP_PX))
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (fits(mid * WRAP_STEP_PX)) low = mid
+    else high = mid - 1
+  }
+  return low * WRAP_STEP_PX
+}
+
+/**
+ * h1 に大きさを適用する(DOM 測定はここだけ。再計算の契機でだけ呼ぶ)。
+ * 1 行にできれば data-fit="single" と --h1-fit を設定する。1 行にできず、親(文を置く箱)の高さが
+ * 測れるときは data-fit="wrap" にして、折り返した全文が箱に収まる最大の大きさにする(Issue #131)。
  */
 export function applyHeadingFit(h1: HTMLElement): void {
   h1.removeAttribute('data-fit')
   h1.style.removeProperty('--h1-fit')
   const text = h1.textContent ?? ''
-  if (!text) return
+  if (!text || h1.hidden) return
   const cs = getComputedStyle(h1)
-  const maxSize = parseFloat(cs.fontSize)
+  const cssMaxSize = parseFloat(cs.fontSize)
+  // 文を置く箱の高さ(0 は測れない: 非表示・未描画)。1 行でもこの高さを超えない大きさにする
+  const boxHeight = h1.parentElement?.clientHeight ?? 0
+  const lineRatio = parseFloat(cs.lineHeight) / cssMaxSize || 1.05
+  const maxSize =
+    boxHeight > 0 ? Math.min(cssMaxSize, Math.floor((boxHeight / lineRatio) * 10) / 10) : cssMaxSize
   h1.style.fontSize = 'var(--h1-min)'
   const minSize = parseFloat(getComputedStyle(h1).fontSize)
   h1.style.removeProperty('font-size')
@@ -126,7 +151,16 @@ export function applyHeadingFit(h1: HTMLElement): void {
     measureWidthAt: (size) =>
       measureTextWidthAt(text, cs.fontWeight, cs.fontFamily, size) ?? Number.NaN,
   })
-  if (!result.singleLine) return
-  h1.style.setProperty('--h1-fit', `${result.size}px`)
-  h1.setAttribute('data-fit', 'single')
+  if (result.singleLine) {
+    h1.style.setProperty('--h1-fit', `${result.size}px`)
+    h1.setAttribute('data-fit', 'single')
+    return
+  }
+  if (boxHeight <= 0) return
+  h1.setAttribute('data-fit', 'wrap')
+  const size = largestFittingSize(cssMaxSize, (candidate) => {
+    h1.style.setProperty('--h1-fit', `${candidate}px`)
+    return h1.getBoundingClientRect().height <= boxHeight && h1.scrollWidth <= h1.clientWidth
+  })
+  h1.style.setProperty('--h1-fit', `${size}px`)
 }

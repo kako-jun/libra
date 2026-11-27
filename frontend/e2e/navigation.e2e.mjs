@@ -213,7 +213,27 @@ async function checkBreadcrumbNotTruncated(chromium, port) {
             lis: [...ul.querySelectorAll('li')].map((li) => {
               const rect = li.getBoundingClientRect()
               const button = li.querySelector('button')
+              // 区切りは最後の行の中央(#128。折り返した項目で 2 行の間に浮かない)
+              const separator = li.querySelector('.breadcrumb-separator')
+              let separatorOff = 0
+              let lineCount = 1
+              const content = li.querySelector('.breadcrumb-link, .breadcrumb-current')
+              if (separator && content) {
+                const range = document.createRange()
+                const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT)
+                const lines = []
+                for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                  range.selectNodeContents(node)
+                  lines.push(...range.getClientRects())
+                }
+                lineCount = new Set(lines.map((x) => Math.round(x.top))).size
+                const last = lines.reduce((a, b) => (b.top > a.top ? b : a))
+                const box = separator.getBoundingClientRect()
+                separatorOff = box.top + box.height / 2 - (last.top + last.height / 2)
+              }
               return {
+                separatorOff,
+                lineCount,
                 text: li.textContent,
                 liCut: li.scrollWidth > li.clientWidth,
                 buttonCut: button ? button.scrollWidth > button.clientWidth : false,
@@ -232,7 +252,15 @@ async function checkBreadcrumbNotTruncated(chromium, port) {
         }
         if (r.ulOverflow > 0) failures.push(`${tag} list overflows its column by ${r.ulOverflow}px`)
         if (r.vScroll > 0) failures.push(`${tag} page scrolls vertically by ${r.vScroll}px`)
+        if (caseName === 'longLabel' && !r.lis.some((x) => x.lineCount > 1)) {
+          failures.push(`${tag} 折り返す項目が無い(区切りの検査が空振り)`)
+        }
         for (const x of r.lis) {
+          if (Math.abs(x.separatorOff) > 1) {
+            failures.push(
+              `${tag} "${x.text}" の区切りが最後の行の中央から ${x.separatorOff.toFixed(1)}px ずれる`,
+            )
+          }
           if (x.liCut || x.buttonCut) failures.push(`${tag} "${x.text}" is truncated`)
           if (x.outside) failures.push(`${tag} "${x.text}" sticks out of the guide column`)
           if (x.overControl) failures.push(`${tag} "${x.text}" overlaps the caregiver button`)
@@ -384,6 +412,30 @@ async function checkPressAnywhere(chromium, port) {
         path: 'ホーム',
         message: null,
       })
+
+      // 矢印を押しても黄色は選ばない。端に着いて矢印が消えた同じ場所を続けて押しても選ばない(#129)。
+      // 黄色が先頭の緊急にある間に押す(選ばれてしまうと緊急になるので、すぐ分かる)
+      await load({ intervalMs: 60000 })
+      await tapTile('はい')
+      await tapTile('いいえ')
+      await page.waitForTimeout(700)
+      for (const [arrow, label] of [
+        ['前の伝達を表示', '過去に伝えたこと（1件前）'],
+        ['次の伝達を表示', '直前に伝えたこと'],
+      ]) {
+        const spot = await at(`.history-nav[aria-label="${arrow}"]`)
+        for (const nth of ['1 回目(矢印)', '2 回目(矢印が消えた同じ場所)']) {
+          await pressAt(spot)
+          await expectState(`${arrow} ${nth}: 黄色(緊急)を選ばない`, {
+            emergency: false,
+            path: 'ホーム',
+            panelLabel: label,
+          })
+          await page.waitForTimeout(400)
+        }
+        const left = await page.locator(`.history-nav[aria-label="${arrow}"]`).count()
+        if (left !== 0) failures.push(`[press-anywhere ${mode}] ${arrow}: 端でも矢印が残る`)
+      }
 
       // 2 本の指。2 本目は連打無視の下限(0.1 秒)より後に着く(同時刻だと連打無視が防ぎ、接触の対策を検査できない)
       if (mode === 'touch') {

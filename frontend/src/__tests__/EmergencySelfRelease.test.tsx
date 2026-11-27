@@ -230,9 +230,10 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(isEmergency(second.container)).toBe(false)
       // 履歴は保存しないので、「緊急を解除しました。」も残らない
       expect(shownMessage(second.container)).toBeNull()
-      expect(second.container.querySelector('.message-panel')?.classList.contains('is-empty')).toBe(
-        true,
+      expect(second.container.querySelector('.message-panel-none')?.textContent).toBe(
+        'いまは、伝えたことがありません。',
       )
+      expect(second.container.querySelector('.history-nav')).toBeNull()
     })
 
     it('選択済みの詳細・緊急中の伝達も一緒に消える', () => {
@@ -412,7 +413,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
       expect(panelLabel(container)).toBe('過去に伝えたこと（3件前）')
       // それより前は無い(緊急の再選択・同じ詳細は二重に積まない)
-      expect(prev.hasAttribute('disabled')).toBe(true)
+      expect(prevButton(container)).toBeNull()
     })
 
     it('緊急中の伝達(はい)の後に詳細を選んでも、最新は「はい。」のまま。解除後は順に振り返れる', () => {
@@ -437,10 +438,14 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
     })
 
-    it('緊急中、帯と同じ中身(緊急の呼び出し・詳細)しか無い間は伝達欄を出さない', () => {
+    it('緊急中、緊急の呼び出し・詳細しか無い間も伝達欄は残し(#131)、最新には帯と同じ中身を重ねない', () => {
       const { container } = startEmergency()
       tap(container, '苦しい')
-      expect(container.querySelector('.message-panel')?.classList.contains('is-empty')).toBe(true)
+      expect(shownMessage(container)).toBeNull()
+      expect(container.querySelector('.message-panel-none')?.textContent).toBe(
+        'いまは、伝えたことがありません。',
+      )
+      expect(document.documentElement.dataset.messageTone).toBe('neutral')
     })
   })
 

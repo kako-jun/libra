@@ -109,8 +109,10 @@ type CaregiverTabId = (typeof CAREGIVER_TABS)[number]['id']
  * それ自身の操作だけをする要素(パネル・ボタン・矢印・パンくずのリンク等)。ここ以外の場所の押下は、
  * 黄色のパネルを選ぶ(Issue #134)。押せない状態のボタンもボタンなので、ここに含める
  */
+// .history-gap は、反対側の矢印が出ている間の「矢印が無い側」の場所(何も描かない)。矢印を続けて押して
+// 端に着いた直後の押下で黄色が選ばれないように、押しても何も起きない(Issue #129 と #134)
 const OWN_OPERATION_SELECTOR =
-  'button, a[href], input, select, textarea, label, summary, [role="button"], [role="tab"]'
+  'button, a[href], input, select, textarea, label, summary, [role="button"], [role="tab"], .history-gap'
 const ownOperationElement = (target: EventTarget | null): Element | null =>
   target instanceof Element ? target.closest(OWN_OPERATION_SELECTOR) : null
 
@@ -234,8 +236,11 @@ const THEME_COLOR: Record<'light' | 'dark', string> = {
   dark: '#0a2318',
 }
 
-/** 伝達履歴の1件。emergency は緊急の呼び出し・詳細の記録(緊急中は帯に同じ中身が出ている) */
-type HistoryEntry = { text: string; emergency: boolean }
+/**
+ * 伝達履歴の1件。tone はその内容が持つ色で、過去を表示するときの背景色になる(Issue #135)。
+ * emergency は緊急の呼び出し・詳細の記録(緊急中は帯に同じ中身が出ている)
+ */
+type HistoryEntry = { text: string; tone: Tone; emergency: boolean }
 
 export default function App() {
   // 開発補助: URL に ?dev を付けると番号バッジを表示する（既定は非表示）
@@ -288,14 +293,22 @@ export default function App() {
   // 緊急状態は message へ入れず、専用の emergency-status に表示する。
   // 緊急中の後続伝達だけは、通常の選択結果と同じ message 領域へ明示的に分離して出す。
   const [message, setMessage] = createSignal(restoredEmergency?.sub ?? DEFAULT_MESSAGE)
-  const [messageTone, setMessageTone] = createSignal<Tone>('neutral')
+  const [messageTone, setMessageTone] = createSignal<Tone>(restoredEmergency?.subTone ?? 'neutral')
 
   // Issue #120: 伝達の履歴(介助者が左右の矢印で振り返る)。端末のメモリ内だけに持ち、保存しない。
   // historyBack は「何件前を表示しているか」(0 = 最新)。新しい伝達・緊急で必ず 0 に戻し、
   // 過去の表示が本人の新しい伝達を隠さないようにする
   // emergency: 緊急の呼び出し・詳細の記録(緊急中は帯に同じ中身が出ている)。伝達欄の「最新」にはならない
   const [history, setHistory] = createSignal<HistoryEntry[]>(
-    restoredEmergency?.sub ? [{ text: restoredEmergency.sub, emergency: false }] : [],
+    restoredEmergency?.sub
+      ? [
+          {
+            text: restoredEmergency.sub,
+            tone: restoredEmergency.subTone ?? 'neutral',
+            emergency: false,
+          },
+        ]
+      : [],
   )
   const [historyBack, setHistoryBack] = createSignal(0)
   // Issue #123: 「もう一度」。直前の伝達の振動パターン(はい/いいえ等)を覚えておき、同じものを出し直す
@@ -308,8 +321,8 @@ export default function App() {
     setRepeatedMessage(false)
     setRepeatedEmergency(false)
   }
-  const pushHistory = (text: string, emergency = false) => {
-    setHistory((items) => [...items, { text, emergency }].slice(-HISTORY_MAX))
+  const pushHistory = (text: string, tone: Tone, emergency = false) => {
+    setHistory((items) => [...items, { text, tone, emergency }].slice(-HISTORY_MAX))
     setHistoryBack(0)
   }
   // 最新の表示(message)に当たる履歴の位置。緊急の開始・解除で最新が空のときは -1。
@@ -325,25 +338,36 @@ export default function App() {
     const back = historyBack()
     if (back <= 0) return null
     const items = olderEntries()
-    return items[items.length - back]?.text ?? null
+    return items[items.length - back] ?? null
   })
-  /** 伝達欄を出さないか。緊急中、帯に出ている緊急の記録しか無いときも出さない(帯と同じ中身を重ねない) */
-  const messagePanelEmpty = createMemo(
-    () =>
-      message() === DEFAULT_MESSAGE &&
-      history().every((entry) => emergencyActive() && entry.emergency),
-  )
-  const displayedMessage = createMemo(() => pastEntry() ?? message())
+  const displayedMessage = createMemo(() => pastEntry()?.text ?? message())
+  /** 伝達欄の背景色は、表示中の内容が持つ色で決める(Issue #135)。何も出していないときは通常の色 */
+  const displayedTone = createMemo<Tone>(() => {
+    const past = pastEntry()
+    if (past) return past.tone
+    return message() === DEFAULT_MESSAGE ? 'neutral' : messageTone()
+  })
+  createEffect(() => {
+    document.documentElement.dataset.messageTone = displayedTone()
+  })
   /** 「もう一度」で伝え直せるものがあるか(直前の伝達、または緊急の呼び出し) */
   const canRepeat = () => message() !== DEFAULT_MESSAGE || emergencyActive()
+  /** どちらかの側に振り返れる内容があるか(矢印が 1 つ以上出ている) */
+  const hasHistoryNav = () => olderCount() > 0 || historyBack() > 0
+  const historyGap = () => (
+    <Show when={hasHistoryNav()}>
+      <span class="history-gap" aria-hidden="true" />
+    </Show>
+  )
   const stepHistory = (delta: -1 | 1) => {
     // 介助者用メニュー表示中は、背後の矢印を押しても動かさない(パンくずと同じガード)
     if (caregiverMenuOpen()) return
     setHistoryBack((back) => Math.min(olderCount(), Math.max(0, back + delta)))
   }
 
-  // Issue #22: 上部メッセージ(h1)を 1 行に収まる最大サイズで表示する。再計算は
-  // メッセージ変更・幅変化・回転/リサイズ・Web フォント読み込み後だけ(h1 は文字サイズ設定の対象外)
+  // Issue #22/#131: 上部メッセージ(h1)を、1 行に収まるなら最大サイズの 1 行で、長ければ折り返しと
+  // 文字の大きさで、高さが固定の伝達欄に全文収める。再計算はメッセージ変更・文を置く箱の大きさの変化・
+  // 回転/リサイズ・Web フォント読み込み後だけ(h1 は文字サイズ設定の対象外)
   // (rAF でまとめる。毎フレームの DOM 測定はしない)
   let headingEl: HTMLHeadingElement | undefined
   let headingFitFrame: number | undefined
@@ -359,18 +383,21 @@ export default function App() {
     scheduleHeadingFit()
   })
   onMount(() => {
-    const panel = headingEl?.parentElement
-    let lastWidth = panel?.clientWidth ?? 0
+    // 文を置く箱の大きさは中身(h1)に左右されない(高さ固定の伝達欄の残り)ので、監視しても再計算が回らない。
+    // 高さは見出しが折り返したときや画面の高さで変わる
+    const box = headingEl?.parentElement
+    let lastWidth = box?.clientWidth ?? 0
+    let lastHeight = box?.clientHeight ?? 0
     const observer =
-      panel && typeof ResizeObserver === 'function'
+      box && typeof ResizeObserver === 'function'
         ? new ResizeObserver(() => {
-            // h1 のサイズ変更で panel の高さが変わっても再計算しない(幅の変化だけ見る)
-            if (panel.clientWidth === lastWidth) return
-            lastWidth = panel.clientWidth
+            if (box.clientWidth === lastWidth && box.clientHeight === lastHeight) return
+            lastWidth = box.clientWidth
+            lastHeight = box.clientHeight
             scheduleHeadingFit()
           })
         : null
-    if (panel) observer?.observe(panel)
+    if (box) observer?.observe(box)
     window.addEventListener('resize', scheduleHeadingFit)
     window.addEventListener('orientationchange', scheduleHeadingFit)
     const fonts = document.fonts
@@ -390,8 +417,11 @@ export default function App() {
   })
   // 緊急中に選ばれた直前の伝達。保存形式の互換性のため emergencyState の sub を使うが、
   // 表示は曖昧な「最新」ではなく、独立した「直前に伝えたこと」領域へ出す。
-  const [emergencySubMessage, setEmergencySubMessage] = createSignal<string | null>(
-    restoredEmergency?.sub ?? null,
+  // 色(tone)も一緒に持ち、再起動後も内容の色で表示する(Issue #135)
+  const [emergencySub, setEmergencySub] = createSignal<{ text: string; tone: Tone } | null>(
+    restoredEmergency?.sub
+      ? { text: restoredEmergency.sub, tone: restoredEmergency.subTone ?? 'neutral' }
+      : null,
   )
   // 下位画面での無入力ステップ数(カーソルが進んだ項目数。Issue #76)。画面遷移・本人の入力・押下中で 0 に戻す
   let idleSteps = 0
@@ -577,7 +607,6 @@ export default function App() {
   const showMessage = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
     setMessage(text)
     setMessageTone(tone)
-    document.documentElement.dataset.messageTone = tone
     feedback(event ?? (tone === 'urgent' ? 'urgentMessage' : 'message'))
     announce(text)
   }
@@ -653,14 +682,13 @@ export default function App() {
 
   // 通常の伝達完了。緊急状態は専用領域に残したまま、後続伝達を別の結果領域へ出す。
   const completeTransmission = (text: string, tone: Tone = 'neutral', event?: FeedbackEvent) => {
-    pushHistory(text)
+    pushHistory(text, tone)
     clearRepeatMarks()
     lastMessageEvent = event ?? (tone === 'urgent' ? 'urgentMessage' : 'message')
     if (emergencyActive()) {
-      setEmergencySubMessage(text)
+      setEmergencySub({ text, tone })
       setMessage(text)
       setMessageTone(tone)
-      document.documentElement.dataset.messageTone = tone
       feedback(event ?? 'message')
       announce(text)
       goTo('home')
@@ -747,13 +775,12 @@ export default function App() {
   const clearEmergency = () => {
     setEmergencyActive(false)
     setEmergencyDetails([])
-    setEmergencySubMessage(null)
+    setEmergencySub(null)
     feedback('cleared')
     clearRepeatMarks()
     setHistoryBack(0)
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
-    document.documentElement.dataset.messageTone = 'neutral'
   }
 
   const closeCaregiverMenu = () => {
@@ -773,12 +800,11 @@ export default function App() {
         clearRepeatMarks()
         if (!alreadyActive) {
           // 緊急の呼び出しを伝達履歴に積む。本人が後で解除しても、後から来た介助者が矢印で振り返れる
-          pushHistory(EMERGENCY_MESSAGE, true)
+          pushHistory(EMERGENCY_MESSAGE, 'urgent', true)
           setEmergencyDetails([])
-          setEmergencySubMessage(null)
+          setEmergencySub(null)
           setMessage(DEFAULT_MESSAGE)
           setMessageTone('neutral')
-          document.documentElement.dataset.messageTone = 'neutral'
           feedback('emergency')
           announce(EMERGENCY_MESSAGE)
         } else {
@@ -792,7 +818,7 @@ export default function App() {
         if (!emergencyDetails().includes(action.label)) {
           setEmergencyDetails((details) => [...details, action.label])
           // 詳細も伝達履歴に積む(解除の後でも、何が起きたかを介助者が振り返れる)
-          pushHistory(emergencyDetailHistoryText(action.label), true)
+          pushHistory(emergencyDetailHistoryText(action.label), 'urgent', true)
         }
         clearRepeatMarks()
         feedback('urgentMessage')
@@ -811,7 +837,7 @@ export default function App() {
         // 解除の文に選んだ詳細を含める(帯が消えても、何の緊急だったかが伝達欄と履歴に残る)
         const releasedMessage = emergencyReleasedMessage(emergencyDetails())
         clearEmergency()
-        pushHistory(releasedMessage)
+        pushHistory(releasedMessage, 'neutral')
         lastMessageEvent = 'message'
         setMessage(releasedMessage)
         announce(releasedMessage)
@@ -976,16 +1002,14 @@ export default function App() {
   // 緊急状態の保存。有効な間は内容の変化ごとに保存し、解除されたら保存ごと消す。
   createEffect(() => {
     if (emergencyActive()) {
-      saveEmergencyState({ details: emergencyDetails(), sub: emergencySubMessage() })
+      const sub = emergencySub()
+      saveEmergencyState({
+        details: emergencyDetails(),
+        sub: sub?.text ?? null,
+        subTone: sub?.tone,
+      })
     } else {
       clearEmergencyState()
-    }
-  })
-
-  // 復元した緊急は、静かな視覚表示(緊急パネル)だけで再開する
-  onMount(() => {
-    if (restoredEmergency) {
-      document.documentElement.dataset.messageTone = 'neutral'
     }
   })
 
@@ -1497,35 +1521,36 @@ export default function App() {
         </section>
       </Show>
 
-      {/* Issue #114: 「直前に伝えたこと」は現在地(パンくず)より上位の情報なので、案内欄より上に置く */}
+      {/* Issue #114: 「直前に伝えたこと」は現在地(パンくず)より上位の情報なので、案内欄より上に置く。
+          Issue #131: 起動時から常に出し、高さは内容で変えない(globals.css) */}
       <section
         class="message-panel"
         classList={{
-          'is-empty': messagePanelEmpty(),
           'is-past': pastEntry() !== null,
-          'is-cleared': pastEntry() === null && message() === DEFAULT_MESSAGE,
           'repeat-pulse-a': repeatedMessage() && repeatPulse() % 2 === 1,
           'repeat-pulse-b': repeatedMessage() && repeatPulse() % 2 === 0,
         }}
         aria-live="polite"
         aria-label="直前に伝えたこと"
       >
-        {/* Issue #120: 介助者が過去の伝達を振り返る矢印。スキャン対象ではない(タップ / クリックだけ)。
+        {/* Issue #120/#129: 介助者が過去の伝達を振り返る矢印。その方向に内容があるときだけ出す。
+            左右の枠は常に確保し、矢印の出入りで中央の文字を動かさない。スキャン対象ではない(タップ / クリックだけ)。
             data-caregiver-control は付けない: タップでフォーカスが残っても、続くキー(本人のスイッチ)は
             矢印を押さず、いつもどおりスキャン対象を実行する */}
-        <Show when={olderCount() > 0 || historyBack() > 0}>
-          <button
-            type="button"
-            class="history-nav"
-            aria-label="前の伝達を表示"
-            disabled={historyBack() >= olderCount()}
-            onClick={() => stepHistory(1)}
-          >
-            <svg viewBox="0 0 20 24" aria-hidden="true">
-              <path d="M15 3 L5 12 L15 21" />
-            </svg>
-          </button>
-        </Show>
+        <div class="history-slot">
+          <Show when={historyBack() < olderCount()} fallback={historyGap()}>
+            <button
+              type="button"
+              class="history-nav"
+              aria-label="前の伝達を表示"
+              onClick={() => stepHistory(1)}
+            >
+              <svg viewBox="0 0 20 24" aria-hidden="true">
+                <path d="M15 3 L5 12 L15 21" />
+              </svg>
+            </button>
+          </Show>
+        </div>
         <div class="message-panel-body">
           <p class="message-panel-label">
             {pastEntry() !== null
@@ -1534,27 +1559,31 @@ export default function App() {
                 ? '直前に伝えたこと（もう一度）'
                 : '直前に伝えたこと'}
           </p>
-          {/* h1 は常に DOM に置く(1 行に収める再計算が h1 の親を監視するため)。最新が空のときだけ隠す */}
-          <h1 ref={headingEl} hidden={pastEntry() === null && message() === DEFAULT_MESSAGE}>
-            {displayedMessage()}
-          </h1>
-          <Show when={pastEntry() === null && message() === DEFAULT_MESSAGE}>
-            <p class="message-panel-none">いまは、伝えたことがありません。</p>
+          {/* 見出しの残りの高さ。h1 はこの箱に全文が収まる大きさにする(lib/fitHeading.ts) */}
+          <div class="message-panel-text">
+            {/* h1 は常に DOM に置く(大きさの再計算が h1 の親を監視するため)。最新が空のときだけ隠す */}
+            <h1 ref={headingEl} hidden={pastEntry() === null && message() === DEFAULT_MESSAGE}>
+              {displayedMessage()}
+            </h1>
+            <Show when={pastEntry() === null && message() === DEFAULT_MESSAGE}>
+              <p class="message-panel-none">いまは、伝えたことがありません。</p>
+            </Show>
+          </div>
+        </div>
+        <div class="history-slot">
+          <Show when={historyBack() > 0} fallback={historyGap()}>
+            <button
+              type="button"
+              class="history-nav"
+              aria-label="次の伝達を表示"
+              onClick={() => stepHistory(-1)}
+            >
+              <svg viewBox="0 0 20 24" aria-hidden="true">
+                <path d="M5 3 L15 12 L5 21" />
+              </svg>
+            </button>
           </Show>
         </div>
-        <Show when={olderCount() > 0 || historyBack() > 0}>
-          <button
-            type="button"
-            class="history-nav"
-            aria-label="次の伝達を表示"
-            disabled={historyBack() <= 0}
-            onClick={() => stepHistory(-1)}
-          >
-            <svg viewBox="0 0 20 24" aria-hidden="true">
-              <path d="M5 3 L15 12 L5 21" />
-            </svg>
-          </button>
-        </Show>
       </section>
 
       <section class="screen-guide" aria-label="現在の画面">
@@ -1571,12 +1600,12 @@ export default function App() {
                     <Show
                       when={item.screen}
                       fallback={
-                        <>
+                        <span class="breadcrumb-current">
                           <Show when={index() === 0}>
                             <HomeIcon />
                           </Show>
                           {item.title}
-                        </>
+                        </span>
                       }
                     >
                       {(target) => (
@@ -1597,6 +1626,12 @@ export default function App() {
                           {item.title}
                         </button>
                       )}
+                    </Show>
+                    {/* Issue #128: 区切りは文字の「›」でなく図形にする。字形の位置に左右されず上下中央に置ける */}
+                    <Show when={index() < screenBreadcrumb().length - 1}>
+                      <svg class="breadcrumb-separator" viewBox="0 0 10 16" aria-hidden="true">
+                        <path d="M3 4 L7 8 L3 12" />
+                      </svg>
                     </Show>
                   </li>
                 )}

@@ -4,6 +4,7 @@ import {
   fitHeadingSize,
   measureTextWidthAt,
   measureTextWidthPerPx,
+  largestFittingSize,
 } from '../fitHeading'
 
 // 全角 15 字(1px あたり 15px 幅)を想定
@@ -212,7 +213,7 @@ describe('measureTextWidthPerPx / applyHeadingFit (canvas をスタブ)', () => 
     expect(h1.style.fontSize).toBe('')
   })
 
-  it('収まらなければ data-fit も --h1-fit も付かない(従来の折り返し)', () => {
+  it('親の高さが測れないとき、1 行に収まらなければ data-fit も --h1-fit も付かない', () => {
     measured = 1500
     clientWidth = 400
     applyHeadingFit(h1)
@@ -248,6 +249,62 @@ describe('measureTextWidthPerPx / applyHeadingFit (canvas をスタブ)', () => 
       m.applyHeadingFit(h1)
       expect(h1.hasAttribute('data-fit')).toBe(false)
     })
+  })
+
+  /** 親の高さ boxHeight と、大きさに比例して高くなる h1 を用意する(高さ = 大きさ × heightPerPx) */
+  const mountInBox = (boxHeight: number, heightPerPx: number) => {
+    const box = document.createElement('div')
+    Object.defineProperty(box, 'clientHeight', { get: () => boxHeight })
+    box.appendChild(h1)
+    document.body.appendChild(box)
+    h1.getBoundingClientRect = () =>
+      ({
+        height: (parseFloat(h1.style.getPropertyValue('--h1-fit')) || 0) * heightPerPx,
+      }) as DOMRect
+    return box
+  }
+
+  it('Issue #131: 1 行に収まらない長文は data-fit=wrap で、箱の高さに収まる最大の大きさ', () => {
+    measured = 1500
+    clientWidth = 400
+    const box = mountInBox(100, 4)
+    applyHeadingFit(h1)
+    expect(h1.getAttribute('data-fit')).toBe('wrap')
+    expect(h1.style.getPropertyValue('--h1-fit')).toBe('25px')
+    box.remove()
+  })
+
+  it('Issue #131: 非常に長い文は下限の大きさより小さくしてでも収める(切らない)', () => {
+    measured = 100000
+    clientWidth = 400
+    const box = mountInBox(100, 40)
+    applyHeadingFit(h1)
+    expect(h1.style.getPropertyValue('--h1-fit')).toBe('2.5px')
+    box.remove()
+  })
+
+  it('Issue #131: 1 行の大きさは箱の高さを超えない(行の高さ 1.05 倍で割る)', () => {
+    measured = 100
+    clientWidth = 700
+    const box = mountInBox(42, 1.05)
+    applyHeadingFit(h1)
+    expect(h1.getAttribute('data-fit')).toBe('single')
+    expect(h1.style.getPropertyValue('--h1-fit')).toBe('40px')
+    box.remove()
+  })
+
+  it('隠れている h1 には何も付けない', () => {
+    measured = 1500
+    clientWidth = 900
+    h1.hidden = true
+    applyHeadingFit(h1)
+    expect(h1.hasAttribute('data-fit')).toBe(false)
+  })
+
+  it('largestFittingSize: 収まる最大(0.5px 刻み)。上限が収まれば上限、何も収まらなければ下限', () => {
+    expect(largestFittingSize(54, (size) => size <= 20.7)).toBe(20.5)
+    expect(largestFittingSize(54, () => true)).toBe(54)
+    expect(largestFittingSize(54, () => false)).toBe(1)
   })
 
   it('測定中に使う data-fit=measure は残らない', () => {

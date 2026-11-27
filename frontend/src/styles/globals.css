@@ -301,53 +301,8 @@ input::file-selector-button {
 
 /* ===================================================================
    メッセージ欄 — 主役。枠線は使わず面の色だけで区切る。
+   欄そのものの配置・高さ・色は下の「伝達欄」にまとめている。
    =================================================================== */
-/* Issue #3 追加指示: 状態表示(アプリ名・音声モード・スキャン位置)を撤去し、
-   メッセージ欄はメッセージそのもの(と緊急詳細)だけを大きく表示する専任にする。
-   角丸・影はやめ、下の格子と地続きの一枚の盤に見えるよう区切り線だけで区切る */
-.message-panel {
-  grid-row: 1;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  /* controls は message とだけ同じ行に置く(details/sub 行にはまたがせない)。
-     auto サイズの行を複数またぐ配置は、またいだ分だけ各行を余分に膨らませてしまい
-     (実機検証: 文字盤スクロール画面でタイルがビューポート外に出た)、その分だけ
-     grid-board の使える高さが減ってしまうため避ける */
-  grid-template-areas:
-    'message controls'
-    'details details'
-    'sub sub';
-  /* PR#16 Opus レビュー 再検証で発覚: align-content:center のまま max-height で
-     頭打ちにすると、中身がその上限より大きい場合に上下へ均等にはみ出し、上側が
-     ビューポート外(負のtop)に出て読めなくなる(実測: 320x568 特大で h1.top=-20px)。
-     start にして、はみ出しは必ず下側だけ(overflow-y:autoでスクロール可能)にする */
-  align-content: start;
-  /* PR#16 再レビュー should-b: h1 の文字サイズ設定の上限をメッセージ欄幅基準にするため、
-     cqi を使えるようにする */
-  container-type: inline-size;
-  column-gap: 12px;
-  row-gap: 6px;
-  min-height: 156px;
-  /* kako-jun 回答(question): 特大文字時などにメッセージ欄が画面の6割超を占めて
-     しまわないよう、画面高さの40%を上限にする。格子(タイル)側に最低60%を残す。
-     上限を超える分は内部スクロールで読める(はみ出し非表示にはしない) */
-  max-height: 40vh;
-  max-height: 40dvh;
-  overflow-y: auto;
-  padding: 22px;
-  color: var(--message-text);
-  background: var(--message-bg);
-  border-bottom: var(--grid-line-width) solid var(--grid-line);
-}
-
-.message-panel h1 {
-  grid-area: message;
-}
-
-.message-panel .emergency-details {
-  grid-area: details;
-}
-
 /* 介助ボタンはメッセージ欄右上に置く(文字と重ならないよう grid で専用列を確保する。
    position:fixed はやめ、通常のレイアウトに組み込む) */
 .message-panel-controls {
@@ -360,11 +315,6 @@ input::file-selector-button {
   min-height: 44px;
 }
 
-:root[data-message-tone='urgent'] .message-panel {
-  color: var(--urgent-text);
-  background: var(--urgent-bg);
-}
-
 /* PR#16 3巡目 must-1(should-b を撤回): h1 に --font-scale を効かせる should-b を
    2巡目で入れたが、3巡目の再レビューで「見出しの拡大→メッセージ欄が伸びる→格子が
    縮む→列数反転→タイルの文字が逆に縮む」という連鎖が発覚した(標準時でも見出しが
@@ -374,12 +324,13 @@ input::file-selector-button {
    h1(と緊急詳細/副表示)は --font-scale の対象外に戻し、以前の実測値
    (1024x768で53.8px・768x1024で71.7px・390x844で38.4px程度)に戻す。
    文字サイズ設定は選択肢(タイル)の文字だけに効く(docs/user-guide.md に明記)。
-   40dvh の上限だけは cqi で抑える(幅の狭い画面での安全網。通常時は 7vh 側が先に
+   上限は cqi で抑える(幅の狭い画面での安全網。通常時は 7vh 側が先に
    効くため、実質的な挙動は以前の「7vh のみ」の式と変わらない) */
 h1 {
   /* Issue #22: 1 行に収まるならその最大サイズで表示する。--h1-max/--h1-min は既存 clamp の
      上限・下限(JS が computed で読む)。--h1-fit と data-fit は fitHeading(App.tsx)が設定する。
-     下限でも収まらない長文は data-fit なし=従来どおり 16ch で折り返す */
+     下限でも 1 行に収まらない長文は data-fit="wrap"(Issue #131)で、折り返しと文字の大きさで
+     伝達欄の高さに全文を収める */
   --h1-max: clamp(2.35rem, min(7vh, 14cqi), 5.4rem);
   --h1-min: 2.35rem;
   margin: 0;
@@ -396,6 +347,10 @@ h1[data-fit] {
 h1[data-fit='single'] {
   font-size: var(--h1-fit);
   white-space: nowrap;
+}
+
+h1[data-fit='wrap'] {
+  font-size: var(--h1-fit);
 }
 
 /* 見出し(h1)の6割程度の大きさ。緊急の赤背景上でも読める配色にする。
@@ -625,8 +580,14 @@ h1[data-fit='single'] {
   /* Issue #82: 遷移タイルの予告(.tile-preview)の文字サイズ。ラベルの約50%、最小でも
      0.85rem 相当(--label-ratio で文字サイズ設定に追従)。予告の font-size・2行モードの
      ラベルの避け領域(margin-bottom)・山形アイコンの上端(top)が同じ値を使うので、
-     式はここ1か所だけに置く */
-  --tile-preview-font: max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font));
+     式はここ1か所だけに置く。
+     最小の大きさは、とても低いセル(中身がおよそ 30px 未満。320x568 のモールス使用の緊急中で
+     高コントラストなど)ではセルの高さで頭打ちにする(標準の大きさ 0.85 × 0.85rem より小さくしない)。
+     そこではラベルが下限の大きさに固定されるので、予告だけが文字サイズ設定で大きくなるとラベルに重なる */
+  --tile-preview-font: max(
+    min(calc(var(--label-ratio) * 0.85rem), max(0.7225rem, 46cqb)),
+    0.5 * var(--tile-label-font)
+  );
 }
 
 .tile,
@@ -1354,13 +1315,6 @@ h1[data-fit='single'] {
   background: var(--caregiver-close-bg);
 }
 
-/* 縦横の境界は gridLayout.ts と同じ(高さ >= 幅 が縦長。正方形は縦長) */
-@media (orientation: portrait) {
-  .message-panel {
-    min-height: 148px;
-  }
-}
-
 @media (max-width: 720px) {
   /* PR#16 5巡目 must-G(4巡目 should-a を巻き戻す): --label-cqi/--label-cqb を
      このブレークポイント向けの値に上書きする。:root で定義することで、
@@ -1368,10 +1322,6 @@ h1[data-fit='single'] {
   :root {
     --label-cqi: 20;
     --label-cqb: 22;
-  }
-
-  .message-panel {
-    padding: 16px;
   }
 
   .grid-board {
@@ -1404,11 +1354,6 @@ h1[data-fit='single'] {
   :root {
     --label-cqi: 22;
     --label-cqb: 24;
-  }
-
-  .message-panel {
-    min-height: 0;
-    padding: 10px 12px;
   }
 
   h1 {
@@ -1776,17 +1721,32 @@ h1[data-fit='single'] {
   min-width: 0;
   white-space: normal;
   overflow-wrap: anywhere;
-  /* ボタン(inline-block)と区切りを flex で並べる。区切りが折り返した文字の下に落ちず、末尾の行の右に付く */
+  /* Issue #128: 家アイコン・項目名・区切りは行の上下中央に揃える。区切りは項目の右に付き、
+     折り返した 2 行目の先頭に来ない */
   display: flex;
-  align-items: flex-end;
+  align-items: center;
 }
 
-/* 区切りは前の項目の末尾に付ける。折り返した 2 行目の先頭が「›」で始まらないようにする */
-.screen-breadcrumb li:not(:last-child)::after {
-  content: '›';
+/* 現在地(ボタンでない)と祖先(ボタン)で同じ並べ方にし、階層を移っても家アイコンが上下に動かないようにする */
+.screen-breadcrumb .breadcrumb-current,
+.screen-breadcrumb .breadcrumb-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.breadcrumb-separator {
   flex: none;
+  /* 項目が 2 行に折り返したら、区切りは最後の行の高さに置いてその行の中央に合わせる(2 行の間に浮かせない)。
+     高さは行の高さ(1.15em)なので、1 行の項目では上下中央と同じ位置 */
+  align-self: flex-end;
+  width: 0.625em;
+  height: 1.15em;
   margin-left: 0.25em;
-  color: var(--text-muted);
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Issue #69: 祖先は押せるボタン。下線で押せると分かる。色は --text-muted のまま(各テーマで4.5:1以上) */
@@ -1814,7 +1774,6 @@ h1[data-fit='single'] {
   width: 1em;
   height: 1em;
   margin-right: 0.2em;
-  vertical-align: -0.12em;
   fill: none;
   stroke: currentColor;
   stroke-width: 2.4;
@@ -1872,24 +1831,6 @@ h1[data-fit='single'] {
   grid-row: 1;
 }
 
-.message-panel {
-  grid-row: 2;
-  display: block;
-  min-height: 0;
-  max-height: 24vh;
-  max-height: 24dvh;
-  padding: 10px 18px;
-  overflow-y: auto;
-}
-
-.message-panel.is-empty {
-  display: none;
-}
-
-.message-panel h1 {
-  margin-top: 0;
-}
-
 .letter-strip {
   grid-row: 4;
 }
@@ -1900,8 +1841,7 @@ h1[data-fit='single'] {
 }
 
 @media (max-width: 480px), (max-height: 500px) {
-  .emergency-status,
-  .message-panel {
+  .emergency-status {
     padding: 7px 12px;
   }
 
@@ -1978,15 +1918,6 @@ h1[data-fit='single'] {
      (緊急+伝達メッセージが重なる 568x320 でも8項目の格子を埋めるため) */
   .emergency-status {
     padding-block: 4px;
-  }
-
-  .message-panel {
-    padding-block: 3px;
-  }
-
-  .message-panel-label {
-    margin: 0;
-    line-height: 1.1;
   }
 
   .screen-notes {
@@ -2080,26 +2011,41 @@ h1[data-fit='single'] {
 }
 
 /* ===================================================================
-   Issue #120: 伝達履歴。「直前に伝えたこと」の枠の左右に、介助者が押す矢印を置く(スキャン対象外)。
-   過去を表示している間は枠の色と見出しを変え、最新の伝達と取り違えないようにする。
+   伝達欄(「直前に伝えたこと」)。
+   Issue #131: 高さは画面の大きさだけで決め、内容(未伝達・短文・長文・過去の表示)で変えない。
+   下の案内欄とタイルが動かない。長文は切らずスクロールもさせず、折り返しと文字の大きさで
+   全文を収める(lib/fitHeading.ts)。起動時から出す。文字サイズ設定では高さを変えない。
+   Issue #120/#129: 左右に介助者が押す矢印の枠を常に確保し(スキャン対象外)、矢印はその方向に内容が
+   あるときだけ出す。過去の表示は見出し「過去に伝えたこと（N件前）」で区別する(白枠は付けない。#130)。
+   Issue #135: 背景色は表示中の内容の色(通常 / 上の urgent 色調の赤)。過去の表示で薄くしない。
    =================================================================== */
 .message-panel {
+  grid-row: 2;
   display: flex;
   align-items: stretch;
   gap: 10px;
+  height: clamp(84px, 14vh, 180px);
+  height: clamp(84px, 14dvh, 180px);
+  overflow: hidden;
+  /* 見出し(h1)の上限を伝達欄の幅基準(cqi)にする */
+  container-type: inline-size;
+  /* 下の余白は小さくする: 欄の高さを変えずに、本文を置く高さを増やす(上の余白は変えないので、
+     見出しと本文の位置は変わらない) */
+  padding: 10px 18px 4px;
+  color: var(--message-text);
+  background: var(--message-bg);
+  border-bottom: var(--grid-line-width) solid var(--grid-line);
 }
 
-/* Issue #156: BIZ UDGothic は仮名が全角幅なので、狭い画面では左右の余白と矢印との間隔を詰めて
-   本文の幅を確保する。詰めないと 390px 幅で「痰を取ってほしいです。」が下限の大きさでも1行に収まらず、
-   最大の大きさの2行になって枠が伸び、タイルが縮む */
-@media (max-width: 480px) {
-  .message-panel {
-    gap: 6px;
-    padding-right: 8px;
-    padding-left: 8px;
-  }
+:root[data-message-tone='urgent'] .message-panel {
+  color: var(--urgent-text);
+  background: var(--urgent-bg);
+}
 
-  /* 案内欄も同じ理由で詰める。左の余白と、文字と「介助者用」ボタンの間隔。詰めないと 390px 幅で
+/* Issue #156: BIZ UDGothic は仮名が全角幅なので、狭い画面では余白を詰めて文の幅を確保する
+   (伝達欄の余白と矢印との間隔は、下の「狭い・低い画面」の規則が持つ) */
+@media (max-width: 480px) {
+  /* 案内欄を詰める。左の余白と、文字と「介助者用」ボタンの間隔。詰めないと 390px 幅で
      押し方の案内(全角17字 = 272px。Issue #134)が2行になり、格子が約18px低くなって2行の予告が消える。
      ボタンの大きさと、ボタンの上・右・下の余白(Issue #109)は変えない */
   .screen-guide {
@@ -2112,8 +2058,22 @@ h1[data-fit='single'] {
 }
 
 .message-panel-body {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+}
+
+.message-panel-label {
+  flex: none;
+  line-height: 1.2;
+}
+
+/* 見出しを除いた残りの高さ。大きさが中身に左右されないよう flex-basis を 0 にする */
+.message-panel-text {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .message-panel h1[hidden] {
@@ -2124,25 +2084,34 @@ h1[data-fit='single'] {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
+  line-height: 1.2;
+  word-break: auto-phrase;
+  line-break: strict;
+}
+
+.history-slot {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+}
+
+.history-gap {
+  width: 44px;
+  height: 44px;
 }
 
 .history-nav {
   display: grid;
-  flex: none;
   place-items: center;
-  align-self: center;
-  min-width: 44px;
-  min-height: 44px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   color: inherit;
   background: transparent;
   border: 2px solid currentColor;
   border-radius: 8px;
   touch-action: manipulation;
-}
-
-.history-nav:disabled {
-  opacity: 0.35;
 }
 
 .history-nav svg {
@@ -2155,15 +2124,61 @@ h1[data-fit='single'] {
   stroke-linejoin: round;
 }
 
-/* 過去の伝達・「いまは無し」は、最新の伝達(濃緑 / 緊急色調の赤)と違う薄い面にする。
-   緊急色調の指定(:root[data-message-tone='urgent'] .message-panel)と同じ詳細度なので、後ろに置いて勝たせる */
-.app-shell .message-panel:is(.is-past, .is-cleared) {
-  color: var(--text);
-  background: var(--surface-calm);
+/* 狭い・低い画面は余白を詰めて、文を置く幅と高さを作る(矢印の 44px は保つ) */
+@media (max-width: 480px), (max-height: 500px) {
+  .message-panel {
+    gap: 4px;
+    padding: 6px 6px 2px;
+  }
+
+  .message-panel-label {
+    margin: 0;
+    line-height: 1.1;
+  }
 }
 
-.app-shell .message-panel.is-past {
-  box-shadow: inset 0 0 0 3px var(--text-muted);
+/* スマホの縦長: モールス使用のホームは 10 セルで縦に 5 段あるので、見出し 1 行が収まる分に抑えてタイルの高さを残す
+   (390x844 のホームの標準ラベル 27px 以上。e2e の standard-label-min) */
+@media (max-width: 480px) {
+  .message-panel {
+    height: clamp(72px, 9.6vh, 96px);
+    height: clamp(72px, 9.6dvh, 96px);
+  }
+}
+
+/* スマホの縦長では本文の列が狭く、全角仮名の見出し(「直前に伝えたこと（もう一度）」は約 240px。
+   Issue #156)が入らない。見出しは左右の矢印の列まで使って 1 行にし、矢印は下端に寄せて重ねない。
+   -48px は矢印の列 44px + 列の間隔 4px */
+@media (max-width: 480px) and (min-height: 501px) {
+  .message-panel-label {
+    margin-inline: -48px;
+  }
+
+  .history-slot {
+    align-items: end;
+  }
+}
+
+/* 320px 未満(Galaxy Fold の閉じた状態の 280px など)は文を置く幅が狭く、「いまは、伝えたことがありません。」が
+   3 行になるので、その分だけ高くする */
+@media (max-width: 319px) {
+  .message-panel {
+    height: 92px;
+  }
+}
+
+@media (max-height: 500px) {
+  .message-panel {
+    height: clamp(54px, 12vh, 76px);
+    height: clamp(54px, 12dvh, 76px);
+    padding-block: 3px 1px;
+  }
+
+  /* 高コントラストは枠が太いぶんタイルの中が狭い。低い画面では伝達欄を少し低くして格子に回す
+     (高さは表示の設定と画面の大きさだけで決まり、内容では変わらない) */
+  :root[data-high-contrast='true'] .message-panel {
+    height: 51px;
+  }
 }
 
 /* ===================================================================
@@ -2272,6 +2287,30 @@ h1[data-fit='single'] {
   --label-fit-chars: 5.3;
   --label-cqi-min: 19;
   --label-cqb-min: 29;
+}
+
+/* アイコンをラベルと同じ行に置くセルだけ 30: 伝達欄(#131)と押し方の案内(#134)が重なる 390x844 の
+   モールス使用(10 セル)で、標準のラベルを 27px 以上に保つ。アイコンを上に置くセル(150px 以上)は
+   29 のまま(下の .tile-icon の大きさが 29 を前提にしていて、30 にするとアイコンが縮む) */
+@container (not (min-height: 150px)) {
+  .grid-board.grid-home .tile > * {
+    --label-cqb-min: 30;
+  }
+}
+
+/* 低いセル(中身の高さ 40px 以上 64px 未満。320x568 のモールス使用や緊急中のホーム): 2 行を想定した下限
+   (content 高さ / 2.4)に張り付いて、文字サイズを特大にしてもラベルが変わらなかった。ホームのラベルは
+   1 行なので、高さの係数を上げて下限より上で文字サイズ設定が効くようにする。遷移タイルのラベルが予告を
+   避ける下の余白も、予告 1 行ぶんまで詰める(詰めないと、大きくしたラベルが上のスキャン枠の帯に入る)。
+   40px 未満は、大きくするとラベルが予告に重なるので対象外 */
+@container (min-height: 40px) and (not (min-height: 64px)) {
+  .grid-board.grid-home .tile > * {
+    --label-cqb-min: 48;
+  }
+
+  .grid-board.grid-home .tile-nav .tile-label {
+    margin-bottom: calc(1.1 * var(--tile-preview-font));
+  }
 }
 
 /* アイコンを上に置くセルでは、アイコン・ラベル 1 行(1.15em)・予告 2 行(2.2 × --tile-preview-font ≒ 1.1em)を

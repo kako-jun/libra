@@ -3,7 +3,7 @@
 // 設定用のルートキー `libra`（settings.ts）とは別キー。設定のリセット・検証と混ぜない。
 // 有効期限は設けない（誤報の害より見逃しの害が大きい）。
 
-import { URGENT_DETAIL_LABELS } from './menus'
+import { URGENT_DETAIL_LABELS, type Tone } from './menus'
 
 export interface EmergencyState {
   /** 緊急が有効か。保存されるのは true のときだけ */
@@ -12,6 +12,8 @@ export interface EmergencyState {
   details: string[]
   /** 緊急中に選ばれた直前の通常伝達（保存形式互換のためキー名は sub のまま） */
   sub: string | null
+  /** sub の色が赤のときだけ持つ(Issue #135。再起動後も内容の色で表示する) */
+  subTone?: 'urgent'
 }
 
 export const EMERGENCY_STORAGE_KEY = 'libra:emergency'
@@ -26,10 +28,12 @@ export function normalizeEmergencyState(input: unknown): EmergencyState | null {
         (d): d is string => typeof d === 'string' && URGENT_DETAIL_LABELS.includes(d),
       )
     : []
+  const sub = typeof raw.sub === 'string' ? raw.sub : null
   return {
     active: true,
     details: details.filter((d, i) => details.indexOf(d) === i),
-    sub: typeof raw.sub === 'string' ? raw.sub : null,
+    sub,
+    ...(sub !== null && raw.subTone === 'urgent' ? { subTone: 'urgent' as const } : {}),
   }
 }
 
@@ -45,9 +49,18 @@ export function loadEmergencyState(): EmergencyState | null {
 }
 
 /** 緊急状態を保存する。例外は握りつぶす。 */
-export function saveEmergencyState(state: { details: string[]; sub: string | null }): void {
+export function saveEmergencyState(state: {
+  details: string[]
+  sub: string | null
+  subTone?: Tone
+}): void {
   try {
-    const value: EmergencyState = { active: true, details: state.details, sub: state.sub }
+    const value: EmergencyState = {
+      active: true,
+      details: state.details,
+      sub: state.sub,
+      ...(state.subTone === 'urgent' ? { subTone: 'urgent' as const } : {}),
+    }
     window.localStorage.setItem(EMERGENCY_STORAGE_KEY, JSON.stringify(value))
   } catch {
     // 保存できなくても緊急表示は動き続ける

@@ -156,12 +156,28 @@ describe('Issue #134: ボタン以外を押すと黄色のパネルを選ぶ', (
       tap(container, 'いいえ')
       vi.advanceTimersByTime(600)
       expect(scanningLabel(container)).toBe('緊急')
-      expect(historyButton(container, '次').disabled).toBe(true)
-      press(historyButton(container, '次'))
+      // #129: 押せない側の矢印は出さない。反対側が出ている間、その場所は押しても何も起きない
+      expect(container.querySelector('.history-nav[aria-label="次の伝達を表示"]')).toBeNull()
+      expect(container.querySelectorAll('.history-gap')).toHaveLength(1)
+      press($(container, '.history-gap'))
       expect(isEmergency(container)).toBe(false)
       press(historyButton(container, '前').querySelector('path') as Element)
       expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
       expect(isEmergency(container)).toBe(false)
+      // 押した矢印が消えた場所を続けて押しても、黄色(緊急)は選ばない
+      expect(container.querySelector('.history-nav[aria-label="前の伝達を表示"]')).toBeNull()
+      vi.advanceTimersByTime(600)
+      press($(container, '.history-gap'))
+      expect(isEmergency(container)).toBe(false)
+      expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    })
+
+    it('戻れる伝達が無いときの矢印の場所は背景で、黄色を選ぶ', () => {
+      const { container } = render(() => <App />)
+      scanToYes(container)
+      expect(container.querySelector('.history-gap')).toBeNull()
+      press($(container, '.history-slot'))
+      expect(shownMessage(container)).toBe('はい。')
     })
 
     it('パンくずのリンク(家アイコン)はその画面へ移るだけ。黄色(戻る以外)は選ばない', () => {
