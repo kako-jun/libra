@@ -36,6 +36,8 @@ import TileIcon, { hasTileIcon } from './TileIcon'
 import RangeField from './RangeField'
 import ChoiceField from './ChoiceField'
 import InstallSection from './InstallSection'
+import IdleRing from './IdleRing'
+import { lapProgress, timeProgress } from './lib/idleProgress'
 import { clearPhoto, fileToPhotoDataUrl, loadPhoto, savePhoto } from './lib/photo'
 import {
   APP_RELEASE_DATE,
@@ -425,6 +427,12 @@ export default function App() {
   )
   // 下位画面での無入力ステップ数(カーソルが進んだ項目数。Issue #76)。画面遷移・本人の入力・押下中で 0 に戻す
   let idleSteps = 0
+  // 右下の円(Issue #139)が読む、最後に数え直した時刻
+  let idleResetAt = Date.now()
+  const resetIdleSteps = () => {
+    idleSteps = 0
+    idleResetAt = Date.now()
+  }
   // 押している最中の入力元(キー・ポインター)。押している間は無入力として数えない(Issue #76)
   const heldInputs = new Set<string>()
 
@@ -663,7 +671,7 @@ export default function App() {
   const goTo = (next: ScreenId) => {
     if (next === 'morse') morseInput.start(morseText())
     else morseInput.stop()
-    idleSteps = 0
+    resetIdleSteps()
     setScreen(next)
     setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
     // S4: 聴覚スキャンON時、遷移直後の先頭項目(通常下位画面では戻る)も読む。
@@ -757,8 +765,10 @@ export default function App() {
   // M3(a): 介助者用メニュー内の操作が60秒ないと自動で閉じ、スキャンを再開する。
   // パネル内での操作(pointerdown)のたびに resetCaregiverIdleTimer を呼んで先延ばしする。
   let caregiverIdleTimer: number | undefined
+  let caregiverIdleSince = Date.now()
 
   const resetCaregiverIdleTimer = () => {
+    caregiverIdleSince = Date.now()
     if (caregiverIdleTimer !== undefined) window.clearTimeout(caregiverIdleTimer)
     caregiverIdleTimer = window.setTimeout(() => {
       closeCaregiverMenu()
@@ -1151,7 +1161,7 @@ export default function App() {
         selectsByBackground: control === null && event.button === 0 && contacts.size === 0,
       })
       heldInputs.add(`pointer:${event.pointerId}`)
-      idleSteps = 0
+      resetIdleSteps()
     }
     const onClickCapture = (event: MouseEvent) => {
       const now = Date.now()
@@ -1257,7 +1267,7 @@ export default function App() {
       }
       contacts.delete(event.pointerId)
       heldInputs.delete(`pointer:${event.pointerId}`)
-      idleSteps = 0 // 離した時点から数え直す
+      resetIdleSteps() // 離した時点から数え直す
       input.up(`pointer:${event.pointerId}`)
     }
     // 取り消された押下は決定しない(離して決定でも実行しない)。他の入力元の押下は残す
@@ -1265,12 +1275,12 @@ export default function App() {
       pointerSeen.delete(event.pointerId) // 他のポインターの記録は残す
       contacts.delete(event.pointerId)
       heldInputs.delete(`pointer:${event.pointerId}`)
-      idleSteps = 0
+      resetIdleSteps()
       input.cancel(`pointer:${event.pointerId}`)
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      idleSteps = 0 // キー/シャッターは(連打無視・長押しの繰り返しも)本人の入力
+      resetIdleSteps() // キー/シャッターは(連打無視・長押しの繰り返しも)本人の入力
       heldInputs.add(`key:${event.code || event.key}`)
       if (!event.repeat) resumeToneAudioContext()
 
@@ -1327,14 +1337,14 @@ export default function App() {
 
     const onKeyUp = (event: KeyboardEvent) => {
       heldInputs.delete(`key:${event.code || event.key}`)
-      idleSteps = 0 // 離した時点から数え直す
+      resetIdleSteps() // 離した時点から数え直す
       input.up(`key:${event.code || event.key}`)
     }
     // 画面が見えなくなった・フォーカスを失った押下は、離す動作を取りこぼすので取り消す
     const releaseAll = () => {
       heldInputs.clear()
       contacts.clear()
-      idleSteps = 0
+      resetIdleSteps()
       input.cancelAll()
     }
     const onBlur = () => releaseAll()
@@ -1396,7 +1406,7 @@ export default function App() {
     for (const [id, contact] of contacts) {
       if (id !== event.pointerId && contact.selectsByBackground) return
     }
-    idleSteps = 0
+    resetIdleSteps()
     resumeToneAudioContext()
     input.down(`pointer:${event.pointerId}`, {
       index,
@@ -1407,7 +1417,7 @@ export default function App() {
   const onTileClick = (index: number) => {
     if (clickBackedByPointer) return
     if (caregiverMenuOpen()) return
-    idleSteps = 0
+    resetIdleSteps()
     handleSwitchOn(Date.now(), {
       index,
       screen: screen(),
@@ -1485,20 +1495,46 @@ export default function App() {
     queueMicrotask(revealSelectedTab)
   })
 
+  // Issue #139: 右下の円。自動で起きる動きの判定と同じ状態から進み具合を出す
+  const lapIdleProgress = () =>
+    caregiverMenuOpen()
+      ? 0
+      : lapProgress({
+          steps: idleSteps,
+          itemCount: currentMenu().length,
+          resetAt: idleResetAt,
+          nextAdvanceAt: scanState().nextAdvanceAt,
+          intervalMs: scanConfig().intervalMs,
+          now: Date.now(),
+          held: heldInputs.size > 0,
+        })
+  // モールス入力はスキャンと別の時計で、無操作が続くとスキャンへ戻る。押している間は進まない
+  const morseIdleProgress = () => {
+    const view = morseView()
+    if (!view || morseHold() !== null || caregiverMenuOpen()) return 0
+    return timeProgress(view.lastAt, MORSE_IDLE_EXIT_MS, Date.now())
+  }
+  const caregiverIdleProgress = () =>
+    timeProgress(caregiverIdleSince, CAREGIVER_MENU_IDLE_TIMEOUT_MS, Date.now())
+
   const openCaregiverMenu = () => {
     if (caregiverMenuOpen()) return
-    idleSteps = 0
+    resetIdleSteps()
     input.cancelAll()
     setCaregiverTab('status')
-    setCaregiverMenuOpen(true)
+    // 開く前に数え直す(右下の円が、前に開いたときの時刻で描かれないように。Issue #139)
     resetCaregiverIdleTimer()
+    setCaregiverMenuOpen(true)
     // PR#11 3巡目 should-A/should-B: 開くたびに再計算し(未完了表示が古いままにならない)、
     // 未完了ならSWの更新チェックも試みる(recheckOfflineReady内部で判定)
     void recheckOfflineReady(setOfflineReadyStatus)
   }
 
   return (
-    <main class="app-shell" classList={{ 'is-morse': screen() === 'morse' }}>
+    <main
+      class="app-shell"
+      classList={{ 'is-morse': screen() === 'morse', 'has-idle-ring': screen() !== 'home' }}
+    >
       <Show when={emergencyActive()}>
         <section
           class="emergency-status"
@@ -1616,7 +1652,7 @@ export default function App() {
                           onClick={() => {
                             // 介助者用メニュー表示中は背後のパンくずを押しても遷移しない(タイルの onTileClick と同じガード。支援技術が背後のボタンを合成 click で押す経路への備え)
                             if (caregiverMenuOpen()) return
-                            idleSteps = 0
+                            resetIdleSteps()
                             goTo(target())
                           }}
                         >
@@ -1808,6 +1844,15 @@ export default function App() {
             <For each={screenNotes()}>{(note) => <li>{note}</li>}</For>
           </ul>
         </section>
+      </Show>
+
+      {/* Issue #139: 戻る動きがある画面だけに円を出す。案内の帯が出ているときは帯と同じ行(帯は円の分だけ
+          右を空ける)。帯が無く、盤面の右下が空きマスなら、その中に置く。どちらも無ければ下端の行を確保する */}
+      <Show when={screen() !== 'home'}>
+        <IdleRing
+          progress={screen() === 'morse' ? morseIdleProgress : lapIdleProgress}
+          inEmptyCell={screen() !== 'morse' && screenNotes().length === 0 && emptyCellCount() > 0}
+        />
       </Show>
 
       <Show when={caregiverMenuOpen()}>
@@ -2338,6 +2383,8 @@ export default function App() {
                 </dl>
               </div>
             </Show>
+            {/* Issue #139: 自動で閉じるまでの円。パネルの中なので、ここのタップでも数え直す */}
+            <IdleRing progress={caregiverIdleProgress} />
           </div>
         </div>
       </Show>

@@ -7,6 +7,8 @@
 // - breadcrumb-not-truncated: パンくずが省略されず、折り返した祖先ボタンで正しい画面へ戻れる(#69/#81)
 // - press-anywhere: ボタン以外を押すと黄色を選ぶ(#134)。タッチとマウスで、背景の押下で画面が変わって指の下に
 //   現れたボタンへ同じ押下の click が届いても動かないこと、パネル・ボタンは自分の操作だけをすることを実描画で踏む
+// - idle-ring: 無操作で起きる動きの右下の円(#139)。ホームに無く、下位画面と介助者用メニューでは画面内の右下に描かれ、
+//   パネル・案内の文・タブの中身に重ならない。偽の時計で、円が満ちる時刻に画面が動くことも確かめる
 
 import { launchBrowser, runChecks, startServer } from './lib.mjs'
 
@@ -507,6 +509,136 @@ async function checkPressAnywhere(chromium, port) {
   return failures
 }
 
+async function checkIdleRing(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+
+  try {
+    for (const [width, height] of [
+      [320, 568],
+      [390, 844],
+      [844, 390],
+      [1280, 720],
+    ]) {
+      const page = await browser.newPage({ viewport: { width, height } })
+      await page.clock.install({ time: 0 })
+      await page.goto(`http://localhost:${port}/`)
+      await page.evaluate(() => document.fonts.ready)
+      await page.clock.pauseAt(1000)
+      const fail = (message) => failures.push(`[idle-ring] ${width}x${height} ${message}`)
+      const ringState = (root) =>
+        page.evaluate((selector) => {
+          const slot = document.querySelector(selector)
+          if (!slot) return null
+          const svg = slot.querySelector('svg')
+          const ring = svg.getBoundingClientRect()
+          const others = document.querySelectorAll(
+            selector.startsWith('.caregiver')
+              ? '.caregiver-header, .caregiver-tabs, .caregiver-tabpanel'
+              : '.grid-board .tile, .letter-strip, .screen-guide, .message-panel, .emergency-status, .screen-notes li',
+          )
+          const overlaps = Array.from(others)
+            .flatMap((el) => Array.from(el.getClientRects(), (rect) => ({ el, rect })))
+            .filter(
+              ({ rect }) =>
+                rect.left < ring.right - 0.5 &&
+                rect.right > ring.left + 0.5 &&
+                rect.top < ring.bottom - 0.5 &&
+                rect.bottom > ring.top + 0.5,
+            )
+            .map(({ el }) => el.className || el.tagName)
+          return {
+            overlaps,
+            width: ring.width,
+            fromRight: innerWidth - ring.right,
+            fromBottom: innerHeight - ring.bottom,
+            progress: Number(svg.dataset.progress),
+          }
+        }, root)
+      const checkPlace = (state, name) => {
+        if (!state) return fail(`${name}: 円が無い`)
+        if (state.overlaps.length > 0) fail(`${name}: 重なり ${state.overlaps.join(',')}`)
+        const inside =
+          state.width >= 16 &&
+          state.fromRight >= 0 &&
+          state.fromRight <= 40 &&
+          state.fromBottom >= 0 &&
+          state.fromBottom <= 40
+        if (!inside) fail(`${name}: 右下でない ${JSON.stringify(state)}`)
+      }
+      const SELF = '.app-shell > .idle-ring-slot'
+      const MENU = '.caregiver-panel > .idle-ring-slot'
+      const tapTile = async (label) => {
+        await page.clock.runFor(700)
+        await page.locator(`.grid-board .tile[aria-label="${label}"]`).click({ force: true })
+      }
+
+      if (await ringState(SELF)) fail('ホームに円がある')
+      // 右下が空きマスの文字盤: 専用の行を作らず(盤面は画面の下端まで)、円は空きマスの中に収まる
+      await tapTile('文字盤')
+      await page.clock.runFor(200)
+      checkPlace(await ringState(SELF), '文字盤')
+      const inCell = await page.evaluate(() => {
+        const ring = document
+          .querySelector('.app-shell > .idle-ring-slot svg')
+          .getBoundingClientRect()
+        const cell = Array.from(document.querySelectorAll('.tile-empty')).at(-1)
+        const board = document.querySelector('.grid-board').getBoundingClientRect()
+        const box = cell?.getBoundingClientRect()
+        return {
+          boardToBottom: innerHeight - board.bottom,
+          boardNarrowedBy: innerWidth - board.width,
+          inside:
+            !!box &&
+            ring.left >= box.left &&
+            ring.right <= box.right &&
+            ring.top >= box.top &&
+            ring.bottom <= box.bottom,
+        }
+      })
+      if (
+        !inCell.inside ||
+        Math.abs(inCell.boardToBottom) > 1 ||
+        Math.abs(inCell.boardNarrowedBy) > 1
+      ) {
+        fail(`文字盤: 空きマスの外か、行がある ${JSON.stringify(inCell)}`)
+      }
+      await tapTile('戻る')
+      // 緊急の下位画面: 案内の帯と同じ行
+      await tapTile('緊急')
+      await page.clock.runFor(200)
+      checkPlace(await ringState(SELF), '緊急')
+      // 8 項目の下位画面: 先頭待機 2 秒 + 残り 23 項目 × 1.5 秒で戻る
+      await tapTile('戻る')
+      await tapTile('不快')
+      await page.clock.runFor(2000 + 22 * 1500)
+      const almost = await ringState(SELF)
+      checkPlace(almost, '不快')
+      if (!almost || almost.progress < 0.9 || almost.progress >= 1) {
+        fail(`戻る直前の円 ${almost?.progress}`)
+      }
+      await page.clock.runFor(1600)
+      if (await ringState(SELF)) fail('3 周の時刻を過ぎてもホームへ戻らない')
+      // 介助者用メニュー: 60 秒で閉じる
+      await page.locator('.caregiver-button').click()
+      await page.clock.runFor(59000)
+      const menu = await ringState(MENU)
+      checkPlace(menu, '介助者用メニュー')
+      if (!menu || Math.abs(menu.progress - 59 / 60) > 0.01) fail(`59秒の円 ${menu?.progress}`)
+      await page.clock.runFor(1100)
+      if (await ringState(MENU)) fail('60 秒で閉じない')
+      await page.close()
+    }
+  } catch (error) {
+    failures.push(`[idle-ring] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
     {
@@ -515,6 +647,7 @@ await runChecks(
     },
     { name: 'breadcrumb-not-truncated', run: checkBreadcrumbNotTruncated },
     { name: 'press-anywhere', run: checkPressAnywhere },
+    { name: 'idle-ring', run: checkIdleRing },
   ],
   { basePort: 4720 },
 )
