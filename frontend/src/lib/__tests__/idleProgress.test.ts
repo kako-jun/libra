@@ -12,13 +12,13 @@ describe('timeProgress', () => {
 })
 
 describe('lapProgress', () => {
-  // 2 項目の画面は 6 項目ぶん進むと戻る
+  // 2 項目の画面は 6 項目ぶん進むと戻る。先頭待機 2000ms、間隔 1500ms なら 9500ms で戻る
   const base = {
     steps: 0,
     itemCount: 2,
     resetAt: 0,
-    advancedAt: 0,
     nextAdvanceAt: 2000,
+    intervalMs: 1500,
     now: 0,
     held: false,
   }
@@ -29,15 +29,26 @@ describe('lapProgress', () => {
     expect(lapProgress({ ...base, resetAt: 1500, now: 1500 })).toBe(0)
   })
 
-  it('進んだ項目数に、いまの項目の経過ぶんを足す', () => {
-    expect(lapProgress({ ...base, now: 1000 })).toBeCloseTo(0.5 / 6)
-    expect(
-      lapProgress({ ...base, steps: 3, advancedAt: 5000, nextAdvanceAt: 6500, now: 5000 }),
-    ).toBeCloseTo(3 / 6)
+  it('時間に比例して満ちる。長くとどまる先頭でも速さは変わらない', () => {
+    expect(lapProgress({ ...base, now: 950 })).toBeCloseTo(0.1)
+    expect(lapProgress({ ...base, now: 1900 })).toBeCloseTo(0.2)
+    // 先頭を過ぎて次の項目に移っても、同じ時刻の値はつながる
+    const before = lapProgress({ ...base, now: 2000 })
+    const after = lapProgress({ ...base, steps: 1, nextAdvanceAt: 3500, now: 2000 })
+    expect(before).toBeCloseTo(2000 / 9500)
+    expect(after).toBeCloseTo(before)
+    expect(lapProgress({ ...base, steps: 3, nextAdvanceAt: 6500, now: 5700 })).toBeCloseTo(0.6)
+  })
+
+  it('途中で数え直すと、そこから戻る時刻までを 0 から 1 にする', () => {
+    // 項目の途中(2750ms)で数え直す。次に進むのは 3500ms、残り 5 項目ぶんで 11000ms に戻る
+    const input = { ...base, resetAt: 2750, nextAdvanceAt: 3500 }
+    expect(lapProgress({ ...input, now: 2750 })).toBe(0)
+    expect(lapProgress({ ...input, now: 2750 + (11000 - 2750) / 2 })).toBeCloseTo(0.5)
   })
 
   it('ホームへ戻る瞬間(最後の項目の次へ進む時刻)にちょうど 1。手前では 1 未満', () => {
-    const last = { ...base, steps: 5, advancedAt: 8000, nextAdvanceAt: 9500 }
+    const last = { ...base, steps: 5, nextAdvanceAt: 9500 }
     expect(lapProgress({ ...last, now: 9499 })).toBeLessThan(1)
     expect(lapProgress({ ...last, now: 9500 })).toBe(1)
     expect(lapProgress({ ...last, now: 9999 })).toBe(1)

@@ -80,8 +80,13 @@ describe('Issue #139: 本人画面の円(下位画面の無入力 3 周)', () =>
     expect(elapsed + REFRESH_MS - 10).toBeGreaterThanOrEqual(total)
     expect(elapsed + REFRESH_MS - 10).toBeLessThanOrEqual(total + 100)
     for (let i = 1; i < seen.length; i += 1) expect(seen[i]).toBeGreaterThanOrEqual(seen[i - 1])
-    // 直前の値は、描き直し 1 回ぶん(最後の項目の 100ms)以内
-    expect(last).toBeGreaterThanOrEqual(1 - 100 / 1500 / (items * 3) - 0.001)
+    // どの時点でも経過時間に比例する(差は描き直し 1 回ぶんと、表示の丸め以内)
+    seen.forEach((value, i) => {
+      const at = (REFRESH_MS - 10 + i * 10) / total
+      expect(Math.abs(value - Math.min(1, at))).toBeLessThanOrEqual(REFRESH_MS / total + 0.001)
+    })
+    // 直前の値は、描き直し 1 回ぶん以内
+    expect(last).toBeGreaterThanOrEqual(1 - REFRESH_MS / total - 0.001)
     expect(selfRing(container)).toBeNull()
   })
 
@@ -145,6 +150,49 @@ describe('Issue #139: 本人画面の円(下位画面の無入力 3 周)', () =>
     const notes = container.querySelector('.screen-notes') as HTMLElement
     expect(notes.previousElementSibling?.classList.contains('grid-board')).toBe(true)
     expect(notes.nextElementSibling).toBe(selfRing(container))
+  })
+
+  it('盤面の右下が空きマスの画面は空きマスの中に置き、空きが無い画面と案内の帯がある画面は置かない', () => {
+    const { container } = render(() => <App />)
+    const inEmptyCell = () => selfRing(container)?.classList.contains('in-empty-cell')
+    tap(container, '不快')
+    expect(container.querySelector('.tile-empty')).toBeNull()
+    expect(inEmptyCell()).toBe(false)
+    tap(container, '戻る')
+    tap(container, '文字盤')
+    expect(container.querySelector('.tile-empty')).not.toBeNull()
+    expect(inEmptyCell()).toBe(true)
+    tap(container, '緊急')
+    expect(container.querySelector('.screen-notes')).not.toBeNull()
+    expect(container.querySelector('.tile-empty')).not.toBeNull()
+    expect(inEmptyCell()).toBe(false)
+  })
+
+  it('画面が見えない間は描き直さず、見えると時刻どおりの値に追いつく', () => {
+    const { container } = render(() => <App />)
+    openCaregiverMenu(container)
+    vi.advanceTimersByTime(6000)
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    vi.advanceTimersByTime(24_000)
+    expect(progressOf(menuRing(container))).toBeCloseTo(0.1, 2)
+    hidden.mockReturnValue(false)
+    vi.advanceTimersByTime(REFRESH_MS)
+    expect(progressOf(menuRing(container))).toBeCloseTo(0.5, 2)
+  })
+
+  it('動きを減らす設定の問い合わせは円ごとに一度だけ作る', () => {
+    const matchMedia = vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }))
+    vi.stubGlobal('matchMedia', matchMedia)
+    const { container } = render(() => <App />)
+    tap(container, '不快')
+    vi.advanceTimersByTime(5000)
+    const calls = matchMedia.mock.calls.filter(([q]) => q.includes('prefers-reduced-motion'))
+    expect(calls).toHaveLength(1)
   })
 
   it('動きを減らす設定では、8 段階で進む', () => {

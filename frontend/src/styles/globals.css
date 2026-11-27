@@ -2451,7 +2451,7 @@ h1[data-fit='wrap'] {
 
 /* ===================================================================
    Issue #139: 無操作で起きる自動操作までを示す、右下の円(IdleRing.tsx)。
-   パネル・ボタン・設定項目に重ねず、下端に専用の行を持つ。色はテーマの変数だけ。
+   パネル・ボタン・設定項目に重ねず、場所を確保する。色はテーマの変数だけ。
    本人画面は戻る動きがある画面だけに置く。押す部品ではないので、本人画面でここを押すと
    ほかのボタン以外の場所と同じく黄色のパネルを選ぶ。
    =================================================================== */
@@ -2459,7 +2459,7 @@ h1[data-fit='wrap'] {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 2px 8px;
+  padding: 1px 8px;
 }
 
 .idle-ring {
@@ -2483,7 +2483,7 @@ h1[data-fit='wrap'] {
 
 /* 本人画面では、緊急中の案内の帯(.screen-notes)と同じ 6 行目の右端に置く。帯は円の分だけ右を空ける */
 .app-shell > .idle-ring-slot {
-  --idle-ring-size: 18px;
+  --idle-ring-size: 16px;
   grid-row: 6;
   grid-column: 1;
   align-self: end;
@@ -2492,7 +2492,19 @@ h1[data-fit='wrap'] {
 
 .app-shell.has-idle-ring > .screen-notes {
   grid-column: 1;
-  padding-right: calc(18px + 16px);
+  padding-right: calc(16px + 16px);
+}
+
+/* 盤面の右下が空きマスの画面は、盤面と同じ 5 行目の右下(空きマスの中)に置き、専用の行を作らない。
+   盤面の高さとパネルの文字の大きさが変わらない */
+.app-shell > .idle-ring-slot.in-empty-cell {
+  position: relative;
+  grid-row: 5;
+}
+
+/* 円を同じ行・列に置くので、盤面にも列を指定する(指定しないと、盤面が隣の列へ押し出される) */
+.app-shell.has-idle-ring > .grid-board {
+  grid-column: 1;
 }
 
 /* 介助者用メニューは、タブの中身(スクロールする)の下に固定の行を持つ */

@@ -17,24 +17,25 @@ export interface LapProgressInput {
   itemCount: number
   /** 最後に数え直した時刻 */
   resetAt: number
-  /** 最後にカーソルが進んだ時刻 */
-  advancedAt: number
   /** 次にカーソルが進む時刻(scan.ts の nextAdvanceAt) */
   nextAdvanceAt: number
+  /** カーソルが次の項目へ進む間隔(scan.ts の intervalMs) */
+  intervalMs: number
   now: number
   /** 押している間は数えない */
   held: boolean
 }
 
 /**
- * 下位画面の「無入力 3 周でホームへ戻る」までの進み具合。進んだ項目数に、いま乗っている項目の
- * 経過ぶんを足す。数え直した直後は 0、ホームへ戻る瞬間(最後の項目の次へ進む時刻)にちょうど 1 になる。
+ * 下位画面の「無入力 3 周でホームへ戻る」までの進み具合。数え直してからの時間を、数え直しから戻る時刻
+ * までの時間で割る(時間に比例して満ちる。先頭待機のように長くとどまる項目があっても速さは変わらない)。
+ * 戻る時刻は、次にカーソルが進む時刻に、その後の残りの項目ぶんの間隔を足したもの。
  */
 export function lapProgress(input: LapProgressInput): number {
   if (input.held) return 0
   const total = Math.max(1, input.itemCount) * IDLE_LAPS_BEFORE_HOME
-  const from = Math.max(input.resetAt, input.advancedAt)
-  const span = input.nextAdvanceAt - from
-  const fraction = span > 0 ? clamp01((input.now - from) / span) : 0
-  return clamp01((input.steps + fraction) / total)
+  const remaining = Math.max(0, total - input.steps - 1)
+  const end = input.nextAdvanceAt + remaining * input.intervalMs
+  if (end <= input.resetAt) return 1
+  return timeProgress(input.resetAt, end - input.resetAt, input.now)
 }

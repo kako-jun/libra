@@ -427,9 +427,8 @@ export default function App() {
   )
   // 下位画面での無入力ステップ数(カーソルが進んだ項目数。Issue #76)。画面遷移・本人の入力・押下中で 0 に戻す
   let idleSteps = 0
-  // 右下の円(Issue #139)が読む時刻。最後に数え直した時刻と、最後にカーソルが進んだ時刻
+  // 右下の円(Issue #139)が読む、最後に数え直した時刻
   let idleResetAt = Date.now()
-  let cursorAdvancedAt = idleResetAt
   const resetIdleSteps = () => {
     idleSteps = 0
     idleResetAt = Date.now()
@@ -1078,7 +1077,6 @@ export default function App() {
           setScanState(next)
         }
         if (next.index !== previous.index) {
-          cursorAdvancedAt = now
           // 下位画面で入力がないまま規定の周回数を回ったらホームへ戻す(ホーム・モールスは数えない)
           if (screen() !== 'home') {
             // 押している間は数えない(離して決定・押下時間の下限で押したままの操作を、復帰で捨てない)
@@ -1505,8 +1503,8 @@ export default function App() {
           steps: idleSteps,
           itemCount: currentMenu().length,
           resetAt: idleResetAt,
-          advancedAt: cursorAdvancedAt,
           nextAdvanceAt: scanState().nextAdvanceAt,
+          intervalMs: scanConfig().intervalMs,
           now: Date.now(),
           held: heldInputs.size > 0,
         })
@@ -1848,10 +1846,13 @@ export default function App() {
         </section>
       </Show>
 
-      {/* Issue #139: 戻る動きがある画面だけに、下端の行を確保して円を出す。案内の帯が出ているときは
-          同じ行で、帯は円の分だけ右を空ける */}
+      {/* Issue #139: 戻る動きがある画面だけに円を出す。案内の帯が出ているときは帯と同じ行(帯は円の分だけ
+          右を空ける)。帯が無く、盤面の右下が空きマスなら、その中に置く。どちらも無ければ下端の行を確保する */}
       <Show when={screen() !== 'home'}>
-        <IdleRing progress={screen() === 'morse' ? morseIdleProgress : lapIdleProgress} />
+        <IdleRing
+          progress={screen() === 'morse' ? morseIdleProgress : lapIdleProgress}
+          inEmptyCell={screen() !== 'morse' && screenNotes().length === 0 && emptyCellCount() > 0}
+        />
       </Show>
 
       <Show when={caregiverMenuOpen()}>

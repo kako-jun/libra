@@ -536,7 +536,7 @@ async function checkIdleRing(chromium, port) {
           const others = document.querySelectorAll(
             selector.startsWith('.caregiver')
               ? '.caregiver-header, .caregiver-tabs, .caregiver-tabpanel'
-              : '.grid-board, .screen-guide, .message-panel, .emergency-status, .screen-notes li',
+              : '.grid-board .tile, .letter-strip, .screen-guide, .message-panel, .emergency-status, .screen-notes li',
           )
           const overlaps = Array.from(others)
             .flatMap((el) => Array.from(el.getClientRects(), (rect) => ({ el, rect })))
@@ -575,6 +575,36 @@ async function checkIdleRing(chromium, port) {
       }
 
       if (await ringState(SELF)) fail('ホームに円がある')
+      // 右下が空きマスの文字盤: 専用の行を作らず(盤面は画面の下端まで)、円は空きマスの中に収まる
+      await tapTile('文字盤')
+      await page.clock.runFor(200)
+      checkPlace(await ringState(SELF), '文字盤')
+      const inCell = await page.evaluate(() => {
+        const ring = document
+          .querySelector('.app-shell > .idle-ring-slot svg')
+          .getBoundingClientRect()
+        const cell = Array.from(document.querySelectorAll('.tile-empty')).at(-1)
+        const board = document.querySelector('.grid-board').getBoundingClientRect()
+        const box = cell?.getBoundingClientRect()
+        return {
+          boardToBottom: innerHeight - board.bottom,
+          boardNarrowedBy: innerWidth - board.width,
+          inside:
+            !!box &&
+            ring.left >= box.left &&
+            ring.right <= box.right &&
+            ring.top >= box.top &&
+            ring.bottom <= box.bottom,
+        }
+      })
+      if (
+        !inCell.inside ||
+        Math.abs(inCell.boardToBottom) > 1 ||
+        Math.abs(inCell.boardNarrowedBy) > 1
+      ) {
+        fail(`文字盤: 空きマスの外か、行がある ${JSON.stringify(inCell)}`)
+      }
+      await tapTile('戻る')
       // 緊急の下位画面: 案内の帯と同じ行
       await tapTile('緊急')
       await page.clock.runFor(200)
