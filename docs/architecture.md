@@ -64,4 +64,4 @@ localStorage に3つのキーで保存する。
 
 ## 外部通信
 
-アプリが外部へ通信するのは、介助者用メニュー「このアプリ」タブの利用回数の取得だけ（Issue #118。`frontend/src/lib/appInfo.ts`）。Nostalgic のカウンター（公開 ID `libra-d59ef40c`）へ、起動ごとに 1 回、`increment`（本番のホスト `libra.llll-ll.com` で開いたとき）または `get`（それ以外のホスト）を送る。8 秒でタイムアウトし、失敗しても何も投げず「取得できません」と表示するだけで、伝達機能・スキャン・緊急には影響しない。画像・設定・緊急状態・履歴は送らない。バージョンとビルド日は、`vite.config.ts` が `package.json` の `version` とビルド日（日本時間）をビルド時に埋め込む（`__APP_VERSION__` / `__BUILD_DATE__`）。
+アプリが外部へ通信するのは、介助者用メニュー「このアプリ」タブの利用回数の取得だけ（Issue #118。`frontend/src/lib/appInfo.ts`）。Nostalgic のカウンター（公開 ID `libra-d59ef40c`）へ、起動ごとに 1 回、`increment`（本番のホスト `libra.llll-ll.com` で開いたとき）または `get`（それ以外のホスト）を送る。8 秒でタイムアウトし、失敗しても何も投げず「取得できません」と表示するだけで、伝達機能・スキャン・緊急には影響しない。画像・設定・緊急状態・履歴は送らない。画面のバージョンは公開版の最後の変更日で、`vite.config.ts` が `frontend/scripts/release-date.mjs`（HEAD の committer date を日本時間の YYYY-MM-DD にする。HEAD の 1 件だけを読むので浅い clone でも同じ値）をビルド時に呼んで埋め込む（`__RELEASE_DATE__`）。git から取れなければビルドは失敗する。Service Worker は、precache 済みの実ファイル（`/licenses/BIZUDGothic-OFL.txt` など）を直接開くナビゲーションでは、オフライン・失敗時にアプリ（`/`）ではなくそのファイルを返す。

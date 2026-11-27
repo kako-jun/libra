@@ -5,7 +5,7 @@
 export const AUTHOR_SITE_URL = 'https://llll-ll.com'
 /** ご意見・ご感想の掲示板(作者サイトのサポート BBS。Nostalgic BBS) */
 export const FEEDBACK_BBS_URL = 'https://llll-ll.com/ja/#bbs'
-/** くわしい使い方(リポジトリの利用ガイド) */
+/** 利用ガイド(リポジトリの docs/user-guide.md)。アプリ内には使い方の本文を置かない(Issue #149) */
 export const USER_GUIDE_URL = 'https://github.com/kako-jun/libra/blob/main/docs/user-guide.md'
 
 /** Nostalgic カウンターの公開 ID(公開してよい値。get / increment しかできない) */
@@ -15,10 +15,14 @@ const NOSTALGIC_VISIT_API = 'https://api.nostalgic.llll-ll.com/visit'
 export const PRODUCTION_HOSTNAME = 'libra.llll-ll.com'
 const COUNTER_TIMEOUT_MS = 8000
 
-/** アプリの版(package.json の version)。ビルド時に埋め込む。テスト等で未定義なら 'dev' */
-export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'
-/** ビルド日(日本時間の YYYY-MM-DD)。ビルド時に埋め込む */
-export const APP_BUILD_DATE: string = typeof __BUILD_DATE__ === 'string' ? __BUILD_DATE__ : 'dev'
+/** 同梱フォント(BIZ UDGothic)のライセンス(OFL 1.1)全文。配信物に入る(vite.config.ts)。
+ *  Service Worker が precache するので、オフラインでも開ける */
+export const FONT_LICENSE_URL = '/licenses/BIZUDGothic-OFL.txt'
+
+/** 画面に出すバージョン(Issue #146): 公開版の最後の変更日(日本時間の YYYY-MM-DD)だけ。
+ *  ビルド時に埋め込む。テスト等で未定義なら 'dev' */
+export const APP_RELEASE_DATE: string =
+  typeof __RELEASE_DATE__ === 'string' ? __RELEASE_DATE__ : 'dev'
 
 /** 利用回数の取得 URL。本番のホストでは 1 増やして取得し、それ以外では増やさず取得する */
 export function usageCountUrl(hostname: string): string {

@@ -34,18 +34,19 @@ import { applyHeadingFit } from './lib/fitHeading'
 import PhraseEditor, { SettingsBackup } from './PhraseEditor'
 import TileIcon, { hasTileIcon } from './TileIcon'
 import RangeField from './RangeField'
+import ChoiceField from './ChoiceField'
 import InstallSection from './InstallSection'
 import { clearPhoto, fileToPhotoDataUrl, loadPhoto, savePhoto } from './lib/photo'
 import {
-  APP_BUILD_DATE,
-  APP_VERSION,
+  APP_RELEASE_DATE,
   AUTHOR_SITE_URL,
   FEEDBACK_BBS_URL,
+  FONT_LICENSE_URL,
   USER_GUIDE_URL,
   fetchUsageCount,
 } from './lib/appInfo'
 import { createSwitchInput } from './lib/switchInput'
-import { EMERGENCY_MESSAGE } from './lib/phrases'
+import { EMERGENCY_MESSAGE, PHRASE_GROUPS, PHRASE_GROUP_LABELS } from './lib/phrases'
 import {
   EMERGENCY_REPEAT_MS,
   HAPTIC_STRENGTHS,
@@ -177,9 +178,26 @@ const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
 const FONT_SIZES: Settings['fontSize'][] = ['standard', 'large', 'xlarge']
 
 const THEME_LABELS: Record<Settings['theme'], string> = {
-  light: '明るい',
-  dark: '夜間',
-  auto: '自動',
+  light: 'ライト',
+  dark: 'ダーク',
+  auto: 'OSの設定',
+}
+
+/** 文字を入力する input の種類。これと textarea だけが「文字を入力する欄」 */
+const TEXT_INPUT_TYPES = ['text', 'search', 'url', 'email', 'tel', 'password', 'number']
+const SLIDER_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
+
+/**
+ * 介助者用メニューの中で、閉じずにその部品の操作として扱う打鍵か(requirements.md §6)。
+ * 文字を入力する欄の文字入力・編集のキーと、スライダーの矢印キーだけ。ラジオ・チェックボックスなど
+ * ほかの部品にフォーカスが残っていても、本人のスイッチとして扱う(値を変えずに閉じる)
+ */
+function isFieldEditingKey(event: KeyboardEvent): boolean {
+  const el = event.target
+  if (el instanceof HTMLTextAreaElement) return isTextEditingKey(event)
+  if (!(el instanceof HTMLInputElement)) return false
+  if (el.type === 'range') return SLIDER_KEYS.includes(event.key)
+  return TEXT_INPUT_TYPES.includes(el.type) && isTextEditingKey(event)
 }
 
 /** 入力欄で文字を打つ・編集するキーか。Enter・Space(変換中以外)・Tab・メディア/音量キー等は含めない */
@@ -225,7 +243,7 @@ export default function App() {
 
   const [settings, setSettings] = createSignal<Settings>(loadSettings())
 
-  // Issue #3 追加指示: 表示テーマ(明るい/夜間/自動)。auto は端末の prefers-color-scheme に
+  // Issue #3 追加指示: 表示テーマ(ライト/ダーク/OSの設定)。auto は端末の prefers-color-scheme に
   // 追従し、OS側の設定変更にも即座に反応する(matchMedia の change を購読)。
   const prefersDarkQuery =
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -1076,10 +1094,7 @@ export default function App() {
   // いま画面に触れているポインター(指・ペン・押したままのマウス)。手のひらや 2 本の指が同時に触れても、
   // 背景の分で操作が重ならないようにする(はい → 緊急 のように続けて選ばれると危ない)。
   // selectsByBackground: 背景の押下として受け付けたもの
-  const contacts = new Map<
-    number,
-    { type: string; downAt: number; selectsByBackground: boolean }
-  >()
+  const contacts = new Map<number, { type: string; downAt: number; selectsByBackground: boolean }>()
   const POINTER_CLICK_WINDOW_MS = 1000 // pointerup 後、click を待つ上限(取りこぼし記録の破棄)
   const POINTER_STALE_MS = 10000 // pointerup/pointercancel が届かなかった記録の破棄(保険)
   // click の pointerId が pointerdown と違う環境で、同じタップの click とみなす範囲(離してからの時間と距離)
@@ -1233,18 +1248,18 @@ export default function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       idleSteps = 0 // キー/シャッターは(連打無視・長押しの繰り返しも)本人の入力
       heldInputs.add(`key:${event.code || event.key}`)
-      if (event.repeat) return
-      resumeToneAudioContext()
+      if (!event.repeat) resumeToneAudioContext()
 
+      // メニュー表示中の判定は、押しっぱなしのリピートも通す。リピートを素通しにすると、ブラウザの
+      // 既定の動作(ラジオの値の移動・フォーカスしたボタンの実行)が本人のスイッチで起き、
+      // 2 回押しの確認も通ってしまう(requirements.md §6)
       if (caregiverMenuOpen()) {
-        // Issue #8: フレーズ編集の入力欄での「文字を打つキー」では閉じない。入力欄にフォーカスが
-        // 残ったまま本人がスイッチ(Enter・音量キー・Space 等)を押しても、従来どおり閉じて
-        // 本人が取り残されないよう、文字入力・編集に使うキーだけを例外にする。無操作 60 秒の
+        // Issue #8: 文字を入力する欄での「文字を打つキー」と、スライダーの矢印キーでは閉じない。欄に
+        // フォーカスが残ったまま本人がスイッチ(Enter・音量キー・Space 等)を押しても、従来どおり閉じて
+        // 本人が取り残されないよう、その部品の操作に使うキーだけを例外にする。無操作 60 秒の
         // 自動クローズ(§6)は打鍵では延ばさない(入力欄のタップ・フォーカスで延びる)
-        const inField = (event.target as HTMLElement | null)?.closest?.(
-          '.caregiver-panel input, .caregiver-panel textarea',
-        )
-        if (inField && isTextEditingKey(event)) return
+        const target = event.target as HTMLElement | null
+        if (target?.closest?.('.caregiver-panel') && isFieldEditingKey(event)) return
         // Issue #31: カテゴリタブにフォーカスがあるときの左右/Home/End だけは、タブ移動(ARIA tablist)に使う。
         // Enter/Space など他のキーは従来どおり本人のスイッチ入力として扱い、閉じてスキャンへ戻す
         const onTab = (event.target as HTMLElement | null)?.closest?.('.caregiver-tab')
@@ -1255,6 +1270,13 @@ export default function App() {
         // ホーム先頭から再開する(その押下では項目を実行しない)
         event.preventDefault()
         closeCaregiverMenu()
+        return
+      }
+
+      // 本人画面ではリピートで何も実行しない。既定の動作も止める(「介助者用」などにフォーカスがあると、
+      // Enter のリピートのたびにボタンが実行される。メニューが開閉を繰り返す)
+      if (event.repeat) {
+        event.preventDefault()
         return
       }
 
@@ -1380,11 +1402,11 @@ export default function App() {
     else if (event.key === 'Home') next = 0
     else if (event.key === 'End') next = last
     event.preventDefault()
-    setCaregiverTab(CAREGIVER_TABS[next].id)
-    const nextTab = document.getElementById(`caregiver-tab-${CAREGIVER_TABS[next].id}`)
-    nextTab?.focus()
-    // 横スクロールするタブ列で、選んだタブが領域外に隠れないようにする(jsdom 未実装のため ?. ガード)
-    nextTab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    selectCaregiverTab(CAREGIVER_TABS[next].id)
+    // フォーカスによるブラウザ任せのスクロールはさせず、見える位置への移動は revealSelectedTab だけが行う
+    document
+      .getElementById(`caregiver-tab-${CAREGIVER_TABS[next].id}`)
+      ?.focus({ preventScroll: true })
   }
 
   // Issue #111: タブ列が横に続くとき、続きがある側の矢印だけを出す
@@ -1397,6 +1419,33 @@ export default function App() {
     // 端数(DPR・小数スクロール)で矢印が残らないよう 2px の余裕を見る
     setTabScroll({ left: el.scrollLeft > 2, right: el.scrollLeft < max - 2 })
   }
+  /** タブ列の表示範囲を、選択中のタブ全体が入る位置へ動かす */
+  const scrollSelectedTabIntoList = () => {
+    const el = tablistEl
+    const tab = el?.querySelector('[aria-selected="true"]')
+    if (!el || !tab) return
+    const list = el.getBoundingClientRect()
+    const box = tab.getBoundingClientRect()
+    // 端数で 1px 欠けないよう、外側へ切り上げて動かす
+    if (box.left < list.left) el.scrollLeft -= Math.ceil(list.left - box.left)
+    else if (box.right > list.right) el.scrollLeft += Math.ceil(box.right - list.right)
+  }
+  /**
+   * 選択中のタブを全部見せる。矢印は出入りするとタブ列の幅が変わる(出た矢印の分だけ右端が欠ける)ので、
+   * 矢印の出し分けを反映してからもう一度合わせる。矢印は左右の 2 つなので、3 回で落ち着く。
+   * 矢印で表示範囲を動かす操作からは呼ばない(呼ぶと選択中のタブへ引き戻される)
+   */
+  const revealSelectedTab = () => {
+    for (let pass = 0; pass < 3; pass += 1) {
+      scrollSelectedTabIntoList()
+      updateTabScroll()
+    }
+  }
+  /** タブを選ぶ。選択済みのタブ(矢印で一部だけ見えている状態)を押したときも全部見せる */
+  const selectCaregiverTab = (id: CaregiverTabId) => {
+    setCaregiverTab(id)
+    revealSelectedTab()
+  }
   const scrollCaregiverTabs = (direction: -1 | 1) => {
     const el = tablistEl
     if (!el) return
@@ -1407,9 +1456,9 @@ export default function App() {
   }
   createEffect(() => {
     if (!caregiverMenuOpen()) return
-    caregiverTab() // タブを選ぶと選んだタブへスクロールするので、矢印の出し分けを取り直す
-    viewportSize()
-    queueMicrotask(updateTabScroll)
+    viewportSize() // 画面の大きさ・向きが変わると、タブ列の幅が変わる
+    // 開いた直後は DOM がまだ無いので、描画の後に合わせる
+    queueMicrotask(revealSelectedTab)
   })
 
   const openCaregiverMenu = () => {
@@ -1785,7 +1834,7 @@ export default function App() {
                       aria-controls="caregiver-tabpanel"
                       tabindex={caregiverTab() === tab.id ? 0 : -1}
                       classList={{ active: caregiverTab() === tab.id }}
-                      onClick={() => setCaregiverTab(tab.id)}
+                      onClick={() => selectCaregiverTab(tab.id)}
                       onKeyDown={onCaregiverTabKeyDown}
                     >
                       {tab.label}
@@ -1892,22 +1941,13 @@ export default function App() {
                     押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒
                   </RangeField>
 
-                  <div class="caregiver-field">
-                    <span>決定のタイミング</span>
-                    <div class="caregiver-choice-options">
-                      <For each={ACTIVATE_ONS}>
-                        {(timing) => (
-                          <button
-                            type="button"
-                            classList={{ active: settings().activateOn === timing }}
-                            onClick={() => updateSettings({ activateOn: timing })}
-                          >
-                            {ACTIVATE_ON_LABELS[timing]}
-                          </button>
-                        )}
-                      </For>
-                    </div>
-                  </div>
+                  <ChoiceField
+                    label="決定のタイミング"
+                    options={ACTIVATE_ONS}
+                    labels={ACTIVATE_ON_LABELS}
+                    value={settings().activateOn}
+                    onSelect={(activateOn) => updateSettings({ activateOn })}
+                  />
                   <Show when={behaviorNotes().hold}>
                     {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
                   </Show>
@@ -2026,22 +2066,13 @@ export default function App() {
                 aria-labelledby="caregiver-tab-feedback"
                 tabindex="0"
               >
-                <div class="caregiver-field">
-                  <span>音声モード（伝えた内容の読み上げ）</span>
-                  <div class="caregiver-voice-options">
-                    <For each={VOICE_MODES}>
-                      {(mode) => (
-                        <button
-                          type="button"
-                          classList={{ active: settings().voiceMode === mode }}
-                          onClick={() => updateSettings({ voiceMode: mode })}
-                        >
-                          {VOICE_LABELS[mode]}
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </div>
+                <ChoiceField
+                  label="音声モード（伝えた内容の読み上げ）"
+                  options={VOICE_MODES}
+                  labels={VOICE_LABELS}
+                  value={settings().voiceMode}
+                  onSelect={(voiceMode) => updateSettings({ voiceMode })}
+                />
 
                 <label class="caregiver-field caregiver-checkbox">
                   <input
@@ -2056,22 +2087,13 @@ export default function App() {
 
                 <Show when={settings().hapticsEnabled}>
                   <div class="caregiver-sub">
-                    <div class="caregiver-field">
-                      <span>振動の強さ</span>
-                      <div class="caregiver-choice-options">
-                        <For each={HAPTIC_STRENGTHS}>
-                          {(strength) => (
-                            <button
-                              type="button"
-                              classList={{ active: settings().hapticsStrength === strength }}
-                              onClick={() => updateSettings({ hapticsStrength: strength })}
-                            >
-                              {HAPTIC_STRENGTH_LABELS[strength]}
-                            </button>
-                          )}
-                        </For>
-                      </div>
-                    </div>
+                    <ChoiceField
+                      label="振動の強さ"
+                      options={HAPTIC_STRENGTHS}
+                      labels={HAPTIC_STRENGTH_LABELS}
+                      value={settings().hapticsStrength}
+                      onSelect={(hapticsStrength) => updateSettings({ hapticsStrength })}
+                    />
 
                     <label class="caregiver-field caregiver-checkbox">
                       <input
@@ -2116,44 +2138,26 @@ export default function App() {
                 tabindex="0"
               >
                 <div class="caregiver-item">
-                  <div class="caregiver-field">
-                    <span>文字サイズ（選ぶタイルの文字）</span>
-                    <div class="caregiver-choice-options">
-                      <For each={FONT_SIZES}>
-                        {(size) => (
-                          <button
-                            type="button"
-                            classList={{ active: settings().fontSize === size }}
-                            onClick={() => updateSettings({ fontSize: size })}
-                          >
-                            {FONT_SIZE_LABELS[size]}
-                          </button>
-                        )}
-                      </For>
-                    </div>
-                  </div>
+                  <ChoiceField
+                    label="文字サイズ（選ぶタイルの文字）"
+                    options={FONT_SIZES}
+                    labels={FONT_SIZE_LABELS}
+                    value={settings().fontSize}
+                    onSelect={(fontSize) => updateSettings({ fontSize })}
+                  />
                   {/* Issue #111: 文字サイズも明るさと同じくその場で分かるよう、本人画面のタイルと同じ式で描くサンプル */}
                   <div class="font-size-sample" role="img" aria-label="文字サイズのサンプル">
                     <span class="tile-label">はい</span>
                   </div>
                 </div>
 
-                <div class="caregiver-field">
-                  <span>明るさ</span>
-                  <div class="caregiver-choice-options">
-                    <For each={THEMES}>
-                      {(theme) => (
-                        <button
-                          type="button"
-                          classList={{ active: settings().theme === theme }}
-                          onClick={() => updateSettings({ theme })}
-                        >
-                          {THEME_LABELS[theme]}
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </div>
+                <ChoiceField
+                  label="明るさ"
+                  options={THEMES}
+                  labels={THEME_LABELS}
+                  value={settings().theme}
+                  onSelect={(theme) => updateSettings({ theme })}
+                />
 
                 <label class="caregiver-field caregiver-checkbox">
                   <input
@@ -2169,12 +2173,16 @@ export default function App() {
                 <div class="caregiver-item">
                   <div class="caregiver-field">
                     <span>好きな画像（本人画面の「介助者用」ボタンの左に表示）</span>
-                    <div class="caregiver-choice-options">
-                      <button type="button" onClick={() => photoInputEl?.click()}>
+                    <div class="phrase-actions">
+                      <button
+                        type="button"
+                        class="caregiver-action"
+                        onClick={() => photoInputEl?.click()}
+                      >
                         {photo() ? '画像を変える' : '画像を選ぶ'}
                       </button>
                       <Show when={photo()}>
-                        <button type="button" onClick={removePhoto}>
+                        <button type="button" class="caregiver-action" onClick={removePhoto}>
                           画像を消す
                         </button>
                       </Show>
@@ -2233,7 +2241,7 @@ export default function App() {
 
                 <TabReset
                   tabLabel="フレーズ"
-                  targets="全部の画面（不快・「不快・その他」・痛い場所・要望・気分）のフレーズ"
+                  targets={`${PHRASE_GROUPS.map((g) => PHRASE_GROUP_LABELS[g]).join('、')} のフレーズ`}
                   onReset={() => resetSection('phrases')}
                 />
               </div>
@@ -2259,47 +2267,24 @@ export default function App() {
                 aria-labelledby="caregiver-tab-about"
                 tabindex="0"
               >
-                {/* Issue #118: 使い方・作者サイト・掲示板・利用回数・バージョン。外部リンクはオフラインでは開けないだけで、
+                {/* Issue #118・#149: 利用ガイド・掲示板・作者サイト・フォントのライセンス・利用回数・バージョン。
+                    使い方の本文は置かず、利用ガイドへのリンクだけにする。外部リンクはオフラインでは開けないだけで、
                     伝達機能には影響しない */}
-                <div class="caregiver-item app-guide">
-                  <h3 class="caregiver-lead">使い方</h3>
-                  <ul>
-                    <li>
-                      本人は、黄色い枠（カーソル）が伝えたい項目に来たときに、スイッチ（キーや
-                      Bluetooth シャッター）を1回押します。タイルを直接タップしても選べます。
-                    </li>
-                    <li>
-                      急ぎのときは先頭の「緊急」を選びます。緊急の表示は、介助者がこのメニューの「緊急を解除」を押すか、本人が
-                      緊急 → 緊急を解除 → 解除する を選ぶまで残ります。
-                    </li>
-                    <li>
-                      聞き逃したときは「もう一度」で、直前の伝達をもう一度伝えられます。伝えた内容は、上の枠の左右の矢印で振り返れます。
-                    </li>
-                    <li>
-                      常設するときは、ホーム画面に追加（インストール）して開き、端末の自動ロックを切り、充電したまま使ってください。一度開いておけば、通信がなくても使えます。
-                    </li>
-                  </ul>
-                  <div class="app-links">
-                    <a href={USER_GUIDE_URL} target="_blank" rel="noopener noreferrer">
-                      くわしい使い方
-                    </a>
-                  </div>
-                </div>
-
                 <div class="caregiver-item">
                   <div class="app-links">
+                    <a href={USER_GUIDE_URL} target="_blank" rel="noopener noreferrer">
+                      利用ガイド
+                    </a>
                     <a href={FEEDBACK_BBS_URL} target="_blank" rel="noopener noreferrer">
                       ご意見・ご感想の掲示板
                     </a>
                     <a href={AUTHOR_SITE_URL} target="_blank" rel="noopener noreferrer">
                       作者サイト
                     </a>
+                    <a href={FONT_LICENSE_URL} target="_blank" rel="noopener noreferrer">
+                      フォントのライセンス
+                    </a>
                   </div>
-                  {/* PR #124 レビュー: インストールしたアプリから開くと、リンク先は別の画面(ブラウザ)になり、
-                      その間はスイッチの入力も画面の自動消灯の防止(Wake Lock)も効かない。戻り忘れを防ぐため明記する */}
-                  <p class="caregiver-hint app-links-warning">
-                    リンクは別の画面（ブラウザ）で開きます（通信が必要です）。開いている間は、本人のスイッチの操作も、画面が消えないようにする働きも効きません。見終わったら、必ずこの画面に戻ってください。
-                  </p>
                 </div>
 
                 <dl class="app-facts">
@@ -2313,9 +2298,7 @@ export default function App() {
                   </div>
                   <div>
                     <dt>バージョン</dt>
-                    <dd class="app-version">
-                      {APP_VERSION}（{APP_BUILD_DATE}）
-                    </dd>
+                    <dd class="app-version">{APP_RELEASE_DATE}</dd>
                   </div>
                 </dl>
               </div>

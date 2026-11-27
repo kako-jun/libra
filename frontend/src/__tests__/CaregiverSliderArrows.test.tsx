@@ -221,7 +221,7 @@ describe('Issue #163: 介助者用メニューの文字(静的。計算後の値
         ),
       )
 
-  it('パネルは 16px・通常の太さで、太くするのは見出し・選択中タブ・状態の印だけ(700)', () => {
+  it('パネルは 16px・通常の太さで、太くするのは見出し・選択中タブ・選択中の値・状態の印だけ(700)', () => {
     const bold: Record<string, string> = {}
     for (const rule of menuRules()) {
       const weight = rule.body.match(/(?:^|[;\s])font-weight:\s*(\w+)/)?.[1]
@@ -230,23 +230,32 @@ describe('Issue #163: 介助者用メニューの文字(静的。計算後の値
     expect(bold).toEqual({
       '.caregiver-panel': '400',
       '.caregiver-panel h2': '700',
-      '.caregiver-panel h3': '700',
       '.caregiver-tab.active': '700',
       '.caregiver-status-mark': '700',
+      '.caregiver-radios input:checked + span, .phrase-target input:checked + span': '700',
     })
     const panel = menuRules().find((r) => r.selectors.join() === '.caregiver-panel')
     expect(panel?.body).toMatch(/(^|[;\s])font-size:\s*1rem/)
   })
 
-  it('メニュー内の文字の大きさは 16px(1rem)を下回らず、見出しは 1.25rem', () => {
+  // 例外は値の選択肢だけ: 折り返さず 1 段に並べる(Issue #147)ため、入らない幅でだけ 1rem より小さくする。
+  // 通常は 1rem(min の第 1 引数)。実際の大きさは e2e の caregiver-choices が実ブラウザで測る
+  const RADIO_SIZE =
+    '.caregiver-radio min(1rem, calc((100cqi / var(--choices) - 2px) / var(--choice-chars)))'
+
+  it('メニュー内の文字の大きさは、値の選択肢を除き 16px(1rem)を下回らず、見出しは 1.25rem', () => {
     const sizes: string[] = []
     for (const rule of menuRules()) {
       const size = rule.body.match(/(?:^|[;\s])font-size:\s*([^;]+);/)?.[1]
       if (size) sizes.push(`${rule.selectors.join(', ')} ${size.trim()}`)
     }
     for (const entry of sizes) {
-      expect(entry.endsWith(' 1rem') || entry === '.caregiver-panel h2 1.25rem', entry).toBe(true)
+      expect(
+        entry.endsWith(' 1rem') || entry === '.caregiver-panel h2 1.25rem' || entry === RADIO_SIZE,
+        entry,
+      ).toBe(true)
     }
+    expect(sizes).toContain(RADIO_SIZE)
   })
 
   it('1 行のチェックボックスのラベルも 44px 以上', () => {

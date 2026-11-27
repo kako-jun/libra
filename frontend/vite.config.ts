@@ -1,12 +1,11 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import solidPlugin from 'vite-plugin-solid'
+import { releaseDate } from './scripts/release-date.mjs'
 
-// Issue #118: 介助者用メニュー「このアプリ」に出す版とビルド日(日本時間)を埋め込む
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
-  version: string
-}
-const buildDate = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+// Issue #146: 介助者用メニュー「このアプリ」に出す日付(公開版の最後の変更日。日本時間)を埋め込む
+const lastChangeDate = releaseDate(fileURLToPath(new URL('.', import.meta.url)))
 
 // Issue #156: 同梱フォントを配るので、ライセンス(OFL 1.1)の全文も配信物に入れる。原本は1つだけにして
 // ビルド時にそのまま写す(dist/ に入るので Service Worker の precache にも含まれる)
@@ -25,8 +24,7 @@ const fontLicensePlugin: Plugin = {
 export default defineConfig({
   plugins: [solidPlugin(), fontLicensePlugin],
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-    __BUILD_DATE__: JSON.stringify(buildDate),
+    __RELEASE_DATE__: JSON.stringify(lastChangeDate),
   },
   build: {
     target: 'esnext',

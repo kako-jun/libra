@@ -296,8 +296,60 @@ async function checkInstallFailureKeepsOldVersion(chromium, port) {
   return failures
 }
 
+/**
+ * Issue #149: 「このアプリ」タブのフォントのライセンスは、オフラインでも本文が開く。Service Worker は
+ * ナビゲーションの失敗時にアプリ(/)を返すが、precache 済みの実ファイルを直接開いたときはそのファイルを返す
+ */
+async function checkLicenseOffline(chromium, port) {
+  const base = `http://localhost:${port}/`
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  const label = 'license-offline'
+  const expected = fs.readFileSync(new URL('../src/assets/fonts/OFL.txt', import.meta.url), 'utf-8')
+  try {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const page = await context.newPage()
+    await page.goto(base)
+    await page.evaluate(() => navigator.serviceWorker.ready)
+    await page.reload()
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller)
+    await context.setOffline(true)
+    await page.locator('.caregiver-button').click()
+    await page.waitForTimeout(500)
+    await page.getByRole('tab', { name: 'このアプリ', exact: true }).click()
+    const [popup] = await Promise.all([
+      context.waitForEvent('page', { timeout: 10000 }),
+      page.getByRole('link', { name: 'フォントのライセンス' }).click(),
+    ])
+    await popup.waitForLoadState()
+    const shown = await popup.evaluate(() => ({
+      text: document.body.innerText,
+      app: document.querySelector('#app') !== null,
+    }))
+    const normalize = (text) => text.replace(/\s+/g, ' ').trim()
+    if (shown.app || normalize(shown.text) !== normalize(expected)) {
+      failures.push(
+        `[${label}] オフラインでライセンス本文が出ない: ${normalize(shown.text).slice(0, 80)}`,
+      )
+    }
+    // 実ファイルが無いパスは、これまでどおりアプリを返す
+    await popup.goto(base + 'licenses/none', { timeout: 10000 })
+    if ((await popup.locator('h1').count()) === 0) {
+      failures.push(`[${label}] 実ファイルの無いパスでアプリが出ない`)
+    }
+  } catch (error) {
+    failures.push(`[${label}] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
+    { name: 'license-offline', run: checkLicenseOffline },
     ...MODES.map((mode) => ({
       name: mode,
       run: (chromium, port) => checkMode(chromium, mode, port),

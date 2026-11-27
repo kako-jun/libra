@@ -7,10 +7,10 @@
 //   fetchUsageCount  | 成功は累計、HTTP エラー・通信失敗・JSON でない・形が違う・fetch 無し・8 秒で応答なし は null(何も投げない)
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  APP_BUILD_DATE,
-  APP_VERSION,
+  APP_RELEASE_DATE,
   AUTHOR_SITE_URL,
   FEEDBACK_BBS_URL,
+  FONT_LICENSE_URL,
   NOSTALGIC_COUNTER_ID,
   PRODUCTION_HOSTNAME,
   USER_GUIDE_URL,
@@ -42,9 +42,12 @@ describe('リンク先と定数', () => {
     expect(NOSTALGIC_COUNTER_ID).toBe('libra-d59ef40c')
   })
 
-  it('ビルドの埋め込みが無い環境(単体テスト)では、版とビルド日は dev になる', () => {
-    expect(APP_VERSION).toBe('dev')
-    expect(APP_BUILD_DATE).toBe('dev')
+  it('フォントのライセンスは、配信物の中の本文を指す(Issue #149)', () => {
+    expect(FONT_LICENSE_URL).toBe('/licenses/BIZUDGothic-OFL.txt')
+  })
+
+  it('ビルドの埋め込みが無い環境(単体テスト)では、日付は dev になる', () => {
+    expect(APP_RELEASE_DATE).toBe('dev')
   })
 })
 

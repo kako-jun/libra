@@ -6,7 +6,7 @@
 // - scan-ring-surface: スキャン枠が黄色一本(box-shadow・::before なし)で、スキャン中の面が他のタイルと異なり赤タイルが無い(#36/#33)。
 //   SCAN_RING_REPORT_DIR で画像と測定値を保存する
 // - urgent-panel: 押すと伝達欄が赤くなるパネルだけが専用の面と区切り線になり、押すと伝達欄が赤くなること(#136)
-// - theme-parity: 明るい/夜間で同条件のラベルpx・セル寸法・案内帯高さ・寸法トークンが一致する(テーマは色だけ, #65)
+// - theme-parity: ライト/ダークで同条件のラベルpx・セル寸法・案内帯高さ・寸法トークンが一致する(テーマは色だけ, #65)
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -149,19 +149,19 @@ async function checkScanRingSurface(chromium, port) {
                 )
               // 静的テスト(VisualCleanup.test.tsx)の下限 1.3 と揃える
               const faceRatio = ratio(parse(r.fill), parse(o.bg))
-              // #136: 夜間の現在位置 #6b5510 と、伝達欄が赤くなるパネルの決定色 #663f2a は 1.27:1。
+              // #136: ダークの現在位置 #6b5510 と、伝達欄が赤くなるパネルの決定色 #663f2a は 1.27:1。
               // この面が相手のときだけ下限 1.25。ほかの面は 1.3 のまま
               const faceFloor = o.urgent && theme === 'dark' ? 1.25 : 1.3
               if (faceRatio < faceFloor)
                 failures.push(
                   `${where} スキャン面と他タイル面が ${faceFloor}:1 未満 (${faceRatio.toFixed(2)})`,
                 )
-              // 夜間は黄枠が隣接タイルに対しても 3:1 以上(明るいテーマの白面とは 1.53:1 のため対象外)
+              // ダークは黄枠が隣接タイルに対しても 3:1 以上(ライトテーマの白面とは 1.53:1 のため対象外)
               if (theme === 'dark') {
                 const ringNb = ratio(parse(r.ring), parse(o.bg))
                 if (ringNb < 3)
                   failures.push(
-                    `${where} 夜間の黄枠と隣接タイル面が 3:1 未満 (${ringNb.toFixed(2)})`,
+                    `${where} ダークの黄枠と隣接タイル面が 3:1 未満 (${ringNb.toFixed(2)})`,
                   )
               }
               const c = parse(o.bg)
@@ -340,8 +340,8 @@ async function checkUrgentPanel(chromium, port) {
   return failures
 }
 
-// Issue #65: テーマ(明るい/夜間)は色トークンだけを持ち、寸法・文字の大きさを変えない。
-// 同じ条件(画面サイズ・文字サイズ・高コントラスト・案内帯・状態)で明るい/夜間を実描画で測り、
+// Issue #65: テーマ(ライト/ダーク)は色トークンだけを持ち、寸法・文字の大きさを変えない。
+// 同じ条件(画面サイズ・文字サイズ・高コントラスト・案内帯・状態)でライト/ダークを実描画で測り、
 // ラベルのpx・セル寸法・案内帯の高さ・メッセージ欄の高さ・寸法トークンが一致すること(テーマ間差0)を確認する。
 // 設定が実際に効いたこと(data-theme / data-high-contrast / data-font-size と保存設定)を読み戻し、不一致なら失敗にする。
 async function checkThemeParity(chromium, port) {
