@@ -11,7 +11,7 @@ import {
   transmissionTone,
   type Tone,
 } from './lib/menus'
-import { advanceIdleSteps, UNDO_LAPS } from './lib/idleLaps'
+import { advanceIdleSteps } from './lib/idleLaps'
 import { press, resync, startScan, tick, type ScanConfig, type ScanState } from './lib/scan'
 import {
   DEBOUNCE_MS_MIN,
@@ -278,7 +278,7 @@ export default function App() {
   const [messageTone, setMessageTone] = createSignal<Tone>(restoredEmergency?.subTone ?? 'neutral')
 
   // Issue #120: 伝達の履歴(介助者が左右の矢印で振り返る)。端末のメモリ内だけに持ち、保存しない。
-  // historyBack は「何件前を表示しているか」(0 = 最新)。新しい伝達・緊急・取り消しで必ず 0 に戻し、
+  // historyBack は「何件前を表示しているか」(0 = 最新)。新しい伝達・緊急で必ず 0 に戻し、
   // 過去の表示が本人の新しい伝達を隠さないようにする
   // emergency: 緊急の呼び出し・詳細の記録(緊急中は帯に同じ中身が出ている)。伝達欄の「最新」にはならない
   const [history, setHistory] = createSignal<HistoryEntry[]>(
@@ -307,7 +307,7 @@ export default function App() {
     setHistory((items) => [...items, { text, tone, emergency }].slice(-HISTORY_MAX))
     setHistoryBack(0)
   }
-  // 最新の表示(message)に当たる履歴の位置。取り消し・緊急の解除で最新が空のときは -1。
+  // 最新の表示(message)に当たる履歴の位置。緊急の開始・解除で最新が空のときは -1。
   // 最新は緊急の記録ではない最後の伝達(緊急中は、直前の伝達の後に詳細の記録が続くことがある)
   const liveIndex = createMemo(() =>
     message() === DEFAULT_MESSAGE ? -1 : history().findLastIndex((entry) => !entry.emergency),
@@ -405,8 +405,6 @@ export default function App() {
       ? { text: restoredEmergency.sub, tone: restoredEmergency.subTone ?? 'neutral' }
       : null,
   )
-  const [showUndo, setShowUndo] = createSignal(false)
-  let undoLapsRemaining = 0
   // 下位画面での無入力ステップ数(カーソルが進んだ項目数。Issue #76)。画面遷移・本人の入力・押下中で 0 に戻す
   let idleSteps = 0
   // 押している最中の入力元(キー・ポインター)。押している間は無入力として数えない(Issue #76)
@@ -428,8 +426,6 @@ export default function App() {
   // 必ずこの同じ配列を参照することで、カーソルと項目のずれを防ぐ。
   const currentMenu = createMemo(() =>
     buildMenu(screen(), {
-      showUndo: showUndo(),
-      emergencyActive: emergencyActive(),
       emergencyDetails: emergencyDetails(),
       letterRow: letterRow(),
       phrases: settings().phrases,
@@ -597,9 +593,6 @@ export default function App() {
     announce(text)
   }
 
-  // home 以外へ遷移するときは「取り消し」の2周猶予を終わらせる(nit: 積み残した猶予が
-  // 後で home に戻った際に誤って復活しないように)。home への遷移(伝達完了の帰着点)では
-  // 呼び出し元が設定した showUndo/undoLapsRemaining をそのまま尊重する。
   // Issue #14: モールス入力。確定済みの文字列は画面を出入りしても残す(伝達したら消す)
   const [morseText, setMorseText] = createSignal('')
   const [morseView, setMorseView] = createSignal<MorseState | null>(null)
@@ -652,10 +645,6 @@ export default function App() {
   const goTo = (next: ScreenId) => {
     if (next === 'morse') morseInput.start(morseText())
     else morseInput.stop()
-    if (next !== 'home' && (showUndo() || undoLapsRemaining > 0)) {
-      setShowUndo(false)
-      undoLapsRemaining = 0
-    }
     idleSteps = 0
     setScreen(next)
     setScanState((previous) => startScan(Date.now(), scanConfig(), previous.lastPressAt))
@@ -663,8 +652,6 @@ export default function App() {
     // 直前の伝達読み上げが済んでいれば messageAnnounceGrace により cancel されない(S-new-1)
     if (settings().auditoryScan) {
       const first = buildMenu(next, {
-        showUndo: showUndo(),
-        emergencyActive: emergencyActive(),
         emergencyDetails: emergencyDetails(),
         letterRow: letterRow(),
         phrases: settings().phrases,
@@ -690,8 +677,6 @@ export default function App() {
       return
     }
     showMessage(text, tone, event)
-    setShowUndo(true)
-    undoLapsRemaining = UNDO_LAPS
     goTo('home')
   }
 
@@ -778,9 +763,6 @@ export default function App() {
     setHistoryBack(0)
     setMessage(DEFAULT_MESSAGE)
     setMessageTone('neutral')
-    // S2: 解除後に緊急中分の古い取り消しが復活しないようにする
-    setShowUndo(false)
-    undoLapsRemaining = 0
   }
 
   const closeCaregiverMenu = () => {
@@ -798,9 +780,6 @@ export default function App() {
         setEmergencyActive(true)
         setHistoryBack(0)
         clearRepeatMarks()
-        // S2: 緊急発生時は取り消しの猶予を必ず終わらせる
-        setShowUndo(false)
-        undoLapsRemaining = 0
         if (!alreadyActive) {
           // 緊急の呼び出しを伝達履歴に積む。本人が後で解除しても、後から来た介助者が矢印で振り返れる
           pushHistory(EMERGENCY_MESSAGE, 'urgent', true)
@@ -826,14 +805,13 @@ export default function App() {
         clearRepeatMarks()
         feedback('urgentMessage')
         announce(`${EMERGENCY_MESSAGE}${action.label}`, action.label)
-        setShowUndo(false)
         goTo('home')
         return
       }
       case 'emergencyRelease': {
         // Issue #108: 本人による緊急の解除。緊急 → 緊急を解除 → 解除する の明示操作でだけ届く。
         // 緊急の帯・保存状態・周期の振動を介助者の解除と同じ処理(clearEmergency)で止め、解除したことを
-        // 伝達欄と読み上げで本人と周囲に知らせる。取り消しは出さない(解除の取り消しは緊急を選び直す)
+        // 伝達欄と読み上げで本人と周囲に知らせる(緊急に戻すには緊急を選び直す)
         if (!emergencyActive()) {
           goTo('home')
           return
@@ -848,25 +826,8 @@ export default function App() {
         goTo('home')
         return
       }
-      case 'undo': {
-        // menus.ts の buildHomeMenu が緊急中は取り消しをメニューに含めないが、
-        // 数字キー等での直接実行に備えてここでも二重に防ぐ
-        if (emergencyActive()) return
-        // Issue #94: 取り消したら「直前に伝えたこと」自体を消し、何も伝えていない状態に戻す
-        // (1つ前の返事は最新として復元しない)。取り消した伝達は履歴(Issue #120)からも消す
-        const live = liveIndex()
-        if (live >= 0) setHistory((items) => items.filter((_, index) => index !== live))
-        setHistoryBack(0)
-        clearRepeatMarks()
-        setMessage(DEFAULT_MESSAGE)
-        setMessageTone('neutral')
-        setShowUndo(false)
-        undoLapsRemaining = 0
-        goTo('home')
-        return
-      }
       case 'repeat': {
-        // Issue #123: 直前の伝達をもう一度伝える。新しい伝達ではないので、履歴・取り消しの猶予は変えない。
+        // Issue #123: 直前の伝達をもう一度伝える。新しい伝達ではないので、履歴は変えない。
         // 伝達が無く緊急中なら、緊急の呼び出しをもう一度伝える。どちらも無ければ何も伝えない
         setHistoryBack(0)
         if (message() !== DEFAULT_MESSAGE) {
@@ -950,9 +911,8 @@ export default function App() {
     target?: { index: number; screen: ScreenId; itemId: string | undefined },
   ) => {
     if (caregiverMenuOpen()) return
-    // 押しっぱなし中に画面が変わった、または同じ画面でも項目の並びが変わった(例: 取り消しが
-    // 消えた)場合、押し始めの項目はもう同じ位置にない。別の項目(特に緊急)を誤って
-    // 実行しないよう無視する
+    // 押しっぱなし中に画面が変わった、または同じ画面でも項目の並びが変わった場合、押し始めの
+    // 項目はもう同じ位置にない。別の項目(特に緊急)を誤って実行しないよう無視する
     if (
       target &&
       (target.screen !== screen() || currentMenu()[target.index]?.id !== target.itemId)
@@ -1089,10 +1049,6 @@ export default function App() {
           setScanState(next)
         }
         if (next.index !== previous.index) {
-          if (next.index === 0 && screen() === 'home' && undoLapsRemaining > 0) {
-            undoLapsRemaining -= 1
-            if (undoLapsRemaining === 0) setShowUndo(false)
-          }
           // 下位画面で入力がないまま規定の周回数を回ったらホームへ戻す(ホーム・モールスは数えない)
           if (screen() !== 'home') {
             // 押している間は数えない(離して決定・押下時間の下限で押したままの操作を、復帰で捨てない)

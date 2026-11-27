@@ -362,16 +362,12 @@ describe('Issue #46 文言の規則(静的検査)', () => {
   it('メニュー項目の label・detail 以外のラベル(画面名・グループ名・パンくず・緊急詳細)に句読点がない', () => {
     const labels: string[] = []
     for (const screen of Object.keys(SCREEN_TITLES) as ScreenId[]) {
-      for (const emergencyActive of [false, true]) {
-        for (const item of buildMenu(screen, {
-          showUndo: true,
-          emergencyActive,
-          morseEnabled: true,
-          pain: { label: '胸', text: '胸が痛いです。' },
-        })) {
-          labels.push(item.label)
-          if (item.preview) expect(item.preview.endsWith('。')).toBe(false)
-        }
+      for (const item of buildMenu(screen, {
+        morseEnabled: true,
+        pain: { label: '胸', text: '胸が痛いです。' },
+      })) {
+        labels.push(item.label)
+        if (item.preview) expect(item.preview.endsWith('。')).toBe(false)
       }
       labels.push(SCREEN_TITLES[screen], ...buildScreenBreadcrumb(screen).map((item) => item.title))
     }
@@ -387,7 +383,7 @@ describe('Issue #46 文言の規則(静的検査)', () => {
   it('伝達メッセージ(message アクションの text)は全て「。」で終わる(はい/いいえ/続けて等)', () => {
     const texts: string[] = []
     for (const screen of Object.keys(SCREEN_TITLES) as ScreenId[]) {
-      for (const item of buildMenu(screen, { showUndo: false, emergencyActive: false })) {
+      for (const item of buildMenu(screen)) {
         const a = item.action as { type: string; text?: string }
         if (a.type === 'message' && typeof a.text === 'string') texts.push(a.text)
       }

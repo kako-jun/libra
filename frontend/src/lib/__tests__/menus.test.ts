@@ -18,7 +18,7 @@ import {
 
 const ALL_SCREENS: ScreenId[] = [...PATIENT_SCREEN_IDS]
 
-const homeOptions = { showUndo: false, emergencyActive: false }
+const homeOptions = {}
 
 describe('buildMenu の共通規則', () => {
   it('すべてのScreenIdでパンくずが完全な親経路と一致する', () => {
@@ -113,23 +113,20 @@ describe('buildMenu の共通規則', () => {
     }
   })
 
-  // 文字盤の行段階(letters)は14項目の専用格子(15セル)、ホームは「もう一度」を含む10セルの格子。
-  // それ以外の画面は標準の8セルに収まる(§4.6 / Issue #121 / Issue #123)。
+  // 文字盤の行段階(letters)は14項目の専用格子(15セル)。ホームは 8 項目、モールス使用時は 9 項目。
+  // それ以外の画面は標準の8セルに収まる(§4.6 / Issue #121 / Issue #127)。
   it.each(ALL_SCREENS.filter((s) => s !== 'letters' && s !== 'home'))(
     '%s: 項目数は8以内である',
     (screen) => {
-      const items = buildMenu(screen, { showUndo: true, emergencyActive: false })
+      const items = buildMenu(screen)
       expect(items.length).toBeLessThanOrEqual(8)
     },
   )
 
-  it('home: 項目数は10以内である(Issue #123)', () => {
-    for (const showUndo of [true, false]) {
-      for (const morseEnabled of [true, false]) {
-        const items = buildMenu('home', { showUndo, emergencyActive: false, morseEnabled })
-        expect(items.length).toBeLessThanOrEqual(10)
-      }
-    }
+  it('home: 通常は 8 項目、モールス使用時は 9 項目(Issue #127)', () => {
+    expect(buildMenu('home')).toHaveLength(8)
+    expect(buildMenu('home', { morseEnabled: false })).toHaveLength(8)
+    expect(buildMenu('home', { morseEnabled: true })).toHaveLength(9)
   })
 
   it('letters: 項目数は15以内である(Issue #121)', () => {
@@ -249,28 +246,6 @@ describe('urgentDetail の選択済み候補除外', () => {
   })
 })
 
-describe('buildHomeMenu の取り消し表示デシジョンテーブル', () => {
-  it('showUndo=true & emergencyActive=false のとき items[4](いいえの直後)が取り消しになる', () => {
-    const items = buildHomeMenu({ showUndo: true, emergencyActive: false })
-    expect(items[4].action).toEqual({ type: 'undo' })
-  })
-
-  it('showUndo=false & emergencyActive=false のとき取り消しは含まれない', () => {
-    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
-    expect(items.some((item) => item.action.type === 'undo')).toBe(false)
-  })
-
-  it('showUndo=true & emergencyActive=true のとき取り消しは含まれない（緊急中は取り消し無効）', () => {
-    const items = buildHomeMenu({ showUndo: true, emergencyActive: true })
-    expect(items.some((item) => item.action.type === 'undo')).toBe(false)
-  })
-
-  it('showUndo=false & emergencyActive=true のとき取り消しは含まれない', () => {
-    const items = buildHomeMenu({ showUndo: false, emergencyActive: true })
-    expect(items.some((item) => item.action.type === 'undo')).toBe(false)
-  })
-})
-
 describe('戻る先(PARENT_SCREEN)', () => {
   it('painLocation の戻る先は discomfort', () => {
     expect(PARENT_SCREEN.painLocation).toBe('discomfort')
@@ -293,23 +268,8 @@ describe('戻る先(PARENT_SCREEN)', () => {
 })
 
 describe('ホームの並び順(安全の優先順位 §2 の回帰テスト)', () => {
-  it('緊急→もう一度→はい→いいえ→取り消し→快→不快→要望→文字盤の順になる(Issue #93/#102/#123)', () => {
-    const items = buildHomeMenu({ showUndo: true, emergencyActive: false })
-    expect(items.map((item) => item.label)).toEqual([
-      '緊急',
-      'もう一度',
-      'はい',
-      'いいえ',
-      '取り消し',
-      '快',
-      '不快',
-      '要望',
-      '文字盤',
-    ])
-  })
-
-  it('取り消しなしのときは緊急→もう一度→はい→いいえ→快→不快→要望→文字盤の順になる(Issue #93/#123)', () => {
-    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+  it('緊急→もう一度→はい→いいえ→快→不快→要望→文字盤の順になる(Issue #93/#123)', () => {
+    const items = buildHomeMenu()
     expect(items.map((item) => item.label)).toEqual([
       '緊急',
       'もう一度',
@@ -323,48 +283,39 @@ describe('ホームの並び順(安全の優先順位 §2 の回帰テスト)', 
   })
 
   it('もう一度は緊急の次に常設され、repeat アクションを持つ(Issue #123)', () => {
-    for (const emergencyActive of [true, false]) {
-      for (const showUndo of [true, false]) {
-        const items = buildHomeMenu({ showUndo, emergencyActive })
-        expect(items[1]).toMatchObject({
-          id: 'repeat',
-          label: 'もう一度',
-          action: { type: 'repeat' },
-        })
-      }
+    for (const morseEnabled of [true, false]) {
+      const items = buildHomeMenu({ morseEnabled })
+      expect(items[1]).toMatchObject({
+        id: 'repeat',
+        label: 'もう一度',
+        action: { type: 'repeat' },
+      })
     }
   })
 
-  it('取り消しの出入りで緊急・もう一度・はい・いいえの添字は変わらない(Issue #102/#123)', () => {
-    const base = buildHomeMenu({ showUndo: false, emergencyActive: false })
-    const withUndo = buildHomeMenu({ showUndo: true, emergencyActive: false })
-    for (const id of ['repeat', 'yes', 'no']) {
-      expect(withUndo.findIndex((i) => i.id === id)).toBe(base.findIndex((i) => i.id === id))
+  it('取り消しの項目・アクションはどの条件でも無い(Issue #125)', () => {
+    for (const morseEnabled of [true, false]) {
+      const items = buildHomeMenu({ morseEnabled })
+      expect(items.map((i) => i.id)).not.toContain('undo')
+      expect(items.map((i) => String(i.action.type))).not.toContain('undo')
+      expect(items.map((i) => i.label)).not.toContain('取り消し')
     }
-    expect(withUndo[0].action.type).toBe('emergency')
-    expect(withUndo.length).toBeLessThanOrEqual(10)
-  })
-
-  it('取り消し表示中はモールス入口を畳み、ホームは10項目以内(Issue #93/#123)', () => {
-    const items = buildHomeMenu({ showUndo: true, emergencyActive: false, morseEnabled: true })
-    expect(items.some((i) => i.id === 'morse-nav')).toBe(false)
-    expect(items.length).toBeLessThanOrEqual(10)
   })
 
   it('要望はホームから直接開く(階層を増やさない)。快の中に要望の入口はない(Issue #93)', () => {
-    const home = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const home = buildHomeMenu()
     expect(home.find((i) => i.id === 'requests-nav')?.action).toEqual({
       type: 'navigate',
       screen: 'requests',
     })
-    const comfort = buildMenu('comfort', { showUndo: false, emergencyActive: false })
+    const comfort = buildMenu('comfort')
     expect(comfort.some((i) => i.label === '要望')).toBe(false)
   })
 })
 
 describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
   it('不快タイルの予告は遷移先(discomfort)の戻る・緊急を除いた先頭項目から自動生成される', () => {
-    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const items = buildHomeMenu()
     const discomfortTile = items.find((item) => item.id === 'discomfort-nav')
     // 戻る・緊急を除いてちょうど6項目(痛い・苦しい・痰・体の向き・トイレ・その他)なので「…」なし(Issue #74)
     expect(discomfortTile?.preview).toBe(
@@ -373,14 +324,14 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
   })
 
   it('快タイルの予告は遷移先(comfort)から自動生成される', () => {
-    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const items = buildHomeMenu()
     const comfortTile = items.find((item) => item.id === 'comfort-nav')
     // 項目は4件(上限6以下)なので全項目を名前で並べ、「…」は付けない(Issue #74)
     expect(comfortTile?.preview).toBe('続けて・やめて・変えて・気分')
   })
 
   it('要望タイルの予告は遷移先(requests)の既定フレーズから自動生成される(Issue #93)', () => {
-    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const items = buildHomeMenu()
     const tile = items.find((item) => item.id === 'requests-nav')
     expect(tile?.preview).toBe(
       '大丈夫・ありがとう・眠りたい・静かにしてほしい・家族に会いたい・話したい',
@@ -388,19 +339,19 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
   })
 
   it('文字盤タイルの予告は遷移先(letters)から自動生成される', () => {
-    const items = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const items = buildHomeMenu()
     const lettersTile = items.find((item) => item.id === 'letters-nav')
     // 行段階の先頭が「1字消す」になったため、予告にも先頭で出る(Issue #121)
     expect(lettersTile?.preview).toBe('1字消す・あ行・か行・さ行・た行・な行…')
   })
 
   it('項目数が上限(6)以下なら全項目を並べ「…」を付けない。遷移項目も名前で並べ矢印は付けない(Issue #74)', () => {
-    const items = buildMenu('comfort', { showUndo: false, emergencyActive: false })
+    const items = buildMenu('comfort')
     const sixOrLess = items.filter(
       (i) => i.action.type !== 'emergency' && i.action.type !== 'back',
     ).length
     expect(sixOrLess).toBeLessThanOrEqual(6)
-    const home = buildHomeMenu({ showUndo: false, emergencyActive: false })
+    const home = buildHomeMenu()
     const preview = home.find((i) => i.id === 'comfort-nav')?.preview ?? ''
     expect(preview.endsWith('…')).toBe(false)
     expect(preview).not.toMatch(/→/)
@@ -408,23 +359,19 @@ describe('Issue #3 追加指示: navigate タイルの予告(preview)', () => {
 
   it('ちょうど上限(6項目)は「…」なし、7項目になると先頭6項目＋「…」(Issue #74)', () => {
     const six = ['a', 'b', 'c', 'd', 'e', 'f'].map((x) => ({ id: x, label: x, text: x }))
-    const exact = buildMenu('home', {
-      showUndo: false,
-      emergencyActive: false,
-      phrases: { moodRequest: six },
-    }).find((i) => i.id === 'requests-nav')
+    const exact = buildMenu('home', { phrases: { moodRequest: six } }).find(
+      (i) => i.id === 'requests-nav',
+    )
     expect(exact?.preview).toBe('a・b・c・d・e・f')
     const seven = [...six, { id: 'g', label: 'g', text: 'g' }]
-    const over = buildMenu('home', {
-      showUndo: false,
-      emergencyActive: false,
-      phrases: { moodRequest: seven },
-    }).find((i) => i.id === 'requests-nav')
+    const over = buildMenu('home', { phrases: { moodRequest: seven } }).find(
+      (i) => i.id === 'requests-nav',
+    )
     expect(over?.preview).toBe('a・b・c・d・e・f…')
   })
 
-  it('message/emergency/back/undo などの navigate 以外のアイテムは preview を持たない', () => {
-    const items = buildHomeMenu({ showUndo: true, emergencyActive: false })
+  it('message/emergency/back などの navigate 以外のアイテムは preview を持たない', () => {
+    const items = buildHomeMenu()
     for (const item of items) {
       if (item.action.type !== 'navigate') {
         expect(item.preview).toBeUndefined()
@@ -502,12 +449,12 @@ describe('文字盤(§4.6)', () => {
 
 describe('モールス入力(Issue #14)', () => {
   it('既定ではホームに入口を出さない', () => {
-    const items = buildMenu('home', { showUndo: false, emergencyActive: false })
+    const items = buildMenu('home')
     expect(items.some((i) => i.id === 'morse-nav')).toBe(false)
   })
 
   it('有効にすると、文字盤の後ろ(ホームの最後)に入口が出て、緊急・もう一度・はい・いいえの位置は変わらない', () => {
-    const items = buildMenu('home', { showUndo: false, emergencyActive: false, morseEnabled: true })
+    const items = buildMenu('home', { morseEnabled: true })
     expect(items.map((i) => i.label)).toEqual([
       '緊急',
       'もう一度',
@@ -521,26 +468,9 @@ describe('モールス入力(Issue #14)', () => {
     ])
   })
 
-  it('取り消し表示中はモールスの入口を畳み、ホームはどの条件でも10項目以内(Issue #93/#123)', () => {
-    for (const showUndo of [true, false]) {
-      for (const morseEnabled of [true, false]) {
-        for (const emergencyActive of [true, false]) {
-          const items = buildMenu('home', { showUndo, emergencyActive, morseEnabled })
-          expect(
-            items.length,
-            `undo=${showUndo} morse=${morseEnabled} emg=${emergencyActive}`,
-          ).toBeLessThanOrEqual(10)
-          const hasUndo = showUndo && !emergencyActive
-          expect(items.some((i) => i.id === 'morse-nav')).toBe(morseEnabled && !hasUndo)
-        }
-      }
-    }
-    const noUndo = buildMenu('home', {
-      showUndo: false,
-      emergencyActive: false,
-      morseEnabled: true,
-    })
-    expect(noUndo.at(-1)?.label).toBe('モールス')
+  it('無効にすると入口は出ない', () => {
+    const items = buildMenu('home', { morseEnabled: false })
+    expect(items.some((i) => i.id === 'morse-nav')).toBe(false)
   })
 
   it('モールス画面は戻る・緊急だけを構造として持ち、戻る先はホーム', () => {

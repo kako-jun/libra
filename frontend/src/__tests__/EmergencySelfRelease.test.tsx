@@ -253,12 +253,13 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(shownMessage(container)).toBe('緊急（苦しい）を解除しました。')
     })
 
-    it('取り消しは出さない(解除の取り消しは無い)。2 周待っても出ない', () => {
+    it('解除のあと 2 周待っても、解除の文は残り、ホームの項目は変わらない', () => {
       const { container } = openReleaseConfirm()
       tap(container, '解除する')
-      expect(tileLabels(container)).not.toContain('取り消し')
-      advanceSteps(container, tileLabels(container).length * 2)
-      expect(tileLabels(container)).not.toContain('取り消し')
+      const home = tileLabels(container)
+      expect(home).toHaveLength(8)
+      advanceSteps(container, home.length * 2)
+      expect(tileLabels(container)).toEqual(home)
       expect(shownMessage(container)).toBe(RELEASED_MESSAGE)
     })
 

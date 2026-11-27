@@ -71,7 +71,7 @@ export const FIXED_ITEM_COUNT: Record<PhraseGroup, number> = {
 }
 
 /** 編集で作らせない表示ラベル(応答や操作と取り違える・位置を奪うのを防ぐ) */
-const RESERVED_LABELS = ['戻る', 'はい', 'いいえ', '取り消し']
+const RESERVED_LABELS = ['戻る', 'はい', 'いいえ']
 
 /** 緊急と取り違えさせない。ラベルにこれらを含む項目は作れない */
 const EMERGENCY_WORDS = ['緊急', 'きんきゅう', 'キンキュウ']

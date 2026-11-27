@@ -88,8 +88,6 @@ describe('Issue #136: 色の付くパネルと伝達欄の色は同じ tone の�
   it('transmissionTone が urgent になるのは伝える項目(message)だけ(全画面のメニュー定義)', () => {
     for (const screen of PATIENT_SCREEN_IDS as ScreenId[]) {
       const items = buildMenu(screen, {
-        showUndo: true,
-        emergencyActive: false,
         morseEnabled: true,
         phrases: CUSTOM,
         pain: { label: '胸', text: '胸が痛いです。', tone: 'urgent' },
