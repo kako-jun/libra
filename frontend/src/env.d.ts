@@ -9,7 +9,5 @@ interface ImportMeta {
   readonly env: ImportMetaEnv
 }
 
-/** vite.config.ts の define で埋め込む(Issue #118)。package.json の version */
-declare const __APP_VERSION__: string | undefined
-/** vite.config.ts の define で埋め込む(Issue #118)。ビルド日(日本時間の YYYY-MM-DD) */
-declare const __BUILD_DATE__: string | undefined
+/** vite.config.ts の define で埋め込む(Issue #146)。公開版の最後の変更日(日本時間の YYYY-MM-DD) */
+declare const __RELEASE_DATE__: string | undefined

@@ -1762,6 +1762,253 @@ async function checkRepeatPulseReducedMotion(chromium, port) {
   return failures
 }
 
+/** 介助者用メニューを開いて、タブを選ぶ */
+async function openCaregiverTab(page, label) {
+  if ((await page.locator('.caregiver-panel').count()) === 0) {
+    await page.locator('.caregiver-button').click()
+    await page.waitForSelector('.caregiver-panel', { timeout: 3000 })
+    await page.waitForTimeout(500) // 開いたタップの直後は、続けての操作を受け付けない
+  }
+  await page.getByRole('tab', { name: label, exact: true }).click()
+  await page.waitForTimeout(100)
+}
+
+/**
+ * Issue #147・#148・#145: 介助者用メニューの値の選択肢が、実描画で 1 段(同じ上端)・等幅・44px 以上で、
+ * 名前が 1 行のまま枠に収まり、横にはみ出さないこと。文字は入る幅では 16px で、320px の 4 択(音声モード)
+ * だけが小さくなる。選択中は太字で丸が塗られる。フレーズの編集先は 44px 以上の字下げした一覧
+ */
+async function checkCaregiverChoices(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  const groupsByTab = { スキャン: 1, 音と振動: 2, 表示: 2 }
+  try {
+    for (const viewport of [
+      { width: 320, height: 568 },
+      { width: 390, height: 844 },
+      { width: 1280, height: 720 },
+    ]) {
+      for (const fontSize of ['standard', 'xlarge']) {
+        for (const theme of ['light', 'dark']) {
+          const name = `[caregiver-choices ${viewport.width}x${viewport.height} ${fontSize} ${theme}]`
+          const context = await browser.newContext({ viewport })
+          const page = await context.newPage()
+          await page.addInitScript(
+            (stored) => window.localStorage.setItem('libra', stored),
+            JSON.stringify({ intervalMs: 5000, fontSize, theme, hapticsEnabled: true }),
+          )
+          await page.goto(`http://localhost:${port}/`)
+          await page.evaluate(() => document.fonts.ready)
+          for (const [tab, expected] of Object.entries(groupsByTab)) {
+            await openCaregiverTab(page, tab)
+            const groups = await page.evaluate(() =>
+              Array.from(document.querySelectorAll('.caregiver-radios'), (group) => ({
+                overflow: group.scrollWidth - group.clientWidth,
+                options: Array.from(group.querySelectorAll('.caregiver-radio'), (label) => {
+                  const box = label.getBoundingClientRect()
+                  const input = label.querySelector('input')
+                  const span = label.querySelector('span')
+                  const text = span.getBoundingClientRect()
+                  return {
+                    name: span.textContent,
+                    top: box.top,
+                    left: box.left,
+                    right: box.right,
+                    width: box.width,
+                    height: box.height,
+                    textLeft: text.left,
+                    textRight: text.right,
+                    lines: span.getClientRects().length,
+                    textHeight: text.height,
+                    fontSize: parseFloat(getComputedStyle(label).fontSize),
+                    weight: getComputedStyle(span).fontWeight,
+                    checked: input.checked,
+                    circle: getComputedStyle(input).backgroundColor,
+                    circleWidth: input.getBoundingClientRect().width,
+                    surface: getComputedStyle(label).backgroundColor,
+                    border: getComputedStyle(label).borderTopWidth,
+                  }
+                }),
+              })),
+            )
+            if (groups.length !== expected) {
+              failures.push(`${name} ${tab}: 欄の数が ${groups.length}(期待 ${expected})`)
+            }
+            for (const group of groups) {
+              const id = `${name} ${tab} ${group.options.map((o) => o.name).join('/')}`
+              if (group.overflow > 0) failures.push(`${id}: 横にはみ出す(${group.overflow}px)`)
+              const [first] = group.options
+              const small = viewport.width === 320 && group.options.length === 4
+              for (const o of group.options) {
+                if (Math.abs(o.top - first.top) > 0.5) failures.push(`${id}: ${o.name} が別の段`)
+                if (Math.abs(o.width - first.width) > 1) failures.push(`${id}: 幅が等しくない`)
+                if (o.height < 44) failures.push(`${id}: ${o.name} の高さ ${o.height}px`)
+                if (o.right > viewport.width) failures.push(`${id}: ${o.name} が画面外`)
+                if (o.textLeft < o.left - 0.5 || o.textRight > o.right + 0.5) {
+                  failures.push(`${id}: ${o.name} の文字が枠からはみ出す`)
+                }
+                if (o.lines !== 1 || o.textHeight > o.fontSize * 1.9) {
+                  failures.push(`${id}: ${o.name} が折り返す`)
+                }
+                if (small ? o.fontSize < 13 || o.fontSize >= 16 : o.fontSize !== 16) {
+                  failures.push(`${id}: 文字が ${o.fontSize}px`)
+                }
+                if (o.weight !== (o.checked ? '700' : '400')) {
+                  failures.push(`${id}: ${o.name} の太さ ${o.weight}(選択中=${o.checked})`)
+                }
+                if (o.circleWidth !== 20) failures.push(`${id}: 丸の幅 ${o.circleWidth}px`)
+                const filled = o.circle !== 'rgba(0, 0, 0, 0)'
+                if (filled !== o.checked) failures.push(`${id}: ${o.name} の丸の塗りが違う`)
+                if (o.surface !== 'rgba(0, 0, 0, 0)' || o.border !== '0px') {
+                  failures.push(`${id}: ${o.name} がボタンのような面・枠を持つ`)
+                }
+              }
+              if (group.options.filter((o) => o.checked).length !== 1) {
+                failures.push(`${id}: 選択中が 1 つでない`)
+              }
+            }
+          }
+
+          await openCaregiverTab(page, 'フレーズ')
+          const targets = await page.evaluate(() =>
+            Array.from(
+              document.querySelectorAll('.phrase-target-option, .phrase-target-parent'),
+              (el) => ({
+                name: el.textContent,
+                height: el.getBoundingClientRect().height,
+                textLeft: el.querySelector('span')?.getBoundingClientRect().left ?? null,
+                left: el.getBoundingClientRect().left,
+              }),
+            ),
+          )
+          const names = targets.map((t) => t.name).join(',')
+          if (names !== '快,気分,不快,痛い,その他,要望') failures.push(`${name} 編集先 ${names}`)
+          for (const t of targets) {
+            if (t.height < 44) failures.push(`${name} 編集先 ${t.name} の高さ ${t.height}px`)
+          }
+          const indent = (index) => targets[index]?.left - targets[0]?.left
+          if (![1, 3, 4].every((i) => indent(i) >= 20) || ![2, 5].every((i) => indent(i) === 0)) {
+            failures.push(`${name} 編集先の字下げが階層と違う`)
+          }
+
+          for (const tab of [
+            '使用準備',
+            'スキャン',
+            '音と振動',
+            '表示',
+            'フレーズ',
+            'モールス',
+            'データ',
+            'このアプリ',
+          ]) {
+            await openCaregiverTab(page, tab)
+            const overflow = await page.evaluate(() => {
+              const panel = document.querySelector('.caregiver-tabpanel')
+              return panel.scrollWidth - panel.clientWidth
+            })
+            if (overflow > 0) failures.push(`${name} ${tab}: タブの中身が横に ${overflow}px はみ出す`)
+          }
+          await context.close()
+        }
+      }
+    }
+  } catch (error) {
+    failures.push(`[caregiver-choices] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
+/**
+ * Issue #151: 選んだタブは、矢印が出入りした後も全体が見える。押す操作は element.click() で行う
+ * (Playwright の click は押す前に要素を見える位置へ動かすので、アプリの動きを確かめられない)。
+ * 矢印で表示範囲を動かしたときは、選択中のタブへ引き戻さない
+ */
+async function checkCaregiverTabReveal(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  try {
+    for (const width of [280, 320, 390]) {
+      const name = `[caregiver-tab-reveal ${width}]`
+      const context = await browser.newContext({ viewport: { width, height: 700 } })
+      const page = await context.newPage()
+      await page.goto(`http://localhost:${port}/`)
+      await page.evaluate(() => document.fonts.ready)
+      await openCaregiverTab(page, '使用準備')
+      const clipped = () =>
+        page.evaluate(() => {
+          const list = document.querySelector('.caregiver-tablist').getBoundingClientRect()
+          const tab = document.querySelector('.caregiver-tab[aria-selected="true"]')
+          const box = tab.getBoundingClientRect()
+          const cut = Math.max(list.left - box.left, box.right - list.right)
+          return { tab: tab.textContent, cut }
+        })
+      const expectShown = async (how) => {
+        await page.waitForTimeout(150)
+        const { tab, cut } = await clipped()
+        if (cut > 0.5) failures.push(`${name} ${how}: ${tab} が ${cut.toFixed(1)}px 欠ける`)
+      }
+      const count = await page.locator('.caregiver-tab').count()
+      const order = [...Array(count).keys()]
+      // 画面端に一部だけ見える状態にしてから押す(右へ順に、左へ順に)
+      for (const [indexes, edge] of [
+        [order.slice(1), 'right'],
+        [order.slice(0, -1).reverse(), 'left'],
+      ]) {
+        for (const index of indexes) {
+          await page.evaluate(
+            ({ index, edge }) => {
+              const list = document.querySelector('.caregiver-tablist')
+              const tab = document.querySelectorAll('.caregiver-tab')[index]
+              const range = list.getBoundingClientRect()
+              const box = tab.getBoundingClientRect()
+              list.scrollLeft +=
+                edge === 'right' ? box.left + 20 - range.right : box.right - 20 - range.left
+              tab.click()
+            },
+            { index, edge },
+          )
+          await expectShown(`端の一部だけ見えるタブを押す(${edge})`)
+        }
+      }
+      await page.locator('.caregiver-tab[aria-selected="true"]').focus()
+      for (const key of ['End', 'ArrowLeft', 'ArrowLeft', 'Home', 'ArrowRight', 'ArrowRight']) {
+        await page.keyboard.press(key)
+        await expectShown(`キー ${key}`)
+      }
+      // 矢印で表示範囲を動かすと、そのまま(引き戻さない)
+      await page.keyboard.press('Home')
+      await page.waitForTimeout(150)
+      const scrollLeft = () =>
+        page.evaluate(() => document.querySelector('.caregiver-tablist').scrollLeft)
+      await page.getByRole('button', { name: '次のタブを表示' }).click()
+      await page.waitForTimeout(800)
+      const moved = await scrollLeft()
+      await page.waitForTimeout(400)
+      if (moved < 50 || (await scrollLeft()) !== moved) {
+        failures.push(`${name} 矢印で表示範囲が動かない、または引き戻される(${moved})`)
+      }
+      // 幅が変わっても、選択中のタブは全体が見える
+      await page.getByRole('tab', { name: 'このアプリ', exact: true }).click()
+      await page.setViewportSize({ width: width + 200, height: 700 })
+      await expectShown('幅を広げる')
+      await page.setViewportSize({ width, height: 700 })
+      await expectShown('幅を戻す')
+      await context.close()
+    }
+  } catch (error) {
+    failures.push(`[caregiver-tab-reveal] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 /**
  * Issue #131/#130/#135: 伝達欄の高さは画面の大きさだけで決まり、内容(起動直後・短文・赤・過去の表示・
  * 緊急解除後・長文)で 1px も変わらず、下の案内欄とタイルも動かない。長文は欄に全文が収まり(切れない・
@@ -2257,8 +2504,79 @@ async function checkHomeGrid(chromium, port) {
   return failures
 }
 
+/**
+ * 押しっぱなしのスイッチのリピート(同じキーの keyboard.down の2回目以降は repeat: true)で、介助者用メニューの
+ * 値が変わらず、ボタンが実行されないこと。本人がキーを押した後にメニューが開き、ラジオや確認中の
+ * 「初期値に戻す」にフォーカスがある状態を作る。jsdom は既定の動作を起こさないので実ブラウザで確かめる
+ */
+async function checkCaregiverKeyRepeat(chromium, port) {
+  const server = await startServer('plain', port)
+  const browser = await launchBrowser(chromium)
+  const failures = []
+  const cases = [
+    {
+      title: 'ラジオ',
+      keys: ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'Space'],
+      tab: '音と振動',
+      prepare: (page) => page.locator('label.caregiver-radio', { hasText: '全部読む' }).click(),
+    },
+    {
+      title: 'チェックボックス',
+      keys: ['Enter', 'Space'],
+      tab: '音と振動',
+      prepare: (page) => page.locator('.caregiver-tabpanel input[type="checkbox"]').first().focus(),
+    },
+    {
+      title: '確認中の初期値に戻す',
+      keys: ['Enter', 'Space'],
+      tab: 'スキャン',
+      prepare: (page) => page.locator('.caregiver-reset-button').click(),
+    },
+  ]
+  try {
+    for (const { title, keys, tab, prepare } of cases) {
+      for (const key of keys) {
+        const name = `[caregiver-key-repeat ${title} ${key}]`
+        const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+        const page = await context.newPage()
+        await page.addInitScript(() =>
+          window.localStorage.setItem(
+            'libra',
+            JSON.stringify({ intervalMs: 5000, hapticsEnabled: true }),
+          ),
+        )
+        await page.goto(`http://localhost:${port}/`)
+        await page.waitForTimeout(300)
+        await page.keyboard.down(key) // 本人がメニューの開く前から押している
+        await openCaregiverTab(page, tab)
+        await prepare(page)
+        const saved = () => page.evaluate(() => window.localStorage.getItem('libra'))
+        const before = await saved()
+        for (let i = 0; i < 3; i += 1) await page.keyboard.down(key)
+        await page.keyboard.up(key)
+        await page.waitForTimeout(200)
+        const after = await saved()
+        if (after !== before) failures.push(`${name} 設定が変わった: ${before} -> ${after}`)
+        if ((await page.locator('.caregiver-panel').count()) !== 0) {
+          failures.push(`${name} メニューが閉じない`)
+        }
+        await context.close()
+      }
+    }
+  } catch (error) {
+    failures.push(`[caregiver-key-repeat] ${error.message.split('\n')[0]}`)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+  return failures
+}
+
 await runChecks(
   [
+    { name: 'caregiver-key-repeat', run: checkCaregiverKeyRepeat },
+    { name: 'caregiver-choices', run: checkCaregiverChoices },
+    { name: 'caregiver-tab-reveal', run: checkCaregiverTabReveal },
     { name: 'letters-scroll', run: checkLettersScrollLayout },
     { name: 'no-overlap', run: checkNoOverlapWithFixedControls },
     { name: 'heading-fit', run: checkHeadingFit },

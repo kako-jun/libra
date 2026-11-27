@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import App from '../App'
 import * as wakeLockModule from '../lib/wakeLock'
 import * as offlineReadyModule from '../lib/offlineReady'
+import { chooseRadio, radioByName } from './appTestKit'
 import { HAPTIC_PATTERNS, feedbackPattern } from '../lib/feedback'
 
 // requirements.md 既定値: intervalMs=1500, headHoldMultiplier=4/3(=headHoldMs 2000), debounceMs=500
@@ -726,7 +727,7 @@ describe('App', () => {
     openCaregiverMenu(first.container)
     selectCaregiverTab(first.container, 'フレーズ')
     const editor = first.container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '要望')
+    chooseRadio(editor, '要望')
     clickButton(editor, 'フレーズを追加')
     const rows = editor.querySelectorAll('.phrase-row')
     const inputs = rows[rows.length - 1].querySelectorAll('input')
@@ -751,7 +752,7 @@ describe('App', () => {
     openCaregiverMenu(view.container)
     selectCaregiverTab(view.container, 'フレーズ')
     const editor = view.container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '要望')
+    chooseRadio(editor, '要望')
     const input = editor.querySelector('.phrase-row input') as HTMLInputElement
     input.focus()
     return { ...view, input }
@@ -814,7 +815,7 @@ describe('App', () => {
     openCaregiverMenu(container)
     selectCaregiverTab(container, 'フレーズ')
     const editor = container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '要望')
+    chooseRadio(editor, '要望')
     expect(editor.querySelector('[role="note"]')?.textContent).toContain('表示されません')
   })
 
@@ -851,9 +852,9 @@ describe('App', () => {
       Array.from(editor().querySelectorAll('.phrase-row label:first-child input')).map(
         (i) => (i as HTMLInputElement).value,
       )
-    const groups = ['不快', '不快・その他', '痛い場所', '要望', '気分']
+    const groups = ['快 › 気分', '不快', '不快 › 痛い', '不快 › その他', '要望']
     for (const g of groups) {
-      clickButton(editor(), g)
+      chooseRadio(editor(), g)
       expect(labels(), g).toEqual(['テレビ'])
       expect(editor().textContent).not.toContain('この画面を初期値に戻す')
     }
@@ -862,7 +863,7 @@ describe('App', () => {
     fireEvent.click(reset())
     expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').phrases).toEqual({})
     for (const g of groups) {
-      clickButton(editor(), g)
+      chooseRadio(editor(), g)
       expect(labels().length, g).toBeGreaterThan(1)
       expect(labels(), g).not.toContain('テレビ')
     }
@@ -879,7 +880,7 @@ describe('App', () => {
     openCaregiverMenu(container)
     selectCaregiverTab(container, 'フレーズ')
     const editor = container.querySelector('.phrase-editor') as HTMLElement
-    clickButton(editor, '要望')
+    chooseRadio(editor, '要望')
     expect(editor.querySelector('[role="alert"]')?.textContent).toContain('9 項目')
   })
 
@@ -1531,10 +1532,7 @@ describe('App', () => {
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox) // 聴覚スキャンON
     selectCaregiverTab(container, '音と振動')
-    const fullVoiceButton = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent === '全部読む',
-    ) as HTMLElement
-    fireEvent.click(fullVoiceButton) // 音声モードを全部読むに(伝達自体も読み上げさせる)
+    chooseRadio(container, '全部読む') // 音声モードを全部読むに(伝達自体も読み上げさせる)
     const closeButton = Array.from(container.querySelectorAll('button')).find(
       (b) => b.textContent === '閉じる',
     ) as HTMLElement
@@ -1575,10 +1573,7 @@ describe('App', () => {
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox)
     selectCaregiverTab(container, '音と振動')
-    const fullVoiceButton = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent === '全部読む',
-    ) as HTMLElement
-    fireEvent.click(fullVoiceButton)
+    chooseRadio(container, '全部読む')
     const closeButton = Array.from(container.querySelectorAll('button')).find(
       (b) => b.textContent === '閉じる',
     ) as HTMLElement
@@ -2002,7 +1997,7 @@ describe('App', () => {
     })
   })
 
-  describe('Issue #3 追加指示: 表示テーマ(明るい/夜間/自動)・文字サイズ・高コントラスト', () => {
+  describe('Issue #3 追加指示: 表示テーマ(ライト/ダーク/OSの設定)・文字サイズ・高コントラスト', () => {
     // window.matchMedia の複雑なモック。複数のクエリ(prefers-color-scheme, display-mode)を
     // 個別に扱い、addEventListener で登録されたリスナーを trigger() で発火できるようにする。
     // App.tsx は起動時に matchMedia を同期的に呼ぶため、render() より前に呼び出しておく。
@@ -2043,7 +2038,7 @@ describe('App', () => {
       delete document.documentElement.dataset.highContrast
     })
 
-    it('theme=auto(既定)かつ OS が明るい設定なら data-theme は light になる', () => {
+    it('theme=auto(既定)かつ OS がライトの設定なら data-theme は light になる', () => {
       mockMatchMedia({ '(prefers-color-scheme: dark)': false })
       render(() => <App />)
       expect(document.documentElement.dataset.theme).toBe('light')
@@ -2065,7 +2060,7 @@ describe('App', () => {
       expect(document.documentElement.dataset.theme).toBe('light')
     })
 
-    it('介助者メニューで表示「夜間」を選ぶと、OSが明るくても data-theme は dark に固定される', () => {
+    it('介助者メニューで表示「ダーク」を選ぶと、OSがライトでも data-theme は dark に固定される', () => {
       mockMatchMedia({ '(prefers-color-scheme: dark)': false })
       const { container } = render(() => <App />)
       const button = container.querySelector('.caregiver-button') as HTMLElement
@@ -2073,14 +2068,11 @@ describe('App', () => {
       fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
       vi.advanceTimersByTime(2000)
       selectCaregiverTab(container, '表示')
-      const darkButton = Array.from(container.querySelectorAll('button')).find(
-        (b) => b.textContent === '夜間',
-      ) as HTMLElement
-      fireEvent.click(darkButton)
+      chooseRadio(container, 'ダーク')
       expect(document.documentElement.dataset.theme).toBe('dark')
     })
 
-    it('介助者メニューで表示「明るい」を選ぶと、OSが暗くても data-theme は light に固定される', () => {
+    it('介助者メニューで表示「ライト」を選ぶと、OSが暗くても data-theme は light に固定される', () => {
       mockMatchMedia({ '(prefers-color-scheme: dark)': true })
       const { container } = render(() => <App />)
       const button = container.querySelector('.caregiver-button') as HTMLElement
@@ -2088,10 +2080,7 @@ describe('App', () => {
       fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
       vi.advanceTimersByTime(2000)
       selectCaregiverTab(container, '表示')
-      const lightButton = Array.from(container.querySelectorAll('button')).find(
-        (b) => b.textContent === '明るい',
-      ) as HTMLElement
-      fireEvent.click(lightButton)
+      chooseRadio(container, 'ライト')
       expect(document.documentElement.dataset.theme).toBe('light')
     })
 
@@ -2108,10 +2097,7 @@ describe('App', () => {
       fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
       vi.advanceTimersByTime(2000)
       selectCaregiverTab(container, '表示')
-      const xlargeButton = Array.from(container.querySelectorAll('button')).find(
-        (b) => b.textContent === '特大',
-      ) as HTMLElement
-      fireEvent.click(xlargeButton)
+      chooseRadio(container, '特大')
       expect(document.documentElement.dataset.fontSize).toBe('xlarge')
     })
 
@@ -2589,12 +2575,14 @@ describe('App', () => {
 
     it('仕様固定: タブを切り替えるとフレーズのグループ選択とバックアップの貼り付け途中テキストは破棄される', () => {
       const activeGroup = (c: HTMLElement) =>
-        c.querySelector('.phrase-editor .caregiver-choice-options button.active')?.textContent
+        c
+          .querySelector('.phrase-editor [role="radiogroup"] input:checked')
+          ?.getAttribute('aria-label')
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       selectCaregiverTab(container, 'フレーズ')
       const initialGroup = activeGroup(container)
-      clickButton(container.querySelector('.phrase-editor') as HTMLElement, '要望')
+      chooseRadio(container.querySelector('.phrase-editor') as HTMLElement, '要望')
       expect(activeGroup(container)).toBe('要望')
       selectCaregiverTab(container, 'データ')
       fireEvent.input(container.querySelector('textarea') as HTMLTextAreaElement, {
@@ -2621,20 +2609,73 @@ describe('App', () => {
       expect(warn).not.toHaveBeenCalled()
     })
 
-    it('矢印/Home/End でタブを移すと、選んだタブを scrollIntoView({block, inline: nearest}) で見える位置へ寄せる', () => {
-      const scrollIntoView = vi.fn()
-      ;(HTMLElement.prototype as unknown as { scrollIntoView: unknown }).scrollIntoView =
-        scrollIntoView
-      try {
-        const { container, tab } = openAndFocus('使用準備')
-        fireEvent.keyDown(tab, { key: 'ArrowRight' })
-        expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' })
-        expect(scrollIntoView.mock.instances.at(-1)).toBe(tabByLabel(container, 'スキャン'))
-        fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' })
-        expect(scrollIntoView.mock.instances.at(-1)).toBe(tabByLabel(container, 'このアプリ'))
-      } finally {
-        delete (HTMLElement.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView
-      }
+    // Issue #151: 選んだタブは全体が見える位置へ動かす。jsdom は寸法を持たないので、幅 200px の表示範囲に
+    // 幅 100px のタブが並ぶとして矩形と scrollLeft を差し替える(矢印の出入りで幅が変わる実描画は e2e)
+    function stubTabRects(container: HTMLElement) {
+      const list = container.querySelector('.caregiver-tablist') as HTMLElement
+      let left = 0
+      Object.defineProperty(list, 'scrollLeft', {
+        configurable: true,
+        get: () => left,
+        set: (value: number) => {
+          left = Math.max(0, Math.min(600, value))
+        },
+      })
+      Object.defineProperty(list, 'scrollWidth', { configurable: true, value: 800 })
+      Object.defineProperty(list, 'clientWidth', { configurable: true, value: 200 })
+      list.getBoundingClientRect = () => ({ left: 0, right: 200 }) as DOMRect
+      list.scrollTo = ((options: ScrollToOptions) => {
+        list.scrollLeft = options.left ?? 0
+      }) as typeof list.scrollTo
+      tabs(container).forEach((tab, i) => {
+        tab.getBoundingClientRect = () =>
+          ({ left: i * 100 - left, right: (i + 1) * 100 - left }) as DOMRect
+      })
+      return list
+    }
+    const visible = (list: HTMLElement, tab: HTMLElement) => {
+      const box = tab.getBoundingClientRect()
+      const range = list.getBoundingClientRect()
+      return box.left >= range.left && box.right <= range.right
+    }
+
+    it('矢印/Home/End でタブを移すと、選んだタブ全体が見える位置へ動く', () => {
+      const { container, tab } = openAndFocus('使用準備')
+      const list = stubTabRects(container)
+      fireEvent.keyDown(tab, { key: 'End' })
+      expect(visible(list, tabByLabel(container, 'このアプリ'))).toBe(true)
+      expect(list.scrollLeft).toBe(600)
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowLeft' })
+      expect(visible(list, tabByLabel(container, 'データ'))).toBe(true)
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' })
+      expect(list.scrollLeft).toBe(0)
+    })
+
+    it('一部だけ見えるタブを押しても全体が見える位置へ動く(選択済みのタブを押したときも)', () => {
+      const { container } = openAndFocus('使用準備')
+      const list = stubTabRects(container)
+      list.scrollLeft = 50 // 3 番目のタブは左の半分だけ見える
+      const third = tabs(container)[2]
+      expect(visible(list, third)).toBe(false)
+      fireEvent.click(third)
+      expect(list.scrollLeft).toBe(100)
+      list.scrollLeft = 250 // 選択中のまま、矢印で左半分が隠れた
+      expect(visible(list, third)).toBe(false)
+      fireEvent.click(third)
+      expect(list.scrollLeft).toBe(200)
+      expect(visible(list, third)).toBe(true)
+    })
+
+    it('矢印で表示範囲を動かす操作は、選択中のタブへ引き戻さない', async () => {
+      const { container } = openAndFocus('使用準備')
+      await Promise.resolve() // メニューを開いた直後の位置合わせを先に済ませる
+      const list = stubTabRects(container)
+      fireEvent.scroll(list) // 差し替えた寸法で矢印の出し分けを取り直す
+      const next = container.querySelector('[aria-label="次のタブを表示"]') as HTMLElement
+      fireEvent.click(next)
+      fireEvent.scroll(list)
+      await Promise.resolve()
+      expect(list.scrollLeft).toBe(140)
     })
 
     it.each(['ctrlKey', 'altKey', 'metaKey'])(
@@ -2732,13 +2773,13 @@ describe('App', () => {
         Array.from(
           container.querySelectorAll('.phrase-editor .phrase-row label:first-child input'),
         ).map((i) => (i as HTMLInputElement).value)
-      clickButton(container.querySelector('.phrase-editor') as HTMLElement, '要望')
+      chooseRadio(container.querySelector('.phrase-editor') as HTMLElement, '要望')
       expect(labels()).toContain('ユニーク印')
       const panel = container.querySelector('.caregiver-tabpanel') as HTMLElement
       fireEvent.click(resetButton(panel))
       fireEvent.click(resetButton(panel))
       expect(JSON.stringify(saved().phrases ?? {})).not.toContain('ユニーク印')
-      clickButton(container.querySelector('.phrase-editor') as HTMLElement, '要望')
+      chooseRadio(container.querySelector('.phrase-editor') as HTMLElement, '要望')
       expect(labels().length).toBeGreaterThan(0)
       expect(labels()).not.toContain('ユニーク印')
     })
@@ -2756,7 +2797,7 @@ describe('App', () => {
     })
 
     it('表示タブのリセットは、文字サイズ・高コントラスト・テーマの既定値を即座に画面へ反映する', () => {
-      // OS は明るい設定。他テストの matchMedia モックに依存しないよう明示する
+      // OS はライトの設定。他テストの matchMedia モックに依存しないよう明示する
       ;(window as unknown as { matchMedia: unknown }).matchMedia = vi.fn().mockReturnValue({
         matches: false,
         addEventListener: vi.fn(),

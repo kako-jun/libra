@@ -1,7 +1,7 @@
-// Issue #65: テーマ(明るい/夜間)は色トークンだけを定義する。寸法・文字の大きさ・
+// Issue #65: テーマ(ライト/ダーク)は色トークンだけを定義する。寸法・文字の大きさ・
 // レイアウト係数をテーマに持たせない(テーマで寸法が変わる作りは詳細度の食い違いを生む。
 // 実例: ブレークポイントの :root{--label-cqi} が `:root,:root[data-theme='light']` に負けて、
-// 明るいテーマだけラベルの係数が効かなかった)。
+// ライトテーマだけラベルの係数が効かなかった)。
 // globals.css を静的に読み、規則を機械的に縛る。
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -58,7 +58,7 @@ function parseRules(src: string): Rule[] {
   return rules
 }
 
-/** テーマのブロック = セレクタに data-theme を含むルール(明るいテーマの `:root, :root[data-theme='light']` を含む) */
+/** テーマのブロック = セレクタに data-theme を含むルール(ライトテーマの `:root, :root[data-theme='light']` を含む) */
 const isThemeRule = (r: Rule) => /\[data-theme/.test(r.selector)
 
 /** 長さ・calc を含む値は色ではない(color-mix() / oklch() / transparent / var(別名) などの色表現は許す) */
@@ -77,7 +77,7 @@ const DIMENSION_TOKENS = [
 ]
 
 describe('Issue #65: テーマのブロックは色トークンだけ', () => {
-  it('テーマのブロックが明るい・夜間・各テーマ×高コントラストの4つあり、解析できている(検査が空振りしない)', () => {
+  it('テーマのブロックがライト・ダーク・各テーマ×高コントラストの4つあり、解析できている(検査が空振りしない)', () => {
     const themeRules = parseRules(css).filter(isThemeRule)
     expect(themeRules.length).toBe(4)
     const sels = themeRules.map((r) => r.selector)
@@ -174,7 +174,7 @@ describe('Issue #65: 寸法/係数トークンの定義はテーマ非依存ブ�
     expect(dimsInHc.every((d) => d.sel === ":root[data-high-contrast='true']")).toBe(true)
   })
 
-  it('--label-cqi / --label-cqb のブレークポイント上書きが基底より後ろ・同じ詳細度の `:root` で、明るいテーマにも効く(テーマの有無で値が変わらない)', () => {
+  it('--label-cqi / --label-cqb のブレークポイント上書きが基底より後ろ・同じ詳細度の `:root` で、ライトテーマにも効く(テーマの有無で値が変わらない)', () => {
     const src = parseRules(css)
     for (const token of ['--label-cqi', '--label-cqb']) {
       const idx = (r: Rule) => src.indexOf(r)

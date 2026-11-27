@@ -174,7 +174,7 @@ describe('Issue #33/#36: 4テーマのトークン定義とコントラスト', 
     '--urgent-text',
   ]
   for (const [theme, hc] of THEMES) {
-    const name = `${theme === 'light' ? '明るい' : '夜間'}${hc ? '+高コントラスト' : ''}`
+    const name = `${theme === 'light' ? 'ライト' : 'ダーク'}${hc ? '+高コントラスト' : ''}`
     it(`${name}: 必要なトークンが全て定義され、色値は #rrggbb で解決できる`, () => {
       for (const t of NEEDED) {
         const v = effective(theme, hc, t)
@@ -300,7 +300,7 @@ describe('Issue #36: 赤(--urgent-bg)の使用箇所は上部メッセージ欄�
 
 describe('Issue #136: 押すと伝達欄が赤くなるパネルの色', () => {
   for (const [theme, hc] of THEMES) {
-    const name = `${theme === 'light' ? '明るい' : '夜間'}${hc ? '+高コントラスト' : ''}`
+    const name = `${theme === 'light' ? 'ライト' : 'ダーク'}${hc ? '+高コントラスト' : ''}`
     const get = (t: string) => effective(theme, hc, t) as string
 
     it(`${name}: 面は決定値(高コントラストでも同じ)で、真っ赤でも通常面でもない`, () => {
@@ -309,7 +309,7 @@ describe('Issue #136: 押すと伝達欄が赤くなるパネルの色', () => {
       expect(get('--tile-urgent-bg')).not.toBe(get('--surface'))
     })
 
-    it(`${name}: 文字(--text。ライトは濃い色・夜間は白系)が面に対し 4.5:1 以上`, () => {
+    it(`${name}: 文字(--text。ライトは濃い色・ダークは白系)が面に対し 4.5:1 以上`, () => {
       const textLum = lum(get('--text'))
       if (theme === 'light') expect(textLum).toBeLessThan(0.05)
       else expect(textLum).toBeGreaterThan(0.8)
@@ -317,18 +317,18 @@ describe('Issue #136: 押すと伝達欄が赤くなるパネルの色', () => {
     })
 
     it(`${name}: 区切り線が、同じ色の面の上で通常の区切り線の通常面上の下限以上に見える(高コントラストは 3:1)`, () => {
-      // 通常テーマの下限は、既存の通常パネルの区切り線(ライト 1.35:1 / 夜間 1.66:1)。高コントラストは非テキストの 3:1
+      // 通常テーマの下限は、既存の通常パネルの区切り線(ライト 1.35:1 / ダーク 1.66:1)。高コントラストは非テキストの 3:1
       const floor = hc ? 3 : contrast(get('--grid-line'), get('--surface'))
       expect(contrast(get('--tile-urgent-line'), get('--tile-urgent-bg'))).toBeGreaterThanOrEqual(
         floor,
       )
     })
 
-    it(`${name}: 黄枠は面に対し 3:1 以上(夜間)。現在位置の面とは区別できる`, () => {
-      // 明るいテーマの淡い面と黄枠は、通常の白面と同じく 3:1 に届かない(現在位置は暗い面への反転で示す)
+    it(`${name}: 黄枠は面に対し 3:1 以上(ダーク)。現在位置の面とは区別できる`, () => {
+      // ライトテーマの淡い面と黄枠は、通常の白面と同じく 3:1 に届かない(現在位置は暗い面への反転で示す)
       if (theme === 'dark')
         expect(contrast(get('--scan-ring'), get('--tile-urgent-bg'))).toBeGreaterThanOrEqual(3)
-      // 夜間の現在位置 #6b5510 と決定色 #663f2a の明るさの比は 1.27:1。通常面の下限 1.3(上の検査。変えていない)に
+      // ダークの現在位置 #6b5510 と決定色 #663f2a の明るさの比は 1.27:1。通常面の下限 1.3(上の検査。変えていない)に
       // 届かないので、この面だけ下限を 1.25 にする(Issue #136。現在位置は黄枠でも示す)
       expect(contrast(get('--surface-scanning'), get('--tile-urgent-bg'))).toBeGreaterThanOrEqual(
         theme === 'dark' ? 1.25 : 1.3,

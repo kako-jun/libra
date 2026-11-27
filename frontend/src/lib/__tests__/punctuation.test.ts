@@ -85,7 +85,7 @@ describe('Issue #46 EMERGENCY_MESSAGE は単一の正本', () => {
     expect(EMERGENCY_MESSAGE).toBe('緊急です。来てください。')
     const app = read('App.tsx')
     expect(app).not.toMatch(/const\s+EMERGENCY_MESSAGE\s*=/)
-    expect(app).toMatch(/import\s*\{\s*EMERGENCY_MESSAGE\s*\}\s*from\s*'\.\/lib\/phrases'/)
+    expect(app).toMatch(/import\s*\{[^}]*\bEMERGENCY_MESSAGE\b[^}]*\}\s*from\s*'\.\/lib\/phrases'/)
     // 「緊急です。来てください」の直書きはどこにも無い(phrases.ts の定義だけ)
     for (const file of ['App.tsx', 'PhraseEditor.tsx', 'lib/menus.ts', 'lib/guidance.ts']) {
       expect(read(file), file).not.toContain('緊急です。来てください')

@@ -46,7 +46,7 @@ export interface Settings {
   voiceMode: VoiceMode
   /** 文字サイズ。既定 standard */
   fontSize: FontSize
-  /** 高コントラスト。既定 OFF。明るい/夜間いずれのテーマにも重ねて効く */
+  /** 高コントラスト。既定 OFF。ライト/ダークいずれのテーマにも重ねて効く */
   highContrast: boolean
   /** 表示(明暗)テーマ。既定 auto(端末の設定に追従) */
   theme: Theme
@@ -89,7 +89,14 @@ export type SettingsSection = 'scan' | 'input' | 'feedback' | 'display' | 'phras
 
 /** 各まとまりに属する設定キー。全キーがどれか1つだけに属する(テストで検査しやすいよう一覧で持つ) */
 export const SETTINGS_SECTION_KEYS: Record<SettingsSection, readonly (keyof Settings)[]> = {
-  scan: ['intervalMs', 'headHoldMultiplier', 'debounceMs', 'minHoldMs', 'activateOn', 'auditoryScan'],
+  scan: [
+    'intervalMs',
+    'headHoldMultiplier',
+    'debounceMs',
+    'minHoldMs',
+    'activateOn',
+    'auditoryScan',
+  ],
   input: ['morseEnabled', 'morseDashMs', 'morseLetterGapMs', 'morseWordGapMs'],
   feedback: [
     'voiceMode',

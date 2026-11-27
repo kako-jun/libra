@@ -2,7 +2,7 @@
    Design tokens (Issue #3, Issue #65)
    ------------------------------------------------------------------
    すべての色は変数に集約する。ハードコード色を残さない。
-   data-theme="light"(明るい・昼、既定) / "dark"(夜間向け) を :root に付け、
+   data-theme="light"(ライト、既定) / "dark"(ダーク) を :root に付け、
    値だけを切り替える。介助者設定「表示」で light/dark/auto を選べ、auto は
    prefers-color-scheme に追従して App.tsx が実際の data-theme を light/dark の
    どちらかに解決する(このCSSはlight/darkの2値しか見ない)。
@@ -13,7 +13,7 @@
    テーマのブロックに置かず、下の「寸法トークン」ブロック(:root 単独、テーマ非依存)に
    一箇所だけ定義する。ブレークポイント・文字サイズ・高コントラストはこの寸法を
    上書きするが、すべて data-theme を含まないセレクタなので、テーマの有無で
-   詳細度の食い違い(明るいテーマだけ上書きが負ける等)が起きない。
+   詳細度の食い違い(ライトテーマだけ上書きが負ける等)が起きない。
    この規則は src/__tests__/ThemeColorsOnly.test.ts が静的に検査する。 */
 :root,
 :root[data-theme='light'] {
@@ -64,7 +64,7 @@
   --message-text: #eafaf1;
   --urgent-bg: #d7263d;
   --urgent-text: #ffffff;
-  /* Issue #81: 夜間の赤地(#d7263d)で #ffd9d6 は 3.81:1 だった。4.5:1 以上に明るくする */
+  /* Issue #81: ダークの赤地(#d7263d)で #ffd9d6 は 3.81:1 だった。4.5:1 以上に明るくする */
   --urgent-text-muted: #fff5f4;
   /* Issue #136: 押すと伝達欄が赤くなるパネルの面と区切り線(--grid-line はこの面の上で 1.15:1) */
   --tile-urgent-bg: #663f2a;
@@ -130,7 +130,7 @@
    - :root[data-font-size](--font-scale / --label-ratio)
    - :root[data-high-contrast='true'] とそのメディアクエリ(--grid-line-width / --scan-ring-width)。
      高コントラストは利用者が選ぶアクセシビリティ設定でテーマとは別軸で、
-     明るい/夜間のどちらでも同じ寸法になる */
+     ライト/ダークのどちらでも同じ寸法になる */
 :root {
   --scan-ring-width: 6px;
   /* Issue #34: スキャン枠(.tile.scanning::after)がセルの縁から占める厚み
@@ -172,7 +172,7 @@
 }
 
 :root {
-  /* Issue #6: 押下進捗バー。明るい/夜間どちらの盤面でも見える色 */
+  /* Issue #6: 押下進捗バー。ライト/ダークどちらの盤面でも見える色 */
   --hold-progress-track: rgb(0 0 0 / 35%);
   --hold-progress-fill: #ffd54a;
   color: var(--text);
@@ -580,8 +580,14 @@ h1[data-fit='wrap'] {
   /* Issue #82: 遷移タイルの予告(.tile-preview)の文字サイズ。ラベルの約50%、最小でも
      0.85rem 相当(--label-ratio で文字サイズ設定に追従)。予告の font-size・2行モードの
      ラベルの避け領域(margin-bottom)・山形アイコンの上端(top)が同じ値を使うので、
-     式はここ1か所だけに置く */
-  --tile-preview-font: max(calc(var(--label-ratio) * 0.85rem), 0.5 * var(--tile-label-font));
+     式はここ1か所だけに置く。
+     最小の大きさは、とても低いセル(中身がおよそ 30px 未満。320x568 のモールス使用の緊急中で
+     高コントラストなど)ではセルの高さで頭打ちにする(標準の大きさ 0.85 × 0.85rem より小さくしない)。
+     そこではラベルが下限の大きさに固定されるので、予告だけが文字サイズ設定で大きくなるとラベルに重なる */
+  --tile-preview-font: max(
+    min(calc(var(--label-ratio) * 0.85rem), max(0.7225rem, 46cqb)),
+    0.5 * var(--tile-label-font)
+  );
 }
 
 .tile,
@@ -971,7 +977,7 @@ h1[data-fit='wrap'] {
 }
 
 /* キーボード操作用のフォーカス表示。tablist が overflow で外側を切るため内側に描く。
-   未選択タブは --text 色(通常・高コントラスト・夜間とも ok-bg/panel-bg から離れる)、
+   未選択タブは --text 色(通常・高コントラスト・ダークとも ok-bg/panel-bg から離れる)、
    選択中タブは反転背景(action-bg)上なので --caregiver-action-text 色(下の .active 規則) */
 .caregiver-tab:focus-visible {
   outline: 3px solid var(--text);
@@ -1138,11 +1144,6 @@ h1[data-fit='wrap'] {
   font-weight: 700;
 }
 
-/* 見出し(「このアプリ」タブの「使い方」)だけ少し強くする。段落の .caregiver-lead は通常の太さ */
-.caregiver-panel h3 {
-  font-weight: 700;
-}
-
 .caregiver-field {
   display: grid;
   gap: 6px;
@@ -1158,43 +1159,112 @@ h1[data-fit='wrap'] {
   gap: 10px;
 }
 
-/* ラベルは左、選ぶボタンは右。1 行に入らない幅ではボタンが次の行へ回り、右に寄る */
-.caregiver-field:has(> :is(.caregiver-voice-options, .caregiver-choice-options)) {
+/* Issue #147・#148: 値を選ぶ欄(ChoiceField.tsx)。ボタンの見た目にしない(囲み・面を持たない)。
+   選択肢は等幅の 1 段で、折り返さず、横にスクロールもさせない。狭い幅では丸を文字の上に置き、
+   それでも入らない組だけ文字を小さくする(下の font-size)。広い幅では丸を文字の左に置く */
+.caregiver-radios {
+  container-type: inline-size;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  /* 広い画面で選択肢が離れすぎないようにする */
+  max-width: 40rem;
+}
+
+.caregiver-radio {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-}
-
-.caregiver-field > :is(.caregiver-voice-options, .caregiver-choice-options) {
-  margin-left: auto;
-}
-
-.caregiver-voice-options,
-.caregiver-choice-options {
-  display: flex;
-  flex-wrap: wrap;
-  /* Issue #111: 介助者用メニューのボタンは右寄せに統一する */
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.caregiver-voice-options button,
-.caregiver-choice-options button {
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
   min-height: 44px;
-  padding: 8px 14px;
-  color: var(--text);
-  background: var(--caregiver-status-ok-bg);
-  border: 2px solid var(--caregiver-action-bg);
-  border-radius: 8px;
+  padding: 4px 0;
+  /* いちばん長い名前が 1 列に入る大きさ。入る幅なら通常の 1rem。左右に合計 2px の余裕を残す */
+  font-size: min(1rem, calc((100cqi / var(--choices) - 2px) / var(--choice-chars)));
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.caregiver-voice-options button.active,
-.caregiver-choice-options button.active {
-  color: var(--caregiver-action-text);
-  background: var(--caregiver-action-bg);
-  border-color: var(--caregiver-action-bg);
+@container (min-width: 28em) {
+  .caregiver-radio {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+}
+
+/* ラジオの丸(値の選択肢と、フレーズの編集先で共通)。選択中は丸を塗り、名前を太字にする(色だけに頼らない)。
+   テーマの面の色に埋もれないよう、枠と塗りは文字色にする */
+.caregiver-radios input,
+.phrase-target input {
+  appearance: none;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  border: 2px solid var(--text);
+  border-radius: 50%;
+}
+
+.caregiver-radios input:checked,
+.phrase-target input:checked {
+  background: var(--text);
+  /* 枠と塗りの間にパネルの色のすき間を作り、ラジオの形にする */
+  box-shadow: inset 0 0 0 3px var(--caregiver-panel-bg);
+}
+
+.caregiver-radios input:focus-visible,
+.phrase-target input:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
+.caregiver-radios input:checked + span,
+.phrase-target input:checked + span {
+  font-weight: 700;
+}
+
+/* 強制カラー(OS のハイコントラスト)では背景と影が消えるので、ブラウザ標準のラジオに戻す */
+@media (forced-colors: active) {
+  .caregiver-radios input,
+  .phrase-target input {
+    appearance: auto;
+  }
+}
+
+/* Issue #145: フレーズの編集先。パネルの階層を字下げした一覧。ボタンの見た目にしない */
+.phrase-target {
+  display: grid;
+  gap: 4px;
+}
+
+.phrase-target ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phrase-target ul ul {
+  padding-left: 30px;
+}
+
+.phrase-target-option,
+.phrase-target-parent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+
+.phrase-target-option {
+  cursor: pointer;
+}
+
+/* 選べない見出し(快)は、丸の分を空けて、選べる項目と名前の位置をそろえる */
+.phrase-target-parent {
+  padding-left: 30px;
 }
 
 /* Issue #111: 状態・結果の表示。操作できないので、ボタンに見える囲み(枠・角丸)にしない。
@@ -1225,9 +1295,6 @@ h1[data-fit='wrap'] {
   display: grid;
   gap: 2px;
   min-width: 0;
-}
-
-.caregiver-status-todo {
 }
 
 .caregiver-action {
@@ -2246,15 +2313,6 @@ h1[data-fit='wrap'] {
   }
 }
 
-/* ラベル 1 行と予告 1 行も入らないほど低いセル(中身 32px 未満。320x568 のモールス使用の緊急中で
-   高コントラスト)は、ラベルが下限の大きさに固定される。予告だけが文字サイズ設定で大きくなると
-   ラベルに重なるので、予告は標準の大きさのままにする */
-@container (not (min-height: 32px)) {
-  .grid-board.grid-home .tile > * {
-    --tile-preview-font: calc(0.85 * 0.85rem);
-  }
-}
-
 /* アイコンを上に置くセルでは、アイコン・ラベル 1 行(1.15em)・予告 2 行(2.2 × --tile-preview-font ≒ 1.1em)を
    縦に積む。8 セル・10 セルのタブレット縦はセルが低いので、そのままではラベルが予告に重なる(Issue #127)。
    文字は小さくせず、収まらないぶんはアイコンを縮める(下の .tile-icon。セルに余裕があれば 1.9em のまま)。
@@ -2351,15 +2409,8 @@ h1[data-fit='wrap'] {
 }
 
 /* ===================================================================
-   Issue #118: 介助者用メニュー「このアプリ」タブ(使い方・リンク・利用回数・バージョン)。
+   Issue #118: 介助者用メニュー「このアプリ」タブ(リンク・利用回数・バージョン)。
    =================================================================== */
-.app-guide ul {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding-left: 1.3em;
-}
-
 /* リンクもボタンと同じ大きさ・右寄せにする(Issue #111 の統一) */
 .app-links {
   display: flex;
@@ -2391,9 +2442,6 @@ h1[data-fit='wrap'] {
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 4px 16px;
-}
-
-.app-facts dt {
 }
 
 .app-facts dd {

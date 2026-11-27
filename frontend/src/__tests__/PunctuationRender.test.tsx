@@ -20,6 +20,7 @@ import { cleanup, fireEvent, render } from '@solidjs/testing-library'
 import ts from 'typescript'
 import appSrc from '../App.tsx?raw'
 import phraseEditorSrc from '../PhraseEditor.tsx?raw'
+import { chooseRadio } from './appTestKit'
 import PhraseEditor from '../PhraseEditor'
 import { OFFLINE_READY_LABELS, WAKE_LOCK_LABELS } from '../App'
 import { DEFAULT_SETTINGS, type Settings } from '../lib/settings'
@@ -134,9 +135,7 @@ describe('Issue #46 PhraseEditor の注意書きは全て句点で終わる(描�
         updateSettings={() => {}}
       />
     ))
-    fireEvent.click(
-      Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '痛い場所')!,
-    )
+    chooseRadio(container, '不快 › 痛い')
     const lines = Array.from(container.querySelectorAll('.phrase-note, .caregiver-status')).map(
       (e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim(),
     )

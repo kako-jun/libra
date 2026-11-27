@@ -161,7 +161,8 @@ self.addEventListener('fetch', (event) => {
 
   // ナビゲーション(URL直入力・リロード等)は 3秒タイムアウト付き network-first。
   // オフライン・タイムアウト・5xx等の失敗時はキャッシュ済みの `/` へフォールバックする
-  // (SPA なので実ファイルが無いパスでもこれで起動できる)。lie-fi 等で応答は来るが
+  // (SPA なので実ファイルが無いパスでもこれで起動できる)。ただし precache 済みの実ファイル
+  // (フォントのライセンス全文など。Issue #149)を直接開いたときは、アプリではなくそのファイルを返す。lie-fi 等で応答は来るが
   // !response.ok なだけの場合も、白画面よりキャッシュ済みの本体を出す方を優先する。
   // PR#11 再レビュー should-1: キャッシュが無い場合(初回アクセス等)は、3秒で諦めて
   // Response.error() を返すのではなく、タイムアウト無しでネットワークの応答を待ち続ける
@@ -170,7 +171,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE_NAME)
-        const cached = await cache.match('/', matchOptions)
+        const fallbackUrl = PRECACHE_URLS.includes(url.pathname) ? url.pathname : '/'
+        const cached = await cache.match(fallbackUrl, matchOptions)
         if (!cached) return fetch(request)
         try {
           const response = await fetchWithTimeout(request, 3000)

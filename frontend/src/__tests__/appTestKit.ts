@@ -215,6 +215,22 @@ export function buttonByText(root: Element, text: string): HTMLElement {
   return found as HTMLElement
 }
 
+/**
+ * 値を選ぶ欄とフレーズの編集先のラジオ(Issue #145・#148)を名前で探す。
+ * 名前は aria-label(編集先は道順)があればそれ、無ければラベルの文字
+ */
+export function radioByName(root: Element, name: string): HTMLInputElement {
+  const found = Array.from(root.querySelectorAll<HTMLInputElement>('input[type="radio"]')).find(
+    (r) => (r.getAttribute('aria-label') ?? r.closest('label')?.textContent?.trim()) === name,
+  )
+  expect(found, `ラジオ「${name}」`).toBeTruthy()
+  return found as HTMLInputElement
+}
+
+export const chooseRadio = (root: Element, name: string): void => {
+  fireEvent.click(radioByName(root, name))
+}
+
 /** click に pointerId を載せる(実ブラウザの click は PointerEvent で、押下と同じ pointerId を持つ) */
 export const pointerClick = (el: Element, pointerId: number) =>
   fireEvent(el, new PointerEvent('click', { pointerId, bubbles: true, cancelable: true }))
