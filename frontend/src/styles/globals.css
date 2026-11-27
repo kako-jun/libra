@@ -2448,3 +2448,57 @@ h1[data-fit='wrap'] {
   margin: 0;
   text-align: right;
 }
+
+/* ===================================================================
+   Issue #139: 無操作で起きる自動操作までを示す、右下の円(IdleRing.tsx)。
+   パネル・ボタン・設定項目に重ねず、下端に専用の行を持つ。色はテーマの変数だけ。
+   本人画面は戻る動きがある画面だけに置く。押す部品ではないので、本人画面でここを押すと
+   ほかのボタン以外の場所と同じく黄色のパネルを選ぶ。
+   =================================================================== */
+.idle-ring-slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 2px 8px;
+}
+
+.idle-ring {
+  display: block;
+  flex: none;
+  width: var(--idle-ring-size);
+  height: var(--idle-ring-size);
+}
+
+.idle-ring-edge {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+
+.idle-ring-fill {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 11;
+}
+
+/* 本人画面では、緊急中の案内の帯(.screen-notes)と同じ 6 行目の右端に置く。帯は円の分だけ右を空ける */
+.app-shell > .idle-ring-slot {
+  --idle-ring-size: 18px;
+  grid-row: 6;
+  grid-column: 1;
+  align-self: end;
+  justify-self: end;
+}
+
+.app-shell.has-idle-ring > .screen-notes {
+  grid-column: 1;
+  padding-right: calc(18px + 16px);
+}
+
+/* 介助者用メニューは、タブの中身(スクロールする)の下に固定の行を持つ */
+.caregiver-panel > .idle-ring-slot {
+  --idle-ring-size: 24px;
+  flex: none;
+  margin: -8px 0 -8px;
+  padding: 0;
+}

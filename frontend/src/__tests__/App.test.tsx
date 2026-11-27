@@ -427,6 +427,7 @@ describe('App', () => {
       'morse-panel',
       'grid-board',
       'screen-notes',
+      'idle-ring-slot', // Issue #139: 無操作で戻るまでの円(戻る動きがある画面だけ。帯ではない)
       'caregiver-overlay',
     ])
     const { container } = render(() => <App />)
