@@ -1,4 +1,4 @@
-// 画面下の固定案内(.screen-notes: 緊急中の振動だけ)と、介助者用メニュー「スキャン」タブの
+// 画面下の固定案内(.screen-notes: 緊急中の振動だけ)と、介助者用メニュー「選び方」タブの
 // 原因の設定の下に出す動作の説明の文言。
 // 正本: docs/requirements.md §4.1.2 の「常時案内」表 / Issue #58
 //
@@ -39,7 +39,8 @@ export function formatSeconds(ms: number): string {
 }
 
 // 連打無視・押し方はモールス入力には当てはまらない(モールスの凡例に独自の規則がある)
-const SCREEN_CHANGE_NOTE_FULL = '押下中に画面や項目の並びが変わると無効。モールス入力を除く'
+const SCREEN_CHANGE_NOTE_FULL =
+  '押している間に画面やタイルの並びが変わると、その押し方は数えません。モールス入力には当てはまりません。'
 
 /**
  * 本人画面の下に常時出す案内。緊急中の周期振動まわりだけ(Issue #79)。
@@ -72,11 +73,11 @@ export function buildScreenNotes(context: ScreenNotesContext): string[] {
 
 /** 設定に応じた挙動の説明を、原因の設定ごとに分けたもの。該当しない項目は持たない */
 export interface BehaviorNoteMap {
-  /** 連打無視(スキャンタブの「連打無視」の下) */
+  /** 連打を数えない時間(「選び方」タブの「連打を数えない時間」の下) */
   debounce?: string
-  /** 押し方(「押下時間の下限」「決定のタイミング」の下) */
+  /** 押し方(「押す時間の下限」「決定のタイミング」の下) */
   hold?: string
-  /** 読み上げの割り込み(「聴覚スキャン」の下) */
+  /** 読み上げの割り込み(「枠が移るたびに読み上げる」の下) */
   speech?: string
 }
 
@@ -90,22 +91,22 @@ export function buildBehaviorNoteMap(context: BehaviorNotesContext): BehaviorNot
 
   if (settings.debounceMs > 0) {
     const s = formatSeconds(settings.debounceMs)
-    map.debounce = `${s}以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。`
+    map.debounce = `${s}以内に続けて押しても数えません。うっかり二度押しするのを防ぐためです。画面が切り替わった直後も同じです。モールス入力には当てはまりません。`
   }
   if (settings.minHoldMs > 0) {
     const s = formatSeconds(settings.minHoldMs)
     map.hold =
       settings.activateOn === 'release'
-        ? `${s}以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
-        : `${s}以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE_NOTE_FULL}）。`
+        ? `${s}以上押し続けて離すと決まります。短く押しただけでは数えません。${SCREEN_CHANGE_NOTE_FULL}`
+        : `${s}以上押し続けると決まります。短く押しただけでは数えません。${SCREEN_CHANGE_NOTE_FULL}`
   } else if (settings.activateOn === 'release') {
-    map.hold = `押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}）。`
+    map.hold = `押して離すと決まります。押した瞬間は決まりません。${SCREEN_CHANGE_NOTE_FULL}`
   }
   // 伝達の読み上げは、直後の1回だけ次のスキャン読み上げに割り込まれない(App.tsx の messageAnnounceGrace)。
   // 読み上げ自体が出るのは音声モードが「短く/全部」のときだけ
   if (settings.auditoryScan && (settings.voiceMode === 'short' || settings.voiceMode === 'full')) {
     map.speech =
-      '伝達の読み上げは、直後の1項目分は割り込まれません（その後は次の読み上げで切れることがあります）。'
+      '伝えたことの読み上げは、直後の1回分は途中で切れません。その後は、次の読み上げで途中で切れることがあります。'
   }
   return map
 }

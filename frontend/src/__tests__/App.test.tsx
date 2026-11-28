@@ -288,7 +288,7 @@ describe('App', () => {
     expect(tileLabels(container)).not.toContain('緊急')
 
     selectByLabel(container, '苦しい') // 選択済み詳細へ移し、home
-    expect(container.querySelector('.emergency-detail-label')?.textContent).toBe('伝えた状態:')
+    expect(container.querySelector('.emergency-detail-label')?.textContent).toBe('伝えた状態: ')
     expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
 
     selectByLabel(container, '緊急') // urgentDetail を再度開く
@@ -882,7 +882,7 @@ describe('App', () => {
     selectCaregiverTab(container, 'フレーズ')
     const editor = container.querySelector('.phrase-editor') as HTMLElement
     chooseRadio(editor, '要望')
-    expect(editor.querySelector('[role="alert"]')?.textContent).toContain('9 項目')
+    expect(editor.querySelector('[role="alert"]')?.textContent).toContain('9件')
   })
 
   it('Issue #6: 下限0.5秒で、0.2秒のキー押下は無視され0.6秒の押下は下限到達時点で決定される', () => {
@@ -939,17 +939,17 @@ describe('App', () => {
       fireEvent.pointerDown(target, { pointerId: 7 })
       fireEvent.pointerUp(target.isConnected ? target : document.body, { pointerId: 7 })
     }
-    tapTile('緊急') // → 緊急詳細: 戻る,苦しい,痛い,…
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
-    expect(scanningLabel(container)).toBe('苦しい')
-    fireEvent.keyDown(window, { key: ' ', code: 'Space' }) // 苦しい(index1)で押し始める
-    tapTile('苦しい') // 別の入力で苦しいを伝える → home
-    tapTile('緊急') // 同じ緊急詳細へ戻る。苦しいは候補から消え、index1 は「痛い」
-    expect(tileLabels(container).slice(0, 2)).toEqual(['戻る', '痛い'])
+    tapTile('緊急') // → 緊急詳細: 戻る,息ができない,胸が痛い,…
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=息ができない
+    expect(scanningLabel(container)).toBe('息ができない')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' }) // 息ができない(index1)で押し始める
+    tapTile('息ができない') // 別の入力で息ができないを伝える → home
+    tapTile('緊急') // 同じ緊急詳細へ戻る。息ができないは候補から消え、index1 は「胸が痛い」
+    expect(tileLabels(container).slice(0, 2)).toEqual(['戻る', '胸が痛い'])
     vi.advanceTimersByTime(600)
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
-    expect(container.querySelector('.emergency-details')?.textContent).not.toContain('痛い')
-    expect(tileLabels(container).slice(0, 2)).toEqual(['戻る', '痛い']) // 画面も変わらない
+    expect(container.querySelector('.emergency-details')?.textContent).not.toContain('胸が痛い')
+    expect(tileLabels(container).slice(0, 2)).toEqual(['戻る', '胸が痛い']) // 画面も変わらない
   })
 
   it('Issue #6: 離して決定モードでは押下中は実行されず、離した時点で実行される', () => {
@@ -1286,12 +1286,12 @@ describe('App', () => {
     selectCaregiverTab(container, 'モールス')
     const panel = container.querySelector('.caregiver-panel') as HTMLElement
     expect(panel.textContent).toContain('モールス入力を使う')
-    expect(panel.textContent).not.toContain('長押し（－）の境目')
+    expect(panel.textContent).not.toContain('長押しの境目')
     const checkbox = Array.from(panel.querySelectorAll('label'))
       .find((l) => l.textContent?.includes('モールス入力を使う'))
       ?.querySelector('input') as HTMLInputElement
     fireEvent.click(checkbox)
-    expect(panel.textContent).toContain('長押し（－）の境目')
+    expect(panel.textContent).toContain('長押しの境目')
     expect(JSON.parse(window.localStorage.getItem('libra') ?? '{}').morseEnabled).toBe(true)
   })
 
@@ -1313,19 +1313,19 @@ describe('App', () => {
     for (const phrase of [
       '短く押す＝短点（・）',
       '0.5秒以上押す＝長点（－）',
-      '緊急＝SOS ・・・ －－－ ・・・（休まず続けて打つと、待たずにすぐ。1.5秒休むと数え直し）',
-      '・・・・・（・を5つ）→ 待つとスキャンへ戻る',
+      '緊急＝SOS ・・・ －－－ ・・・。休まず続けて打つと、待たずにすぐ緊急になる。1.5秒休むと、最初から数え直す。',
+      '・・・・・（・を5つ）→ 待つとタイルで選ぶ画面へ戻る',
       '・・・・・・（・を6つ）→ 待つと1字消す',
       '・－・－・－ → 待つと確定して伝える',
       '1.5秒押さないと、1文字が決まる',
       '4.0秒押さないと、語の区切りが入る',
-      '30秒何も押さないと、スキャンへ戻る',
-      '10秒を超えて押しっぱなしの入力は、無効になる',
+      '30秒何も押さないと、タイルで選ぶ画面へ戻る',
+      '10秒を超えて押しっぱなしの入力は、数えない',
     ]) {
       expect(text).toContain(phrase)
     }
     expect(container.querySelectorAll('.morse-legend li').length).toBe(9)
-    expect(text).not.toContain('押下は数えない') // 押下時間の下限(#6)が0のときは出さない
+    expect(text).not.toContain('押下は数えない') // 押す時間の下限(#6)が0のときは出さない
     expect(text).not.toMatch(/\p{Extended_Pictographic}/u) // 絵文字なし
   })
 
@@ -1353,13 +1353,13 @@ describe('App', () => {
     const text = legendOf(container)
     expect(text).toContain('0.8秒以上押す＝長点（－）')
     expect(text).toContain('2.5秒押さないと、1文字が決まる')
-    expect(text).toContain('2.5秒休むと数え直し') // SOS の数え直しも文字の確定時間に追従
+    expect(text).toContain('2.5秒休むと、最初から数え直す') // SOS の数え直しも文字の確定時間に追従
     expect(text).toContain('6.0秒押さないと、語の区切りが入る')
     expect(text).not.toContain('0.5秒以上押す')
     expect(text).toContain('緊急＝SOS') // 設定を変えても緊急の案内は消えない
   })
 
-  it('Issue #57: 押下時間の下限(#6)が大きいと、長押しの境目の秒数はそれに従って長く表示される', () => {
+  it('Issue #57: 押す時間の下限(#6)が大きいと、長押しの境目の秒数はそれに従って長く表示される', () => {
     // 下限 1 秒では、スキャンの選択も 1 秒以上押す必要がある
     window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, minHoldMs: 1000 }))
     const { container } = render(() => <App />)
@@ -1376,7 +1376,7 @@ describe('App', () => {
     expect(legendOf(container)).toContain('1.1秒以上押す＝長点（－）')
   })
 
-  it('Issue #57: 押下時間の下限(#6)があるときだけ「◯秒未満の押下は数えない」が出て、設定に追従する', () => {
+  it('Issue #57: 押す時間の下限(#6)があるときだけ「◯秒未満の短押しは数えない」が出て、設定に追従する', () => {
     window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, minHoldMs: 800 }))
     const { container } = render(() => <App />)
     // 先頭待機が間隔の整数倍でないので、100ms ずつ進めて目的の項目で押す
@@ -1388,7 +1388,7 @@ describe('App', () => {
     fireEvent.keyUp(window, { key: ' ', code: 'Space' })
     vi.advanceTimersByTime(100)
     expect(container.querySelector('.morse-panel')).not.toBeNull()
-    expect(legendOf(container)).toContain('0.8秒未満の押下は数えない')
+    expect(legendOf(container)).toContain('0.8秒未満の短押しは数えない')
     expect(container.querySelectorAll('.morse-legend li').length).toBe(10)
   })
 
@@ -1442,7 +1442,7 @@ describe('App', () => {
     openCaregiverMenu(container)
     selectCaregiverTab(container, 'モールス')
     const panel = container.querySelector('.caregiver-panel') as HTMLElement
-    expect(panel.textContent).toContain('SOS（・・・－－－・・・）も出せません')
+    expect(panel.textContent).toContain('緊急のSOSも出せません')
   })
 
   it('?dev なしでは数字キー "3" はカーソル位置の項目を実行する(直接ジャンプしない)', () => {
@@ -1471,7 +1471,7 @@ describe('App', () => {
     fireEvent.pointerDown(button)
     fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
     vi.advanceTimersByTime(2000) // メニューが開く
-    selectCaregiverTab(container, 'スキャン')
+    selectCaregiverTab(container, '選び方')
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox) // 聴覚スキャンON
     const closeButton = Array.from(container.querySelectorAll('button')).find(
@@ -1499,7 +1499,7 @@ describe('App', () => {
     fireEvent.pointerDown(button)
     fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
     vi.advanceTimersByTime(2000)
-    selectCaregiverTab(container, 'スキャン')
+    selectCaregiverTab(container, '選び方')
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox) // 聴覚スキャンON
     const closeButton = Array.from(container.querySelectorAll('button')).find(
@@ -1529,7 +1529,7 @@ describe('App', () => {
     fireEvent.pointerDown(button)
     fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
     vi.advanceTimersByTime(2000) // メニューが開く
-    selectCaregiverTab(container, 'スキャン')
+    selectCaregiverTab(container, '選び方')
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox) // 聴覚スキャンON
     selectCaregiverTab(container, '音と振動')
@@ -1570,7 +1570,7 @@ describe('App', () => {
     fireEvent.pointerDown(button)
     fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
     vi.advanceTimersByTime(2000)
-    selectCaregiverTab(container, 'スキャン')
+    selectCaregiverTab(container, '選び方')
     const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox)
     selectCaregiverTab(container, '音と振動')
@@ -1598,13 +1598,13 @@ describe('App', () => {
 
     fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail
 
-    // urgentDetail: 0戻る,1苦しい（成立済みの緊急タイルは重複させない）
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
+    // urgentDetail: 0戻る,1息ができない（成立済みの緊急タイルは重複させない）
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=息ができない
 
     const calls = captureSpeechCalls()
-    fireEvent.keyDown(window, { key: ' ' }) // 苦しい選択(announce) → home先頭(緊急)へ遷移(goTo)
+    fireEvent.keyDown(window, { key: ' ' }) // 息ができない選択(announce) → home先頭(緊急)へ遷移(goTo)
 
-    const detailIndex = calls.findIndex((c) => c === 'speak:緊急です。来てください。苦しい')
+    const detailIndex = calls.findIndex((c) => c === 'speak:緊急です。来てください。息ができない')
     expect(detailIndex).toBeGreaterThanOrEqual(0)
     // cancel を挟まずに後ろへ積まれる
     expect(calls[detailIndex + 1]).toBe('speak:緊急')
@@ -1634,25 +1634,25 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ' ' }) // home index0=緊急 → urgentDetail
     expect(scanningLabel(container)).toBe('戻る')
 
-    // urgentDetail: 0戻る,1苦しい,2痛い,...
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
-    expect(scanningLabel(container)).toBe('苦しい')
-    fireEvent.keyDown(window, { key: ' ' }) // 苦しい選択 → home
-    expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+    // urgentDetail: 0戻る,1息ができない,2胸が痛い,...
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=息ができない
+    expect(scanningLabel(container)).toBe('息ができない')
+    fireEvent.keyDown(window, { key: ' ' }) // 息ができない選択 → home
+    expect(container.querySelector('.emergency-details')?.textContent).toContain('息ができない')
 
     // 緊急を再選択しても詳細は消えない(home index0はまだ先頭待機中)
     vi.advanceTimersByTime(600) // 連打無視(500ms)を超えて次の押下を有効にする
     fireEvent.keyDown(window, { key: ' ' })
     expect(h1Text(container)).toBe('緊急です。来てください。')
-    expect(container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+    expect(container.querySelector('.emergency-details')?.textContent).toContain('息ができない')
 
-    // 別の詳細(痛い)を追加すると積み上がる
-    vi.advanceTimersByTime(HEAD_HOLD_MS) // 選択済みの苦しいは除外され、index1=痛い
-    expect(scanningLabel(container)).toBe('痛い')
+    // 別の詳細(胸が痛い)を追加すると積み上がる
+    vi.advanceTimersByTime(HEAD_HOLD_MS) // 選択済みの息ができないは除外され、index1=胸が痛い
+    expect(scanningLabel(container)).toBe('胸が痛い')
     fireEvent.keyDown(window, { key: ' ' })
     const detailsText = container.querySelector('.emergency-details')?.textContent
-    expect(detailsText).toContain('苦しい')
-    expect(detailsText).toContain('痛い')
+    expect(detailsText).toContain('息ができない')
+    expect(detailsText).toContain('胸が痛い')
   })
 
   it('Issue #43: 緊急選択・緊急中の周期経過・解除のどれでも音(oscillator)が鳴らない', () => {
@@ -1689,7 +1689,7 @@ describe('App', () => {
 
     const status = container.querySelector('.caregiver-status') as HTMLElement
     expect(status.querySelector('.caregiver-status-text')?.textContent).toBe(
-      '画面スリープ防止: 有効',
+      '画面を消さない設定: できています',
     )
     expect(status.classList.contains('warn')).toBe(false)
   })
@@ -1709,8 +1709,8 @@ describe('App', () => {
     // 状態と対応は別の span で出す(Issue #111)
     const spans = Array.from(status.querySelectorAll('.caregiver-status-text > span'))
     expect(spans.map((span) => span.textContent)).toEqual([
-      '画面スリープ防止: 無効',
-      '端末の自動ロックを切ってください。',
+      '画面を消さない設定: できていません',
+      '端末の設定で、画面が自動で消えないようにしてください。',
     ])
     expect(status.classList.contains('warn')).toBe(true)
   })
@@ -1747,9 +1747,9 @@ describe('App', () => {
     vi.advanceTimersByTime(2000)
 
     const statuses = Array.from(container.querySelectorAll('.caregiver-status'))
-    const offlineStatus = statuses.find((el) => el.textContent?.includes('オフライン準備'))
+    const offlineStatus = statuses.find((el) => el.textContent?.includes('通信なしで使える準備'))
     expect(offlineStatus?.querySelector('.caregiver-status-text')?.textContent).toBe(
-      'オフライン準備: 完了',
+      '通信なしで使える準備: できています',
     )
     expect(offlineStatus?.classList.contains('warn')).toBe(false)
   })
@@ -1766,12 +1766,12 @@ describe('App', () => {
     vi.advanceTimersByTime(2000)
 
     const statuses = Array.from(container.querySelectorAll('.caregiver-status'))
-    const offlineStatus = statuses.find((el) => el.textContent?.includes('オフライン準備'))
+    const offlineStatus = statuses.find((el) => el.textContent?.includes('通信なしで使える準備'))
     expect(
       Array.from(offlineStatus?.querySelectorAll('.caregiver-status-text > span') ?? []).map(
         (span) => span.textContent,
       ),
-    ).toEqual(['オフライン準備: 未完了', '通信できる場所で、このページを開き直してください。'])
+    ).toEqual(['通信なしで使える準備: できていません', '通信できる場所で、このページを開き直してください。'])
     expect(offlineStatus?.classList.contains('warn')).toBe(true)
   })
 
@@ -1832,7 +1832,7 @@ describe('App', () => {
     fireEvent.pointerDown(button)
     fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
     vi.advanceTimersByTime(2000)
-    selectCaregiverTab(first.container, 'スキャン')
+    selectCaregiverTab(first.container, '選び方')
     const slider = first.container.querySelector(
       'input[type="range"][min="500"]',
     ) as HTMLInputElement
@@ -1844,8 +1844,8 @@ describe('App', () => {
     fireEvent.pointerDown(button2)
     fireEvent.click(button2) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
     vi.advanceTimersByTime(2000)
-    selectCaregiverTab(second.container, 'スキャン')
-    expect(second.container.textContent).toContain('スキャン間隔: 2.5 秒')
+    selectCaregiverTab(second.container, '選び方')
+    expect(second.container.textContent).toContain('枠が移る間隔: 2.5 秒')
   })
 
   describe('libra#17: 緊急状態の保存と再起動後の復元', () => {
@@ -1882,11 +1882,11 @@ describe('App', () => {
     it('詳細・副表示ごと再マウントで復元され、警告音は鳴らず、振動・読み上げは出ない', () => {
       const first = render(() => <App />)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急 → urgentDetail
-      vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=苦しい
-      fireEvent.keyDown(window, { key: ' ' }) // 苦しい → home
+      vi.advanceTimersByTime(HEAD_HOLD_MS) // index1=息ができない
+      fireEvent.keyDown(window, { key: ' ' }) // 息ができない → home
       vi.advanceTimersByTime(HEAD_HOLD_MS + INTERVAL_MS) // home index2=はい
       fireEvent.keyDown(window, { key: ' ' }) // はい → 副表示
-      expect(stored()).toEqual({ active: true, details: ['苦しい'], sub: 'はい。' })
+      expect(stored()).toEqual({ active: true, details: ['息ができない'], sub: 'はい。' })
       first.unmount()
       cleanup()
       // 復元で urgent が立つことを確認するため、前回の値を消しておく
@@ -1904,7 +1904,7 @@ describe('App', () => {
       const second = render(() => <App />)
       expect(h1Text(second.container)).toBe('緊急です。来てください。')
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
-      expect(second.container.querySelector('.emergency-details')?.textContent).toContain('苦しい')
+      expect(second.container.querySelector('.emergency-details')?.textContent).toContain('息ができない')
       expect(second.container.querySelector('.message-panel-label')?.textContent).toBe(
         '直前に伝えたこと',
       )
@@ -1979,7 +1979,7 @@ describe('App', () => {
       fireEvent.pointerDown(button)
       fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
       vi.advanceTimersByTime(2000)
-      selectCaregiverTab(first.container, 'スキャン')
+      selectCaregiverTab(first.container, '選び方')
       const slider = first.container.querySelector(
         'input[type="range"][min="500"]',
       ) as HTMLInputElement
@@ -2069,7 +2069,7 @@ describe('App', () => {
       fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
       vi.advanceTimersByTime(2000)
       selectCaregiverTab(container, '表示')
-      chooseRadio(container, 'ダーク')
+      chooseRadio(container, '暗い')
       expect(document.documentElement.dataset.theme).toBe('dark')
     })
 
@@ -2081,7 +2081,7 @@ describe('App', () => {
       fireEvent.click(button) // 開いたタップの click は、開いた直後のパネルへは届かない(Issue #112)
       vi.advanceTimersByTime(2000)
       selectCaregiverTab(container, '表示')
-      chooseRadio(container, 'ライト')
+      chooseRadio(container, '明るい')
       expect(document.documentElement.dataset.theme).toBe('light')
     })
 
@@ -2113,7 +2113,7 @@ describe('App', () => {
         container.querySelectorAll('input[type="checkbox"]'),
       ) as HTMLInputElement[]
       const highContrastCheckbox = checkboxes.find(
-        (input) => input.closest('label')?.textContent === '高コントラスト',
+        (input) => input.closest('label')?.textContent === '色をはっきりさせる',
       ) as HTMLInputElement
       fireEvent.click(highContrastCheckbox)
       expect(document.documentElement.dataset.highContrast).toBe('true')
@@ -2231,7 +2231,7 @@ describe('App', () => {
   describe('Issue #31: 介助者メニューのカテゴリタブ', () => {
     const TAB_LABELS = [
       '使用準備',
-      'スキャン',
+      '選び方',
       '音と振動',
       '表示',
       'フレーズ',
@@ -2306,8 +2306,8 @@ describe('App', () => {
     it('タブをクリックすると aria-selected / tabindex / active クラス / 表示パネルが切り替わる', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
-      const scan = tabByLabel(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
+      const scan = tabByLabel(container, '選び方')
       const status = tabByLabel(container, '使用準備')
       expect(scan.getAttribute('aria-selected')).toBe('true')
       expect(scan.getAttribute('tabindex')).toBe('0')
@@ -2315,12 +2315,12 @@ describe('App', () => {
       expect(status.getAttribute('aria-selected')).toBe('false')
       expect(status.getAttribute('tabindex')).toBe('-1')
       expect(status.classList.contains('active')).toBe(false)
-      expect(container.querySelector('[role="tabpanel"]')?.textContent).toContain('スキャン間隔')
+      expect(container.querySelector('[role="tabpanel"]')?.textContent).toContain('枠が移る間隔')
     })
 
     it.each([
-      ['ArrowRight', '使用準備', 'スキャン'],
-      ['ArrowLeft', 'スキャン', '使用準備'],
+      ['ArrowRight', '使用準備', '選び方'],
+      ['ArrowLeft', '選び方', '使用準備'],
       ['Home', '表示', '使用準備'],
       ['End', '使用準備', 'このアプリ'],
     ])(
@@ -2348,7 +2348,7 @@ describe('App', () => {
     it('矢印キー 1 回でタブは 1 つだけ進む(二重移動しない)', () => {
       const { container, tab } = openAndFocus('使用準備')
       fireEvent.keyDown(tab, { key: 'ArrowRight' })
-      expect(selectedLabel(container)).toBe('スキャン')
+      expect(selectedLabel(container)).toBe('選び方')
       fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowRight' })
       expect(selectedLabel(container)).toBe('音と振動')
     })
@@ -2435,7 +2435,7 @@ describe('App', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
       vi.advanceTimersByTime(30000)
-      fireEvent.pointerDown(tabByLabel(container, 'スキャン'))
+      fireEvent.pointerDown(tabByLabel(container, '選び方'))
       vi.advanceTimersByTime(IDLE_MS - 1)
       expect(menuOpen(container)).toBe(true)
       vi.advanceTimersByTime(1)
@@ -2513,11 +2513,11 @@ describe('App', () => {
     it('他のタブへ移ると「使用準備」の内容は DOM から消え、フレーズ以外では .phrase-editor も無い', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
-      expect(container.querySelector('.caregiver-panel')?.textContent).toContain('画面スリープ防止')
-      for (const label of ['スキャン', 'モールス', '音と振動', '表示']) {
+      expect(container.querySelector('.caregiver-panel')?.textContent).toContain('画面を消さない設定')
+      for (const label of ['選び方', 'モールス', '音と振動', '表示']) {
         selectCaregiverTab(container, label)
         expect(container.querySelector('.caregiver-panel')?.textContent).not.toContain(
-          '画面スリープ防止',
+          '画面を消さない設定',
         )
         expect(container.querySelector('.phrase-editor')).toBeNull()
       }
@@ -2563,12 +2563,12 @@ describe('App', () => {
     it('スキャンタブのスライダー値は別タブへ移って戻っても保持される', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       const slider = container.querySelector('input[type="range"][min="500"]') as HTMLInputElement
       fireEvent.input(slider, { target: { value: '2500' } })
       selectCaregiverTab(container, '表示')
-      selectCaregiverTab(container, 'スキャン')
-      expect(container.textContent).toContain('スキャン間隔: 2.5 秒')
+      selectCaregiverTab(container, '選び方')
+      expect(container.textContent).toContain('枠が移る間隔: 2.5 秒')
       expect(
         (container.querySelector('input[type="range"][min="500"]') as HTMLInputElement).value,
       ).toBe('2500')
@@ -2725,8 +2725,8 @@ describe('App', () => {
     }
 
     it('1 回目の押下では設定が変わらず、確認文言・「やめる」・ボタン表記の変化だけが出る', () => {
-      const { panel } = openTab('スキャン')
-      expect(resetButton(panel).textContent).toBe(RESET('スキャン'))
+      const { panel } = openTab('選び方')
+      expect(resetButton(panel).textContent).toBe(RESET('選び方'))
       expect(cancelButton(panel)).toBeNull()
       fireEvent.click(resetButton(panel))
       expect(saved().intervalMs).toBe(3000)
@@ -2737,7 +2737,7 @@ describe('App', () => {
     })
 
     it('2 回目の押下でそのタブの設定だけが初期値に戻り、ほかのタブの設定は変わらない', () => {
-      const { panel } = openTab('スキャン', {
+      const { panel } = openTab('選び方', {
         intervalMs: 3000,
         headHoldMultiplier: 4,
         activateOn: 'release',
@@ -2750,8 +2750,8 @@ describe('App', () => {
       expect(s.headHoldMultiplier).toBe(4 / 3)
       expect(s.activateOn).toBe('press')
       expect(s.fontSize).toBe('xlarge') // 表示タブの設定は戻らない
-      expect(panel.textContent).toContain('「スキャン」タブの設定を初期値に戻しました')
-      expect(resetButton(panel).textContent).toBe(RESET('スキャン')) // 確認状態は解除される
+      expect(panel.textContent).toContain('「選び方」タブの設定を初期値に戻しました')
+      expect(resetButton(panel).textContent).toBe(RESET('選び方')) // 確認状態は解除される
     })
 
     it.each([
@@ -2786,7 +2786,7 @@ describe('App', () => {
     })
 
     it('実行後もメニューは開いたまま、同じタブに留まる', () => {
-      const { container, panel } = openTab('スキャン')
+      const { container, panel } = openTab('選び方')
       fireEvent.click(resetButton(panel))
       fireEvent.click(resetButton(panel))
       expect(container.querySelector('.caregiver-panel')).not.toBeNull()
@@ -2794,7 +2794,7 @@ describe('App', () => {
         Array.from(container.querySelectorAll('[role="tab"]')).find(
           (t) => t.getAttribute('aria-selected') === 'true',
         )?.textContent,
-      ).toBe('スキャン')
+      ).toBe('選び方')
     })
 
     it('表示タブのリセットは、文字サイズ・高コントラスト・テーマの既定値を即座に画面へ反映する', () => {
@@ -2818,11 +2818,11 @@ describe('App', () => {
     })
 
     it('確認中に「やめる」を押すと確認が解除され、設定は変わらない', () => {
-      const { panel } = openTab('スキャン')
+      const { panel } = openTab('選び方')
       fireEvent.click(resetButton(panel))
       fireEvent.click(cancelButton(panel) as HTMLElement)
       expect(cancelButton(panel)).toBeNull()
-      expect(resetButton(panel).textContent).toBe(RESET('スキャン'))
+      expect(resetButton(panel).textContent).toBe(RESET('選び方'))
       expect(saved().intervalMs).toBe(3000)
       // 次の押下は 1 回目に戻る(実行されない)
       fireEvent.click(resetButton(panel))
@@ -2831,24 +2831,24 @@ describe('App', () => {
     })
 
     it('確認中にタブを切り替えて戻ると確認が解除され、1 回目に戻る', () => {
-      const { container, panel } = openTab('スキャン')
+      const { container, panel } = openTab('選び方')
       fireEvent.click(resetButton(panel))
       selectCaregiverTab(container, '表示')
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       const fresh = container.querySelector('.caregiver-tabpanel') as HTMLElement
-      expect(resetButton(fresh).textContent).toBe(RESET('スキャン'))
+      expect(resetButton(fresh).textContent).toBe(RESET('選び方'))
       fireEvent.click(resetButton(fresh))
       expect(saved().intervalMs).toBe(3000)
     })
 
     it('確認中にメニューを閉じて開き直すと確認が解除され、1 回目に戻る', () => {
-      const { container, panel } = openTab('スキャン')
+      const { container, panel } = openTab('選び方')
       fireEvent.click(resetButton(panel))
       clickButton(container.querySelector('.caregiver-panel') as HTMLElement, '閉じる')
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       const fresh = container.querySelector('.caregiver-tabpanel') as HTMLElement
-      expect(resetButton(fresh).textContent).toBe(RESET('スキャン'))
+      expect(resetButton(fresh).textContent).toBe(RESET('選び方'))
       fireEvent.click(resetButton(fresh))
       expect(saved().intervalMs).toBe(3000)
     })
@@ -2861,7 +2861,7 @@ describe('App', () => {
         selectCaregiverTab(container, label)
         expect(container.querySelector('.caregiver-reset')).toBeNull()
       }
-      for (const label of ['スキャン', 'モールス', '音と振動', '表示', 'フレーズ']) {
+      for (const label of ['選び方', 'モールス', '音と振動', '表示', 'フレーズ']) {
         selectCaregiverTab(container, label)
         expect(resetButton(container).textContent).toBe(RESET(label))
       }
@@ -2873,7 +2873,7 @@ describe('App', () => {
       fireEvent.keyDown(window, { key: ' ' }) // 緊急
       expect(h1Text(container)).toBe('緊急です。来てください。')
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       const panel = container.querySelector('.caregiver-tabpanel') as HTMLElement
       fireEvent.click(resetButton(panel))
       fireEvent.click(resetButton(panel))
@@ -2905,7 +2905,7 @@ describe('App', () => {
     })
 
     it('初期値のまま 2 回続けて実行しても壊れず、初期値のまま保存される(冪等)', () => {
-      const { panel } = openTab('スキャン', {})
+      const { panel } = openTab('選び方', {})
       for (let i = 0; i < 2; i += 1) {
         fireEvent.click(resetButton(panel))
         fireEvent.click(resetButton(panel))

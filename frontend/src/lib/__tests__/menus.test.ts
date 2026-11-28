@@ -202,8 +202,8 @@ describe('urgentDetail の選択済み候補除外', () => {
   it.each([
     ['未設定', undefined, ['戻る', ...URGENT_DETAIL_LABELS]],
     ['0件', [], ['戻る', ...URGENT_DETAIL_LABELS]],
-    ['1件', ['苦しい'], ['戻る', '痛い', '息ができない', '吐きそう', '胸が痛い']],
-    ['4件', URGENT_DETAIL_LABELS.slice(0, 4), ['戻る', '胸が痛い']],
+    ['1件', ['苦しい'], ['戻る', '息ができない', '胸が痛い', '吐きそう', '痛い']],
+    ['4件', URGENT_DETAIL_LABELS.slice(0, 4), ['戻る', '痛い']],
     ['5件', URGENT_DETAIL_LABELS, ['戻る']],
   ] as const)('%s選択済みなら未選択候補だけを元の順序で返す', (_case, selected, expected) => {
     expect(labels(selected)).toEqual(expected)
@@ -212,10 +212,10 @@ describe('urgentDetail の選択済み候補除外', () => {
   it('未知値と重複値は候補を余分に除外せず、既知の選択済みだけを1件除く', () => {
     expect(labels(['苦しい', '苦しい', '未知の状態', ''])).toEqual([
       '戻る',
-      '痛い',
       '息ができない',
-      '吐きそう',
       '胸が痛い',
+      '吐きそう',
+      '痛い',
     ])
   })
 

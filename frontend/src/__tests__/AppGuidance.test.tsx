@@ -44,8 +44,8 @@ class MockAudioContext {
 
 const VIBRATION_FRAGMENT = '3秒ごとに振動'
 const AWAIT_TOUCH = '画面に触れるかキーを押すと、振動を再開します。'
-const AUDITORY_FRAGMENT = '伝達の読み上げは、直後の1項目分は割り込まれません'
-const SCREEN_CHANGE = '押下中に画面や項目の並びが変わると無効。モールス入力を除く'
+const AUDITORY_FRAGMENT = '伝えたことの読み上げは、直後の1回分は途中で切れません'
+const SCREEN_CHANGE = '押している間に画面やタイルの並びが変わると、その押し方は数えません。モールス入力には当てはまりません。'
 
 function tileLabels(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('.tile-label')).map((el) => el.textContent ?? '')
@@ -110,7 +110,7 @@ function changeSettingsViaMenu(container: HTMLElement, change: () => void) {
 /** メニューを開いてスキャンタブの各設定の下の説明を読み、閉じる */
 function readBehavior(container: HTMLElement): string {
   openCaregiverMenu(container)
-  selectCaregiverTab(container, 'スキャン')
+  selectCaregiverTab(container, '選び方')
   const text = behaviorNotes(container).join('\n')
   closeCaregiverMenu(container)
   return text
@@ -263,23 +263,23 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       })
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       // 保存値の 0 は下限の 0.1 秒として読み込む(Issue #164)
       expect(behaviorNotes(container)).toEqual([
-        '0.1秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
-        `0.8秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
+        '0.1秒以内に続けて押しても数えません。うっかり二度押しするのを防ぐためです。画面が切り替わった直後も同じです。モールス入力には当てはまりません。',
+        `0.8秒以上押し続けて離すと決まります。短く押しただけでは数えません。${SCREEN_CHANGE}`,
       ])
     })
 
     it('既定では連打無視の説明だけが、連打無視の設定のすぐ下に読める。「いまの動作」の見出しは無い(Issue #111)', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       expect(behaviorNotes(container)).toEqual([
-        '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
+        '0.5秒以内に続けて押しても数えません。うっかり二度押しするのを防ぐためです。画面が切り替わった直後も同じです。モールス入力には当てはまりません。',
       ])
       const hint = container.querySelector('p.caregiver-behavior') as HTMLElement
-      expect(hint.previousElementSibling?.textContent).toContain('連打無視')
+      expect(hint.previousElementSibling?.textContent).toContain('連打を数えない時間')
       expect(container.querySelector('.caregiver-section-title')).toBeNull()
       expect(container.querySelector('.caregiver-panel')?.textContent).not.toContain('いまの動作')
     })
@@ -295,70 +295,70 @@ describe('Issue #58: 常時案内(App 結合)', () => {
 
     it('連打無視は 0.1 秒より下げられない: スライダーを 0 にしても下限になり、その説明と保存値が残る(Issue #164)', () => {
       const { container } = render(() => <App />)
-      expect(readBehavior(container)).toContain('0.5秒以内の連打は数えません')
+      expect(readBehavior(container)).toContain('0.5秒以内に続けて押しても数えません')
       changeSettingsViaMenu(container, () => {
-        selectCaregiverTab(container, 'スキャン')
+        selectCaregiverTab(container, '選び方')
         const slider = Array.from(container.querySelectorAll('.caregiver-field'))
-          .find((field) => field.textContent?.includes('連打無視'))
+          .find((field) => field.textContent?.includes('連打を数えない時間'))
           ?.querySelector('input') as HTMLInputElement
         expect(slider.min).toBe('100')
         expect(slider.max).toBe('3000')
-        setSlider(container, '連打無視', 0)
+        setSlider(container, '連打を数えない時間', 0)
       })
-      expect(readBehavior(container)).toContain('0.1秒以内の連打は数えません')
+      expect(readBehavior(container)).toContain('0.1秒以内に続けて押しても数えません')
       expect(JSON.parse(window.localStorage.getItem('libra') as string).debounceMs).toBe(100)
     })
 
-    it('押下時間の下限・決定のタイミングを変えると、押し方の行が追従する', () => {
+    it('押す時間の下限・決定のタイミングを変えると、押し方の行が追従する', () => {
       const { container } = render(() => <App />)
       expect(readBehavior(container)).not.toContain('押し続け')
       changeSettingsViaMenu(container, () => {
-        selectCaregiverTab(container, 'スキャン')
-        setSlider(container, '押下時間の下限', 700)
+        selectCaregiverTab(container, '選び方')
+        setSlider(container, '押したと数える長さ', 700)
       })
       expect(readBehavior(container)).toContain(
-        `0.7秒以上押し続けると決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
+        `0.7秒以上押し続けると決まります。短く押しただけでは数えません。${SCREEN_CHANGE}`,
       )
       changeSettingsViaMenu(container, () => {
-        selectCaregiverTab(container, 'スキャン')
+        selectCaregiverTab(container, '選び方')
         chooseRadio(container, '離した瞬間')
       })
       expect(readBehavior(container)).toContain(
-        `0.7秒以上押し続けて離すと決まります（短押しは数えません。${SCREEN_CHANGE}）。`,
+        `0.7秒以上押し続けて離すと決まります。短く押しただけでは数えません。${SCREEN_CHANGE}`,
       )
       changeSettingsViaMenu(container, () => {
-        selectCaregiverTab(container, 'スキャン')
-        setSlider(container, '押下時間の下限', 0)
+        selectCaregiverTab(container, '選び方')
+        setSlider(container, '押したと数える長さ', 0)
       })
       expect(readBehavior(container)).toContain(
-        `押して離すと決まります（押した瞬間は決まりません。${SCREEN_CHANGE}）。`,
+        `押して離すと決まります。押した瞬間は決まりません。${SCREEN_CHANGE}`,
       )
     })
 
     it('先頭待機の設定は実際の秒数を併記し、既定 2.0 秒でスライダーが既定位置(丸めでずれない)・倍率と間隔の変更に追従する(Issue #92)', () => {
       const { container } = render(() => <App />)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       const field = () =>
         Array.from(container.querySelectorAll('.caregiver-range')).find((l) =>
-          l.textContent?.startsWith('先頭待機倍率'),
+          l.textContent?.startsWith('最初のタイルの長さ'),
         ) as HTMLElement
       const slider = () => field().querySelector('input[type="range"]') as HTMLInputElement
-      expect(field().textContent).toContain('間隔 × 1.3（約2.0秒）')
+      expect(field().textContent).toContain('間隔の 1.3 倍（約2.0秒）')
       expect(slider().value).toBe('4')
-      setSlider(container, '先頭待機倍率', 6) // 6/3 = 2
-      expect(field().textContent).toContain('間隔 × 2（約3.0秒）')
+      setSlider(container, '最初のタイルの長さ', 6) // 6/3 = 2
+      expect(field().textContent).toContain('間隔の 2 倍（約3.0秒）')
       expect(slider().value).toBe('6')
-      setSlider(container, 'スキャン間隔', 2000)
-      expect(field().textContent).toContain('間隔 × 2（約4.0秒）')
+      setSlider(container, '枠が移る間隔', 2000)
+      expect(field().textContent).toContain('間隔の 2 倍（約4.0秒）')
     })
 
-    it('スキャン間隔と先頭待機倍率を変えても先頭待機の文言はどこにも出ない', () => {
+    it('枠が移る間隔と最初のタイルの長さを変えても先頭待機の文言はどこにも出ない', () => {
       const { container } = render(() => <App />)
       changeSettingsViaMenu(container, () => {
-        selectCaregiverTab(container, 'スキャン')
-        setSlider(container, 'スキャン間隔', 2000)
-        setSlider(container, '先頭待機倍率', 8)
+        selectCaregiverTab(container, '選び方')
+        setSlider(container, '枠が移る間隔', 2000)
+        setSlider(container, '最初のタイルの長さ', 8)
       })
       expect(readBehavior(container)).not.toContain('先頭')
       expect(container.querySelector('.screen-notes')).toBeNull()
@@ -369,13 +369,13 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const { container } = render(() => <App />)
       expect(readBehavior(container)).not.toContain(AUDITORY_FRAGMENT)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン') // 聴覚スキャンはスキャンタブにある(Issue #111)
+      selectCaregiverTab(container, '選び方') // 聴覚スキャンはスキャンタブにある(Issue #111)
       const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
       fireEvent.click(checkbox)
       closeCaregiverMenu(container)
       expect(readBehavior(container)).toContain(AUDITORY_FRAGMENT)
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       fireEvent.click(container.querySelector('input[type="checkbox"]') as HTMLInputElement)
       closeCaregiverMenu(container)
       expect(readBehavior(container)).not.toContain(AUDITORY_FRAGMENT)
@@ -395,7 +395,7 @@ describe('Issue #58: 常時案内(App 結合)', () => {
         Array.from(panel.children).map((el) => el.className.toString().split(' ')[0])
       selectCaregiverTab(container, '使用準備')
       const before = children()
-      for (const label of ['スキャン', '使用準備', 'モールス', '使用準備']) {
+      for (const label of ['選び方', '使用準備', 'モールス', '使用準備']) {
         selectCaregiverTab(container, label)
         expect(children()).toEqual(before)
       }
@@ -648,9 +648,9 @@ describe('Issue #58: 常時案内(App 結合)', () => {
       const { container } = render(() => <App />)
       expect(container.querySelector('.screen-notes')).toBeNull() // 通常時は帯なし
       openCaregiverMenu(container)
-      selectCaregiverTab(container, 'スキャン')
+      selectCaregiverTab(container, '選び方')
       expect(behaviorNotes(container)).toEqual([
-        '0.5秒以内の連打は数えません（画面遷移直後も。誤作動防止。モールス入力を除く）。',
+        '0.5秒以内に続けて押しても数えません。うっかり二度押しするのを防ぐためです。画面が切り替わった直後も同じです。モールス入力には当てはまりません。',
       ])
       closeCaregiverMenu(container)
       fireEvent.keyDown(window, { key: ' ' }) // 緊急

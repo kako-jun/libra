@@ -236,7 +236,7 @@ describe('saveSettings', () => {
     expect(() => saveSettings(DEFAULT_SETTINGS)).not.toThrow()
   })
 
-  it('Issue #6: 押下時間の下限・決定タイミングを検証して丸める', () => {
+  it('Issue #6: 押す時間の下限・決定タイミングを検証して丸める', () => {
     expect(normalizeSettings({}).minHoldMs).toBe(0)
     expect(normalizeSettings({}).activateOn).toBe('press')
     expect(normalizeSettings({ minHoldMs: 500, activateOn: 'release' })).toMatchObject({

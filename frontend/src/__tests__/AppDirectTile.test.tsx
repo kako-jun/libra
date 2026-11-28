@@ -223,7 +223,7 @@ describe('Issue #38: タイル直接選択', () => {
       expect(h1Text(container)).toBe('いいえ。')
     })
 
-    it('押下時間の下限未満のタップは何も実行しない', () => {
+    it('押す時間の下限未満のタップは何も実行しない', () => {
       setSettings({ minHoldMs: 500 })
       const { container } = render(() => <App />)
       fireEvent.pointerDown(tile(container, 'はい'), { pointerId: 1 })

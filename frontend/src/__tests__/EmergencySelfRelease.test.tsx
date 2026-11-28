@@ -231,7 +231,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       // 履歴は保存しないので、「緊急を解除しました。」も残らない
       expect(shownMessage(second.container)).toBeNull()
       expect(second.container.querySelector('.message-panel-none')?.textContent).toBe(
-        'いまは、伝えたことがありません。',
+        'まだ伝えたことはありません。',
       )
       expect(second.container.querySelector('.history-nav')).toBeNull()
     })
@@ -387,7 +387,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(shownMessage(container)).toBe(RELEASED_MESSAGE)
       fireEvent.click(prevButton(container) as HTMLElement)
       expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
-      expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+      expect(panelLabel(container)).toBe('過去に伝えたこと　1件前')
     })
 
     it('詳細を2つ選んで解除: 解除文に選んだ順で詳細が入り(読み上げも同じ)、矢印で詳細と緊急の呼び出しを振り返れる', () => {
@@ -411,7 +411,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       expect(shownMessage(container)).toBe(`${EMERGENCY_MESSAGE}息ができない`)
       fireEvent.click(prev)
       expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
-      expect(panelLabel(container)).toBe('過去に伝えたこと（3件前）')
+      expect(panelLabel(container)).toBe('過去に伝えたこと　3件前')
       // それより前は無い(緊急の再選択・同じ詳細は二重に積まない)
       expect(prevButton(container)).toBeNull()
     })
@@ -443,7 +443,7 @@ describe('Issue #108: 本人による緊急の解除', () => {
       tap(container, '苦しい')
       expect(shownMessage(container)).toBeNull()
       expect(container.querySelector('.message-panel-none')?.textContent).toBe(
-        'いまは、伝えたことがありません。',
+        'まだ伝えたことはありません。',
       )
       expect(document.documentElement.dataset.messageTone).toBe('neutral')
     })

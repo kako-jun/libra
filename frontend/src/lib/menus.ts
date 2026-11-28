@@ -154,9 +154,9 @@ export const SCREEN_GUIDANCE: Record<ScreenId, string> = {
   discomfortOther: 'つらいことを選んでください。',
   painLocation: '痛い場所を選んでください。',
   painIntensity: '痛みの強さを選んでください。',
-  comfort: '今していることへの希望を選んでください。',
+  comfort: 'いましていることへの希望を選んでください。',
   requests: 'してほしいことを選んでください。',
-  feelings: '今の気持ちを選んでください。',
+  feelings: 'いまの気持ちを選んでください。',
   letters: '文字の行を選んでください。',
   lettersRow: '入力する文字を選んでください。',
   morse: '短押し・長押しで文字を入力します。',
@@ -266,13 +266,14 @@ export function buildHomeMenu(options: HomeMenuOptions = {}): MenuItem[] {
   ])
 }
 
-/** 緊急詳細の項目(id とラベル)。ラベルの正本。保存値の検証(emergencyState.ts)も参照する。 */
+/** 緊急詳細の項目(id とラベル)。ラベルの正本。保存値の検証(emergencyState.ts)も参照する。
+    並びは重症度順(2026-11-27 kako 判断): 呼吸・胸部を先にし、汎用的な訴えと痛みを後に置く。 */
 export const URGENT_DETAIL_ITEMS = [
-  { id: 'suffering', label: '苦しい' },
-  { id: 'pain', label: '痛い' },
   { id: 'cant-breathe', label: '息ができない' },
-  { id: 'nausea', label: '吐きそう' },
   { id: 'chest-pain', label: '胸が痛い' },
+  { id: 'suffering', label: '苦しい' },
+  { id: 'nausea', label: '吐きそう' },
+  { id: 'pain', label: '痛い' },
 ] as const
 
 export const URGENT_DETAIL_LABELS: readonly string[] = URGENT_DETAIL_ITEMS.map((i) => i.label)

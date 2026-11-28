@@ -142,21 +142,21 @@ export default function PhraseEditor(props: PhraseEditorProps) {
 
       <Show when={group() === 'painLocation'}>
         <p class="phrase-note">
-          痛い場所を選ぶと、続けて強さ（場所だけ / 少し / かなり / とても）を選びます。伝える文に
-          「痛いです」を含めると「胸がとても痛いです。」のように強さが入ります（含まない文は、句点で終わるなら句点の前に「…変です（とても）。」のように、句点がなければ末尾に（とても）が付きます）。
+          痛い場所を選ぶと、続けて強さを選びます。強さは「場所だけ・少し・かなり・とても」の4つです。伝える文に
+          「痛いです」を含めると「胸がとても痛いです。」のように強さが入ります。含まない文は、句点で終わるなら句点の前に「…変です、とても。」のように、句点がなければ末尾に、とてもと付きます。
         </p>
       </Show>
 
       <Show when={overGroups().length > 0}>
         <p class="caregiver-status warn" role="alert">
-          目安の {SCREEN_ITEM_LIMIT} 項目を超えている画面があります:{' '}
+          目安の {SCREEN_ITEM_LIMIT} 件を超えている画面があります:{' '}
           {overGroups()
             .map(
               (g) =>
-                `${PHRASE_GROUP_LABELS[g]}（${screenItemCount(g, props.settings.phrases)} 項目）`,
+                `${PHRASE_GROUP_LABELS[g]}（${screenItemCount(g, props.settings.phrases)}件）`,
             )
             .join('、')}
-          。スキャンが長くなり緊急に届くまで時間がかかるため、項目を減らしてください。
+          。選ぶものが多すぎて緊急に届くまで時間がかかるため、件数を減らしてください。
         </p>
       </Show>
 
@@ -165,7 +165,8 @@ export default function PhraseEditor(props: PhraseEditorProps) {
           {(phrase, index) => (
             <li class="phrase-row">
               <label>
-                <span>表示ラベル（短く）</span>
+                <span>表示ラベル</span>
+                <span class="caregiver-hint">短く書いてください。</span>
                 <input
                   type="text"
                   maxLength={PHRASE_LABEL_MAX}
@@ -190,13 +191,13 @@ export default function PhraseEditor(props: PhraseEditorProps) {
                 }
               >
                 <p class="phrase-note" role="note">
-                  この文には「痛いです」が無いので、強さは（とても）の形で付きます（句点で終わる文は句点の前、句点がない文は末尾）。
+                  この文には「痛いです」が無いので、強さは「、とても」の形で付きます。句点で終わる文は句点の前に、句点がない文は末尾に付きます。
                 </p>
               </Show>
               <Show when={phraseProblem(phrase())}>
                 {(problem) => (
                   <p class="caregiver-status warn" role="note">
-                    この項目は表示されません: {problem()}
+                    このフレーズは表示されません: {problem()}
                   </p>
                 )}
               </Show>
@@ -256,7 +257,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
     const json = exportSettingsJson(props.settings)
     setBackupText(json)
     // 端末によってはクリップボードが使えない。使えなければ下の欄から手でコピーしてもらう
-    const fallback = () => setBackupStatus('書き出しました（下の欄からコピーしてください）。')
+    const fallback = () => setBackupStatus('書き出しました。下の欄からコピーしてください。')
     if (!navigator.clipboard) {
       fallback()
       return
@@ -272,7 +273,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
     const next = parseSettingsJson(backupText(), props.settings)
     if (!next) {
       setImportArmed(false)
-      setBackupStatus('取り込めません: このアプリで書き出した設定を貼り付けてください。')
+      setBackupStatus('取り込めません。このアプリで書き出した設定を貼り付けてください。')
       return
     }
     if (!importArmed()) {
@@ -290,7 +291,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
   return (
     <section class="settings-backup" aria-label="設定データ">
       <div class="caregiver-field">
-        <span>設定のバックアップ（端末の入れ替え用）</span>
+        <span>設定の書き出しと取り込み</span>
         <textarea
           rows="4"
           value={backupText()}
@@ -298,7 +299,7 @@ export function SettingsBackup(props: SettingsBackupProps) {
             setBackupText(event.currentTarget.value)
             setImportArmed(false)
           }}
-          placeholder="書き出した設定の JSON をここに貼り付けて取り込みます。"
+          placeholder="書き出した設定をここに貼り付けて取り込みます。"
         />
         <div class="phrase-actions">
           <button type="button" class="caregiver-action" onClick={doExport}>

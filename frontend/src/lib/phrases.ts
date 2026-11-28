@@ -247,13 +247,13 @@ export const PAIN_INTENSITY_WORDS: Record<PainIntensity, string> = {
 
 /**
  * 痛い場所の全文に強さを入れる。「胸が痛いです」→「胸がとても痛いです」。
- * 全文に「痛いです」が無い(介助者が自由に編集した)ときは、強さを（とても）の形で足す。
- * 句点で終わる文は句点の前に入れ(「…変です（とても）。」)、句点がない文は末尾に足す。
+ * 全文に「痛いです」が無い(介助者が自由に編集した)ときは、強さを読点の後ろに足す。
+ * 句点で終わる文は句点の前に入れ(「…変です、とても。」)、句点がない文は末尾に足す。
  */
 export function composePainText(text: string, intensity: PainIntensity): string {
   const word = PAIN_INTENSITY_WORDS[intensity]
   if (text.includes('痛いです')) return text.replace('痛いです', `${word}痛いです`)
-  // 句点で終わる文は、強さを句点の前に入れる(「…。（とても）」にしない)
-  if (text.endsWith('。')) return `${text.slice(0, -1)}（${word}）。`
-  return `${text}（${word}）`
+  // 句点で終わる文は、強さを句点の前に入れる(本人の伝達文に括弧書きを混ぜない)
+  if (text.endsWith('。')) return `${text.slice(0, -1)}、${word}。`
+  return `${text}、${word}`
 }

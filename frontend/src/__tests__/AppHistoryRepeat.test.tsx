@@ -3,11 +3,11 @@
 //
 // 観点(#120 履歴)
 //   矢印の出し分け  | その方向に内容があるときだけ出す(#129)。無効状態では残さない。左右の枠は常に確保する
-//   欄の常設(#131)  | 起動時から出し、何も伝えていないときは「いまは、伝えたことがありません。」
+//   欄の常設(#131)  | 起動時から出し、何も伝えていないときは「まだ伝えたことはありません。」
 //   背景色(#135)    | 表示中の内容の色(data-message-tone)。緊急の記録は赤、通常の伝達は通常の色
-//   見出し          | 過去を表示中は「過去に伝えたこと（N件前）」。最新に戻ると「直前に伝えたこと」
+//   見出し          | 過去を表示中は「過去に伝えたこと　N件前」。最新に戻ると「直前に伝えたこと」
 //   最新へ戻る契機  | 新しい伝達・緊急・もう一度(過去の表示が本人の新しい伝達を隠さない)
-//   最新が空        | 介助者の緊急解除の後は、履歴ありなら「いまは、伝えたことがありません。」で枠を残す
+//   最新が空        | 介助者の緊急解除の後は、履歴ありなら「まだ伝えたことはありません。」で枠を残す
 //   上限            | 50 件。51 件目で最古を捨てる(境界 49 件前まで戻れ、50 件前は無い)
 //   ガード          | 介助者用メニューを開いている間は動かない / スキャン対象ではない / 押した後のキーはスキャン対象を実行
 //   保存しない      | 再読み込みで履歴は残らない
@@ -65,7 +65,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
   /** 何も伝えていない状態の欄: 文は隠れ、「いまは…」を出し、戻れる伝達も無いので矢印も無い */
   const expectNothing = (c: HTMLElement) => {
     expect(shownMessage(c)).toBeNull()
-    expect(noneText(c)).toBe('いまは、伝えたことがありません。')
+    expect(noneText(c)).toBe('まだ伝えたことはありません。')
     expect(panelLabel(c)).toBe(LATEST)
     expect(c.querySelectorAll('.history-nav')).toHaveLength(0)
   }
@@ -75,7 +75,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     expect(kids).toEqual(['history-slot', 'message-panel-body', 'history-slot'])
   }
 
-  it('伝達が 0 件のときは矢印を出さず、起動時から欄に「いまは、伝えたことがありません。」を出す', () => {
+  it('伝達が 0 件のときは矢印を出さず、起動時から欄に「まだ伝えたことはありません。」を出す', () => {
     const { container } = render(() => <App />)
     expectNothing(container)
     expectSlots(container)
@@ -97,7 +97,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     expect(container.querySelectorAll('.history-nav:disabled')).toHaveLength(0)
   })
 
-  it('「前」で 1 件ずつ古い伝達を表示し、見出しが「過去に伝えたこと（N件前）」になる。最古で「前」は消える', () => {
+  it('「前」で 1 件ずつ古い伝達を表示し、見出しが「過去に伝えたこと　N件前」になる。最古で「前」は消える', () => {
     const { container } = render(() => <App />)
     sendMessages(container, ['はい', 'いいえ', 'はい'])
     expect(shownMessage(container)).toBe('はい。')
@@ -105,12 +105,12 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
 
     fireEvent.click(prevButton(container) as HTMLElement)
     expect(shownMessage(container)).toBe('いいえ。')
-    expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　1件前')
     expect(messagePanel(container).classList.contains('is-past')).toBe(true)
 
     fireEvent.click(prevButton(container) as HTMLElement)
     expect(shownMessage(container)).toBe('はい。')
-    expect(panelLabel(container)).toBe('過去に伝えたこと（2件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　2件前')
     expect(prevButton(container)).toBeNull()
     expect(nextButton(container)).not.toBeNull()
     expectSlots(container)
@@ -122,7 +122,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     fireEvent.click(prevButton(container) as HTMLElement)
     fireEvent.click(prevButton(container) as HTMLElement)
     fireEvent.click(nextButton(container) as HTMLElement)
-    expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　1件前')
     fireEvent.click(nextButton(container) as HTMLElement)
     expect(panelLabel(container)).toBe(LATEST)
     expect(shownMessage(container)).toBe('はい。')
@@ -135,7 +135,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
       const { container } = render(() => <App />)
       sendMessages(container, ['はい', 'いいえ'])
       fireEvent.click(prevButton(container) as HTMLElement)
-      expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+      expect(panelLabel(container)).toBe('過去に伝えたこと　1件前')
       tap(container, 'はい')
       expect(panelLabel(container)).toBe(LATEST)
       expect(shownMessage(container)).toBe('はい。')
@@ -157,7 +157,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
       fireEvent.click(prevButton(container) as HTMLElement)
       expect(shownMessage(container)).toBe('はい。')
       tap(container, 'もう一度')
-      expect(panelLabel(container)).toBe('直前に伝えたこと（もう一度）')
+      expect(panelLabel(container)).toBe('直前に伝えたこと　もう一度')
       // 伝え直すのは過去の表示ではなく、直前の伝達
       expect(shownMessage(container)).toBe('いいえ。')
     })
@@ -173,13 +173,13 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     expect(panelLabel(container)).toBe(LATEST)
     // 最新が空・履歴は残る → 文を隠して「いまは…」を出し、枠は残す
     expect(shownMessage(container)).toBeNull()
-    expect(noneText(container)).toBe('いまは、伝えたことがありません。')
+    expect(noneText(container)).toBe('まだ伝えたことはありません。')
     expect(nextButton(container)).toBeNull()
 
     // 履歴は新しい順に 緊急の呼び出し → いいえ → はい
     fireEvent.click(prevButton(container) as HTMLElement)
     expect(shownMessage(container)).toBe(EMERGENCY_MESSAGE)
-    expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　1件前')
     fireEvent.click(prevButton(container) as HTMLElement)
     expect(shownMessage(container)).toBe('いいえ。')
     fireEvent.click(prevButton(container) as HTMLElement)
@@ -193,7 +193,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     const fifty = Array.from({ length: 50 }, (_, i) => (i % 2 === 0 ? 'はい' : 'いいえ'))
     sendMessages(container, fifty)
     for (let i = 0; i < 49; i += 1) fireEvent.click(prevButton(container) as HTMLElement)
-    expect(panelLabel(container)).toBe('過去に伝えたこと（49件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　49件前')
     expect(shownMessage(container)).toBe('はい。') // 最古
     expect(prevButton(container)).toBeNull()
 
@@ -202,7 +202,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     for (; steps < 60 && prevButton(container); steps += 1)
       fireEvent.click(prevButton(container) as HTMLElement)
     expect(steps).toBe(49)
-    expect(panelLabel(container)).toBe('過去に伝えたこと（49件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　49件前')
     expect(shownMessage(container)).toBe('いいえ。')
   })
 
@@ -214,7 +214,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     expect(panelLabel(container)).toBe(LATEST)
     closeCaregiverMenu(container)
     fireEvent.click(prevButton(container) as HTMLElement)
-    expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　1件前')
   })
 
   it('矢印はスキャン対象ではない(タイルに入らない)。矢印を押したあとのスイッチは、カーソルのある項目を実行する', () => {
@@ -225,7 +225,7 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     const prev = prevButton(container) as HTMLElement
     prev.focus()
     fireEvent.click(prev)
-    expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　1件前')
 
     // カーソルが「はい」に来たらスイッチ(Space)。フォーカスが矢印に残っていても矢印は押されない
     vi.advanceTimersByTime(600)
@@ -274,10 +274,10 @@ describe('Issue #120: 伝達履歴を左右の矢印で振り返る', () => {
     closeCaregiverMenu(container)
     // 介助者の解除で最新は空。履歴(はい・いいえ)は残る
     expect(shownMessage(container)).toBeNull()
-    expect(noneText(container)).toBe('いまは、伝えたことがありません。')
+    expect(noneText(container)).toBe('まだ伝えたことはありません。')
     fireEvent.click(prevButton(container) as HTMLElement)
     expect(shownMessage(container)).toBe('いいえ。')
-    expect(panelLabel(container)).toBe('過去に伝えたこと（1件前）')
+    expect(panelLabel(container)).toBe('過去に伝えたこと　1件前')
   })
 })
 
@@ -360,7 +360,7 @@ describe('Issue #135: 背景色は表示中の内容が持つ色で決める', (
     openCaregiverMenu(container)
     ;(container.querySelector('.caregiver-emergency-clear') as HTMLElement).click()
     closeCaregiverMenu(container)
-    expect(noneText(container)).toBe('いまは、伝えたことがありません。')
+    expect(noneText(container)).toBe('まだ伝えたことはありません。')
     expect(tone()).toBe('neutral')
     // 緊急の呼び出し(赤) → はい(通常) → 赤の伝達(赤)
     for (const [text, expected] of [
@@ -373,7 +373,7 @@ describe('Issue #135: 背景色は表示中の内容が持つ色で決める', (
       expect(tone()).toBe(expected)
     }
     while (nextButton(container)) click(nextButton(container))
-    expect(noneText(container)).toBe('いまは、伝えたことがありません。')
+    expect(noneText(container)).toBe('まだ伝えたことはありません。')
     expect(tone()).toBe('neutral')
   })
 
@@ -417,7 +417,7 @@ describe('Issue #123: もう一度', () => {
         expect(vibrations()).not.toContainEqual(HAPTIC_PATTERNS[event])
       }
       expect(shownMessage(container)).toBeNull()
-      expect(noneText(container)).toBe('いまは、伝えたことがありません。')
+      expect(noneText(container)).toBe('まだ伝えたことはありません。')
       expect(container.querySelectorAll('.history-nav')).toHaveLength(0)
       expect(isHome(container)).toBe(true)
     })
@@ -462,7 +462,7 @@ describe('Issue #123: もう一度', () => {
       expect(lastVibration()).toEqual(HAPTIC_PATTERNS[event])
       expect(spoken()).toEqual([text])
       expect(shownMessage(container)).toBe(text)
-      expect(panelLabel(container)).toBe('直前に伝えたこと（もう一度）')
+      expect(panelLabel(container)).toBe('直前に伝えたこと　もう一度')
       expect(isHome(container)).toBe(true)
     })
 
@@ -575,6 +575,6 @@ describe('Issue #123: もう一度', () => {
       vi.advanceTimersByTime(100)
     pressSwitch()
     expect(spoken()).toEqual(['はい。'])
-    expect(panelLabel(container)).toBe('直前に伝えたこと（もう一度）')
+    expect(panelLabel(container)).toBe('直前に伝えたこと　もう一度')
   })
 })

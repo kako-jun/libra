@@ -247,7 +247,7 @@ describe('モールス入力の状態遷移', () => {
     expect(result.state.text).toBe('ば')
   })
 
-  it('長押しの境目は押下時間の下限より必ず長く、雑音の下限は 10ms 以上', () => {
+  it('長押しの境目は押す時間の下限より必ず長く、雑音の下限は 10ms 以上', () => {
     expect(effectiveDashMs(500, 0)).toBe(500)
     expect(effectiveDashMs(500, 600)).toBe(700)
     expect(effectiveDashMs(150, 2000)).toBe(2100)

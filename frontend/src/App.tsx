@@ -91,7 +91,7 @@ const HISTORY_MAX = 50
 /** 介助者用メニューのカテゴリタブ(Issue #31)。重要なものほど左、関係の近いものは隣(Issue #140)。矢印キーの移動順もこの並び */
 const CAREGIVER_TABS = [
   { id: 'status', label: '使用準備' },
-  { id: 'scan', label: 'スキャン' },
+  { id: 'scan', label: '選び方' },
   { id: 'feedback', label: '音と振動' },
   { id: 'display', label: '表示' },
   { id: 'phrases', label: 'フレーズ' },
@@ -127,7 +127,7 @@ const MORSE_PRESS_ANYWHERE_HINT = 'ボタン以外を押すと、符号を入力
 const CAREGIVER_MENU_IDLE_TIMEOUT_MS = 60000
 
 const VOICE_LABELS: Record<Settings['voiceMode'], string> = {
-  off: 'OFF',
+  off: '読まない',
   tone: '効果音だけ',
   short: '短く読む',
   full: '全部読む',
@@ -138,17 +138,17 @@ const VOICE_MODES: Settings['voiceMode'][] = ['off', 'tone', 'short', 'full']
 // Issue #5: 画面スリープ防止(Wake Lock)の状態を介助者用メニューに表示する文言。
 // 'active' 以外は本人の入力が届かなくなる恐れがあるため、端末側の自動ロック解除を促す。
 export const WAKE_LOCK_LABELS: Record<WakeLockStatus, string> = {
-  active: '画面スリープ防止: 有効',
-  unsupported: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください。',
-  error: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください。',
-  released: '画面スリープ防止: 無効 — 端末の自動ロックを切ってください。',
+  active: '画面を消さない設定: できています',
+  unsupported: '画面を消さない設定: できていません — 端末の設定で、画面が自動で消えないようにしてください。',
+  error: '画面を消さない設定: できていません — 端末の設定で、画面が自動で消えないようにしてください。',
+  released: '画面を消さない設定: できていません — 端末の設定で、画面が自動で消えないようにしてください。',
 }
 
 // PR #11 レビュー対応(should-1): オフラインで動く準備(Service Worker がこのページを
 // 制御しているか)を Wake Lock と同じ扱いで介助者用メニューに表示する。
 export const OFFLINE_READY_LABELS: Record<OfflineReadyStatus, string> = {
-  ready: 'オフライン準備: 完了',
-  'not-ready': 'オフライン準備: 未完了 — 通信できる場所で、このページを開き直してください。',
+  ready: '通信なしで使える準備: できています',
+  'not-ready': '通信なしで使える準備: できていません — 通信できる場所で、このページを開き直してください。',
 }
 
 function speak(mode: Settings['voiceMode'], text: string, shortText = text, legacyVibrate = false) {
@@ -182,9 +182,9 @@ const FONT_SIZE_LABELS: Record<Settings['fontSize'], string> = {
 const FONT_SIZES: Settings['fontSize'][] = ['standard', 'large', 'xlarge']
 
 const THEME_LABELS: Record<Settings['theme'], string> = {
-  light: 'ライト',
-  dark: 'ダーク',
-  auto: 'OSの設定',
+  light: '明るい',
+  dark: '暗い',
+  auto: '端末の設定に合わせる',
 }
 
 /** 文字を入力する input の種類。これと textarea だけが「文字を入力する欄」 */
@@ -232,7 +232,8 @@ const ACTIVATE_ONS: Settings['activateOn'][] = ['press', 'release']
 const THEMES: Settings['theme'][] = ['light', 'dark', 'auto']
 
 // PR#16 Opus レビュー nit: <meta name="theme-color"> をテーマに追従させる。
-// --message-bg(通常時)と同じ値にする(globals.cssのトークンと目視で揃えている)
+// 正本は globals.css の --message-bg(通常時)。実行時に computed style から読み、
+// 読めなかったときだけこの表に落ちる(値を目視で揃える運用はしない)
 const THEME_COLOR: Record<'light' | 'dark', string> = {
   light: '#0f5132',
   dark: '#0a2318',
@@ -275,7 +276,10 @@ export default function App() {
     document.documentElement.dataset.highContrast = String(settings().highContrast)
     // PR#16 Opus レビュー nit: ブラウザ/OSのUI色(タブバー等)もテーマに追従させる
     const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.setAttribute('content', THEME_COLOR[resolvedTheme()])
+    const token = getComputedStyle(document.documentElement)
+      .getPropertyValue('--message-bg')
+      .trim()
+    if (meta) meta.setAttribute('content', token || THEME_COLOR[resolvedTheme()])
   })
   const scanConfig = createMemo<ScanConfig>(() => ({
     intervalMs: settings().intervalMs,
@@ -1548,7 +1552,7 @@ export default function App() {
           <p class="emergency-status-message">{EMERGENCY_MESSAGE}</p>
           <Show when={emergencyDetails().length > 0}>
             <div class="emergency-detail-status">
-              <span class="emergency-detail-label">伝えた状態:</span>
+              <span class="emergency-detail-label">伝えた状態: </span>
               <ul class="emergency-details">
                 <For each={emergencyDetails()}>{(label) => <li>{label}</li>}</For>
               </ul>
@@ -1590,9 +1594,9 @@ export default function App() {
         <div class="message-panel-body">
           <p class="message-panel-label">
             {pastEntry() !== null
-              ? `過去に伝えたこと（${historyBack()}件前）`
+              ? `過去に伝えたこと　${historyBack()}件前`
               : repeatedMessage()
-                ? '直前に伝えたこと（もう一度）'
+                ? '直前に伝えたこと　もう一度'
                 : '直前に伝えたこと'}
           </p>
           {/* 見出しの残りの高さ。h1 はこの箱に全文が収まる大きさにする(lib/fitHeading.ts) */}
@@ -1602,7 +1606,7 @@ export default function App() {
               {displayedMessage()}
             </h1>
             <Show when={pastEntry() === null && message() === DEFAULT_MESSAGE}>
-              <p class="message-panel-none">いまは、伝えたことがありません。</p>
+              <p class="message-panel-none">まだ伝えたことはありません。</p>
             </Show>
           </div>
         </div>
@@ -1731,17 +1735,17 @@ export default function App() {
             </li>
             <Show when={settings().minHoldMs > 0}>
               <li>
-                <b>{(settings().minHoldMs / 1000).toFixed(1)}秒未満</b>の押下は数えない。
+                <b>{(settings().minHoldMs / 1000).toFixed(1)}秒未満</b>の短押しは数えない。
               </li>
             </Show>
             <li>
-              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・（<b>休まず続けて</b>
-              {'打つと、待たずにすぐ。'}
+              <b>緊急</b>＝<b>SOS</b>　・・・　－－－　・・・。<b>休まず続けて</b>
+              {'打つと、待たずにすぐ緊急になる。'}
               <b>{(settings().morseLetterGapMs / 1000).toFixed(1)}秒</b>
-              {'休むと数え直し）。'}
+              {'休むと、最初から数え直す。'}
             </li>
             <li>
-              <b>・・・・・</b>（・を5つ）→ <b>待つと</b>スキャンへ戻る。
+              <b>・・・・・</b>（・を5つ）→ <b>待つと</b>タイルで選ぶ画面へ戻る。
             </li>
             <li>
               <b>・・・・・・</b>（・を6つ）→ <b>待つと</b>1字消す。
@@ -1756,10 +1760,10 @@ export default function App() {
               <b>{(settings().morseWordGapMs / 1000).toFixed(1)}秒</b>押さないと、語の区切りが入る。
             </li>
             <li>
-              <b>{MORSE_IDLE_EXIT_MS / 1000}秒</b>何も押さないと、スキャンへ戻る。
+              <b>{MORSE_IDLE_EXIT_MS / 1000}秒</b>何も押さないと、タイルで選ぶ画面へ戻る。
             </li>
             <li>
-              <b>{MORSE_MAX_HOLD_MS / 1000}秒を超えて</b>押しっぱなしの入力は、無効になる。
+              <b>{MORSE_MAX_HOLD_MS / 1000}秒を超えて</b>押しっぱなしの入力は、数えない。
             </li>
           </ul>
         </section>
@@ -1778,7 +1782,7 @@ export default function App() {
           '--cols': String(gridLayout().cols),
           '--rows': String(gridLayout().rows),
         }}
-        aria-label={`${SCREEN_TITLES[screen()]}の選択肢`}
+        aria-label={`${SCREEN_TITLES[screen()]}のタイル`}
         ref={(el) => {
           gridBoardEl = el
         }}
@@ -1946,7 +1950,7 @@ export default function App() {
                 {/* Issue #111: 状態の表示は、ボタンに見える囲みにしない。変えられる設定は無い。
                     このタブの操作はインストール(Issue #158)だけ */}
                 <p class="caregiver-lead">
-                  この端末の使用準備の状態です。ここで変える設定はありません。
+                  この端末で使う準備ができているかを表示します。ここで変える設定はありません。
                 </p>
                 <StatusRow
                   label={WAKE_LOCK_LABELS[wakeLockStatus()]}
@@ -1969,40 +1973,41 @@ export default function App() {
                 tabindex="0"
               >
                 <RangeField
-                  name="スキャン間隔"
+                  name="枠が移る間隔"
                   min={500}
                   max={5000}
                   step={100}
                   value={settings().intervalMs}
                   onValue={(intervalMs) => updateSettings({ intervalMs })}
                 >
-                  スキャン間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒
+                  枠が移る間隔: {(settings().intervalMs / 1000).toFixed(1)} 秒
                 </RangeField>
 
                 {/* 倍率は 1/3 刻み（既定 4/3 を丸めずに選べる）。値は整数（3倍した値）で扱う */}
                 <RangeField
-                  name="先頭待機倍率"
+                  name="最初のタイルの長さ"
                   min={3}
                   max={15}
                   step={1}
                   value={Math.round(settings().headHoldMultiplier * 3)}
                   onValue={(thirds) => updateSettings({ headHoldMultiplier: thirds / 3 })}
                 >
-                  先頭待機倍率: 間隔 × {Number(settings().headHoldMultiplier.toFixed(1))}（約
+                  最初のタイルの長さ: 間隔の {Number(settings().headHoldMultiplier.toFixed(1))}{' '}
+                  倍（約
                   {((settings().intervalMs * settings().headHoldMultiplier) / 1000).toFixed(1)}
                   秒）
                 </RangeField>
 
                 <div class="caregiver-item">
                   <RangeField
-                    name="連打無視"
+                    name="連打を数えない時間"
                     min={DEBOUNCE_MS_MIN}
                     max={3000}
                     step={100}
                     value={settings().debounceMs}
                     onValue={(debounceMs) => updateSettings({ debounceMs })}
                   >
-                    連打無視: {(settings().debounceMs / 1000).toFixed(1)} 秒
+                    連打を数えない時間: {(settings().debounceMs / 1000).toFixed(1)} 秒
                   </RangeField>
                   <Show when={behaviorNotes().debounce}>
                     {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
@@ -2011,18 +2016,18 @@ export default function App() {
 
                 <div class="caregiver-item">
                   <RangeField
-                    name="押下時間の下限"
+                    name="押したと数える長さ"
                     min={0}
                     max={2000}
                     step={100}
                     value={settings().minHoldMs}
                     onValue={(minHoldMs) => updateSettings({ minHoldMs })}
                   >
-                    押下時間の下限: {(settings().minHoldMs / 1000).toFixed(1)} 秒
+                    押したと数える長さ: {(settings().minHoldMs / 1000).toFixed(1)} 秒
                   </RangeField>
 
                   <ChoiceField
-                    label="決定のタイミング"
+                    label="決まるタイミング"
                     options={ACTIVATE_ONS}
                     labels={ACTIVATE_ON_LABELS}
                     value={settings().activateOn}
@@ -2042,16 +2047,17 @@ export default function App() {
                         updateSettings({ auditoryScan: event.currentTarget.checked })
                       }
                     />
-                    <span>聴覚スキャン（カーソルが進むたびに項目名を読み上げる）</span>
+                    <span>枠が移るたびに読み上げる</span>
                   </label>
+                  <p class="caregiver-hint">黄色の枠が次のタイルへ移るたびに、そのタイルの名前を読み上げます。</p>
                   <Show when={behaviorNotes().speech}>
                     {(note) => <p class="caregiver-hint caregiver-behavior">{note()}</p>}
                   </Show>
                 </div>
 
                 <TabReset
-                  tabLabel="スキャン"
-                  targets="スキャン間隔・先頭待機倍率・連打無視・押下時間の下限・決定のタイミング・聴覚スキャン"
+                  tabLabel="選び方"
+                  targets="枠が移る間隔・最初のタイルの長さ・連打を数えない時間・押したと数える長さ・決まるタイミング・枠が移るたびに読み上げる"
                   onReset={() => resetSection('scan')}
                 />
               </div>
@@ -2074,10 +2080,13 @@ export default function App() {
                         updateSettings({ morseEnabled: event.currentTarget.checked })
                       }
                     />
-                    <span>モールス入力を使う（上級者向け）</span>
+                    <span>モールス入力を使う</span>
                   </label>
                   <p class="caregiver-hint">
-                    押下と解放を同時に送るシャッターでは長押しが使えず、緊急のSOS（・・・－－－・・・）も出せません。
+                    短く押す・長く押すの組み合わせで、文字を伝える方法です。
+                  </p>
+                  <p class="caregiver-hint">
+                    押すことと離すことを同時に送るシャッターでは、長押しが使えず、緊急のSOSも出せません。
                   </p>
                 </div>
 
@@ -2091,14 +2100,22 @@ export default function App() {
                       value={settings().morseDashMs}
                       onValue={(morseDashMs) => updateSettings({ morseDashMs })}
                     >
-                      長押し（－）の境目: {(settings().morseDashMs / 1000).toFixed(1)} 秒
-                      {effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
-                      settings().morseDashMs
-                        ? `（押下時間の下限があるため、実際は ${(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)} 秒）`
-                        : ''}
+                      長押しの境目: {(settings().morseDashMs / 1000).toFixed(1)} 秒
                     </RangeField>
+                    <Show
+                      when={
+                        effectiveDashMs(settings().morseDashMs, settings().minHoldMs) >
+                        settings().morseDashMs
+                      }
+                    >
+                      <p class="caregiver-hint">
+                        押したと数える長さが設定されているため、実際は{' '}
+                        {(effectiveDashMs(settings().morseDashMs, settings().minHoldMs) / 1000).toFixed(1)}{' '}
+                        秒です。
+                      </p>
+                    </Show>
                     <RangeField
-                      name="文字の確定までの無入力"
+                      name="文字が決まるまでの間隔"
                       min={500}
                       max={3000}
                       step={100}
@@ -2114,10 +2131,10 @@ export default function App() {
                         })
                       }
                     >
-                      文字の確定までの無入力: {(settings().morseLetterGapMs / 1000).toFixed(1)} 秒
+                      文字が決まるまでの間隔: {(settings().morseLetterGapMs / 1000).toFixed(1)} 秒
                     </RangeField>
                     <RangeField
-                      name="語の区切りまでの無入力"
+                      name="語の区切りまでの間隔"
                       min={1500}
                       max={8000}
                       step={100}
@@ -2125,14 +2142,14 @@ export default function App() {
                       value={settings().morseWordGapMs}
                       onValue={(morseWordGapMs) => updateSettings({ morseWordGapMs })}
                     >
-                      語の区切りまでの無入力: {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
+                      語の区切りまでの間隔: {(settings().morseWordGapMs / 1000).toFixed(1)} 秒
                     </RangeField>
                   </div>
                 </Show>
 
                 <TabReset
                   tabLabel="モールス"
-                  targets="モールス入力を使うかどうかと、長押しの境目・文字の確定・語の区切りの時間"
+                  targets="モールス入力・長押しの境目・文字が決まるまでの間隔・語の区切りまでの間隔"
                   onReset={() => resetSection('input')}
                 />
               </div>
@@ -2147,7 +2164,7 @@ export default function App() {
                 tabindex="0"
               >
                 <ChoiceField
-                  label="音声モード（伝えた内容の読み上げ）"
+                  label="音声モード"
                   options={VOICE_MODES}
                   labels={VOICE_LABELS}
                   value={settings().voiceMode}
@@ -2162,8 +2179,9 @@ export default function App() {
                       updateSettings({ hapticsEnabled: event.currentTarget.checked })
                     }
                   />
-                  <span>本人に振動で知らせる（入力の受理・はい/いいえ・緊急）</span>
+                  <span>本人に振動で知らせる</span>
                 </label>
+                <p class="caregiver-hint">押したとき・はい/いいえを伝えたとき・緊急のときに振動します。</p>
 
                 <Show when={settings().hapticsEnabled}>
                   <div class="caregiver-sub">
@@ -2183,10 +2201,9 @@ export default function App() {
                           updateSettings({ hapticSoundAlso: event.currentTarget.checked })
                         }
                       />
-                      <span>
-                        振動に加えて、いつも短い効果音でも知らせる（振動モーターのない端末向け）
-                      </span>
+                      <span>振動に加えて、いつも短い効果音でも知らせる</span>
                     </label>
+                    <p class="caregiver-hint">振動しない端末向けです。</p>
 
                     <label class="caregiver-field caregiver-checkbox">
                       <input
@@ -2196,14 +2213,14 @@ export default function App() {
                           updateSettings({ hapticSoundWhenVoiceOff: event.currentTarget.checked })
                         }
                       />
-                      <span>振動できない端末では、音声モードが OFF でも短い効果音で知らせる</span>
+                      <span>振動できない端末では、音声モードが「読まない」でも短い効果音で知らせる</span>
                     </label>
                   </div>
                 </Show>
 
                 <TabReset
                   tabLabel="音と振動"
-                  targets="音声モード・振動で知らせるかどうか・振動の強さ・効果音"
+                  targets="音声モード・本人に振動で知らせる・振動の強さ・効果音"
                   onReset={() => resetSection('feedback')}
                 />
               </div>
@@ -2219,7 +2236,7 @@ export default function App() {
               >
                 <div class="caregiver-item">
                   <ChoiceField
-                    label="文字サイズ（選ぶタイルの文字）"
+                    label="文字サイズ"
                     options={FONT_SIZES}
                     labels={FONT_SIZE_LABELS}
                     value={settings().fontSize}
@@ -2247,12 +2264,12 @@ export default function App() {
                       updateSettings({ highContrast: event.currentTarget.checked })
                     }
                   />
-                  <span>高コントラスト</span>
+                  <span>色をはっきりさせる</span>
                 </label>
 
                 <div class="caregiver-item">
                   <div class="caregiver-field">
-                    <span>好きな画像（本人画面の「介助者用」ボタンの左に表示）</span>
+                    <span>好きな画像</span>
                     <div class="phrase-actions">
                       <button
                         type="button"
@@ -2287,7 +2304,7 @@ export default function App() {
                     {(src) => <img class="photo-preview" src={src()} alt="いまの画像" />}
                   </Show>
                   <p class="caregiver-hint">
-                    画像はこの端末の中だけに保存します（外へは送りません）。設定の書き出しには含まれません。
+                    本人画面の「介助者用」ボタンの左に出ます。画像はこの端末の中だけに保存します。外へは送りません。設定の書き出しには含まれません。
                   </p>
                   <Show when={photoStatus()}>
                     <p class="caregiver-status" role="status">
@@ -2298,7 +2315,7 @@ export default function App() {
 
                 <TabReset
                   tabLabel="表示"
-                  targets="文字サイズ・明るさ・高コントラスト・好きな画像"
+                  targets="文字サイズ・明るさ・色をはっきりさせる・好きな画像"
                   onReset={() => {
                     resetSection('display')
                     clearPhoto()
@@ -2372,7 +2389,7 @@ export default function App() {
                     <dt>利用回数</dt>
                     <dd class="app-usage-count">
                       {usageCount() === null
-                        ? '取得できません（通信がないときは表示されません）'
+                        ? '取得できませんでした'
                         : `${usageCount()?.toLocaleString('ja-JP')} 回`}
                     </dd>
                   </div>
@@ -2433,8 +2450,8 @@ function TabReset(props: { tabLabel: string; targets: string; onReset: () => voi
       <Show when={armed()}>
         <p class="caregiver-status warn" role="status">
           <span class="caregiver-status-text">
-            「{props.tabLabel}」タブの設定（{props.targets}
-            ）が初期値に戻ります（元に戻せません）。ほかのタブの設定は変わりません。よければもう一度押してください。
+            「{props.tabLabel}」タブの設定が初期値に戻ります。対象は{props.targets}
+            です。元に戻せません。ほかのタブの設定は変わりません。よければもう一度押してください。
           </span>
         </p>
       </Show>

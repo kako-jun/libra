@@ -157,18 +157,18 @@ describe('Issue #46 状態値の規則(WAKE/OFFLINE)', () => {
   it('変異: オフライン準備の値を文にして句点を付けないと検出される', () => {
     const mutated = {
       ...OFFLINE_READY_LABELS,
-      'not-ready': 'オフライン準備: 未完了 — 再読み込みしてください',
+      'not-ready': '通信なしで使える準備: できていません — 再読み込みしてください',
     }
     expect(stateValueViolations(mutated).length).toBe(1)
     const fixed = {
       ...OFFLINE_READY_LABELS,
-      'not-ready': 'オフライン準備: 未完了 — 再読み込みしてください。',
+      'not-ready': '通信なしで使える準備: できていません — 再読み込みしてください。',
     }
     expect(stateValueViolations(fixed)).toEqual([])
   })
 
   it('変異: 語の値に句点を付けても検出される', () => {
-    expect(stateValueViolations({ ready: 'オフライン準備: 完了。' }).length).toBe(1)
+    expect(stateValueViolations({ ready: '通信なしで使える準備: できています。' }).length).toBe(1)
   })
 })
 
@@ -179,8 +179,8 @@ describe('Issue #46 JSX テキストの静的走査(本文は句点・ラベル�
     expect(findings.filter((f) => f.kind === 'body').length).toBeGreaterThanOrEqual(10)
     expect(findings.filter((f) => f.kind === 'label').length).toBeGreaterThanOrEqual(5)
     // モールス凡例・PhraseEditor の注意書きを含む
-    expect(findings.some((f) => f.tag === 'li' && f.text.includes('スキャンへ戻る'))).toBe(true)
-    expect(findings.some((f) => f.tag === 'p' && f.text.includes('末尾に（とても）'))).toBe(true)
+    expect(findings.some((f) => f.tag === 'li' && f.text.includes('タイルで選ぶ画面へ戻る'))).toBe(true)
+    expect(findings.some((f) => f.tag === 'p' && f.text.includes('末尾に、とても'))).toBe(true)
   })
 
   it('現行ソースに違反がない', () => {
@@ -194,8 +194,8 @@ describe('Issue #46 JSX テキストの静的走査(本文は句点・ラベル�
         'ここで編集できるのは下の定型文だけです',
       )
       .replace(
-        '（句点で終わる文は句点の前、句点がない文は末尾）。',
-        '（句点で終わる文は句点の前、句点がない文は末尾）',
+        '句点で終わる文は句点の前に、句点がない文は末尾に付きます。',
+        '句点で終わる文は句点の前に、句点がない文は末尾に付きます',
       )
     expect(noKuten).not.toBe(phraseEditorSrc)
     const v = jsxViolations(scanJsx('PhraseEditor.tsx', noKuten))

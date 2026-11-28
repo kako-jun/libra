@@ -149,7 +149,7 @@ describe('Issue #46 句読点(App 結合)', () => {
     )
   })
 
-  it('モールス凡例は全行が「。」で終わる(SOS 行は「）。」・下限ありの行も)', () => {
+  it('モールス凡例は全行が「。」で終わる(下限ありの行も)', () => {
     window.localStorage.setItem('libra', JSON.stringify({ morseEnabled: true, minHoldMs: 800 }))
     const { container } = render(() => <App />)
     // 先頭待機が間隔の整数倍でないので、100ms ずつ進めて目的の項目で押す
@@ -163,7 +163,7 @@ describe('Issue #46 句読点(App 結合)', () => {
     const lines = legendLines(container)
     expect(lines.length).toBe(10)
     for (const l of lines) expect(l.endsWith('。'), l).toBe(true)
-    expect(lines.find((l) => l.startsWith('緊急＝SOS'))?.endsWith('数え直し）。')).toBe(true)
+    expect(lines.find((l) => l.startsWith('緊急＝SOS'))?.endsWith('数え直す。')).toBe(true)
     for (const l of lines) {
       expect(l).not.toContain('。。')
       expect(l).not.toContain('？。')

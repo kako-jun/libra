@@ -26,8 +26,8 @@ import {
 
 const FIELDS = [
   {
-    tab: 'スキャン',
-    label: '決定のタイミング',
+    tab: '選び方',
+    label: '決まるタイミング',
     options: ['押した瞬間', '離した瞬間'],
     initial: '押した瞬間',
     pick: '離した瞬間',
@@ -36,9 +36,9 @@ const FIELDS = [
   },
   {
     tab: '音と振動',
-    label: '音声モード（伝えた内容の読み上げ）',
-    options: ['OFF', '効果音だけ', '短く読む', '全部読む'],
-    initial: 'OFF',
+    label: '音声モード',
+    options: ['読まない', '効果音だけ', '短く読む', '全部読む'],
+    initial: '読まない',
     pick: '短く読む',
     key: 'voiceMode',
     saved: 'short',
@@ -54,7 +54,7 @@ const FIELDS = [
   },
   {
     tab: '表示',
-    label: '文字サイズ（選ぶタイルの文字）',
+    label: '文字サイズ',
     options: ['標準', '大', '特大'],
     initial: '標準',
     pick: '大',
@@ -64,9 +64,9 @@ const FIELDS = [
   {
     tab: '表示',
     label: '明るさ',
-    options: ['ライト', 'ダーク', 'OSの設定'],
-    initial: 'OSの設定',
-    pick: 'ダーク',
+    options: ['明るい', '暗い', '端末の設定に合わせる'],
+    initial: '端末の設定に合わせる',
+    pick: '暗い',
     key: 'theme',
     saved: 'dark',
   },
@@ -113,18 +113,18 @@ describe('Issue #148: 値を選ぶ欄はラジオボタン', () => {
 
   it('同じタブの別の組は、別の name を持つ(片方を選んでももう片方は外れない)', () => {
     const { panel } = openTab('音と振動')
-    chooseRadio(radioGroup(panel, '音声モード（伝えた内容の読み上げ）'), '全部読む')
+    chooseRadio(radioGroup(panel, '音声モード'), '全部読む')
     chooseRadio(radioGroup(panel, '振動の強さ'), '弱')
     expect(panel.querySelectorAll('input[type="radio"]:checked')).toHaveLength(2)
   })
 
   it('初期値に戻すと、ラジオの選択も戻る', () => {
     const { panel } = openTab('表示')
-    chooseRadio(panel, 'ダーク')
+    chooseRadio(panel, '暗い')
     const reset = panel.querySelector('.caregiver-reset-button') as HTMLElement
     fireEvent.click(reset)
     fireEvent.click(reset)
-    expect(radioByName(panel, 'OSの設定').checked).toBe(true)
+    expect(radioByName(panel, '端末の設定に合わせる').checked).toBe(true)
   })
 
   // 安全: 介助者がラジオを押すとフォーカスが残る。そのまま本人が矢印キー型などのスイッチを押しても、
@@ -181,7 +181,7 @@ describe('Issue #148: 値を選ぶ欄はラジオボタン', () => {
   it.each(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])(
     'スライダーの矢印キー「%s」は、閉じず、既定の動作(値の調整)を止めない',
     (key) => {
-      const { container, panel } = openTab('スキャン')
+      const { container, panel } = openTab('選び方')
       const slider = panel.querySelector('input[type="range"]') as HTMLInputElement
       slider.focus()
       expect(fireEvent.keyDown(slider, { key })).toBe(true)
@@ -192,7 +192,7 @@ describe('Issue #148: 値を選ぶ欄はラジオボタン', () => {
   it.each(['a', 'Backspace', 'Home', 'End', 'Enter', ' ', 'AudioVolumeUp'])(
     'スライダーでも、矢印キー以外の「%s」は本人のスイッチとして閉じる',
     (key) => {
-      const { container, panel } = openTab('スキャン')
+      const { container, panel } = openTab('選び方')
       const slider = panel.querySelector('input[type="range"]') as HTMLInputElement
       slider.focus()
       expect(fireEvent.keyDown(slider, { key })).toBe(false)
@@ -233,7 +233,7 @@ describe('Issue #148: 値を選ぶ欄はラジオボタン', () => {
     '「初期値に戻す」の確認中のリピート「%s」は、ボタンの実行を止めて閉じる',
     (key) => {
       setSettings({ intervalMs: 5000 })
-      const { container, panel } = openTab('スキャン')
+      const { container, panel } = openTab('選び方')
       const reset = panel.querySelector('.caregiver-reset-button') as HTMLElement
       fireEvent.click(reset)
       reset.focus()
@@ -246,7 +246,7 @@ describe('Issue #148: 値を選ぶ欄はラジオボタン', () => {
   it.each(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])(
     'スライダーの矢印「%s」の押しっぱなしは、これまでどおり閉じず、調整を止めない',
     (key) => {
-      const { container, panel } = openTab('スキャン')
+      const { container, panel } = openTab('選び方')
       const slider = panel.querySelector('input[type="range"]') as HTMLInputElement
       expect(pressRepeat(slider, key)).toBe(true)
       expect(menuOpen(container)).toBe(true)
@@ -363,12 +363,12 @@ describe('Issue #145: フレーズの編集先', () => {
     setSettings({ phrases: { feelings: many, painLocation: many } })
     const { container } = openTab('フレーズ')
     const warning = editor(container).querySelector('[role="alert"]')?.textContent ?? ''
-    expect(warning).toContain('快 › 気分（11 項目）')
-    expect(warning).toContain('不快 › 痛い（11 項目）')
+    expect(warning).toContain('快 › 気分（11件）')
+    expect(warning).toContain('不快 › 痛い（11件）')
     const reset = container.querySelector('.caregiver-reset-button') as HTMLElement
     fireEvent.click(reset)
     expect(container.querySelector('.caregiver-reset')?.textContent).toContain(
-      '（快 › 気分、不快、不快 › 痛い、不快 › その他、要望 のフレーズ）',
+      '対象は快 › 気分、不快、不快 › 痛い、不快 › その他、要望 のフレーズです。',
     )
   })
 })

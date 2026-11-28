@@ -152,7 +152,7 @@ describe('Issue #122: 好きな画像(本人画面・介助者用メニュー「
     window.localStorage.setItem(PHOTO_STORAGE_KEY, PHOTO)
     const { container } = render(() => <App />)
     openCaregiverMenu(container)
-    for (const tab of ['スキャン', 'モールス', '音と振動', 'フレーズ']) {
+    for (const tab of ['選び方', 'モールス', '音と振動', 'フレーズ']) {
       selectCaregiverTab(container, tab)
       const reset = container.querySelector('.caregiver-reset-button') as HTMLElement
       fireEvent.click(reset)
@@ -248,7 +248,7 @@ describe('Issue #118: 「このアプリ」タブ', () => {
     await Promise.resolve()
     const panel = openAbout(container)
     expect(panel.querySelector('.app-usage-count')?.textContent).toBe(
-      '取得できません（通信がないときは表示されません）',
+      '取得できませんでした',
     )
     closeCaregiverMenu(container)
     tap(container, 'はい')
@@ -346,12 +346,12 @@ describe('Issue #112: 「介助者用」をタップして開いた直後に、�
     const { container } = render(() => <App />)
     touchOpen(container, 7)
     pointerClick(closeButton(container), 7)
-    selectCaregiverTab(container, 'スキャン')
+    selectCaregiverTab(container, '選び方')
     expect(
       Array.from(container.querySelectorAll('[role="tab"]')).find(
         (t) => t.getAttribute('aria-selected') === 'true',
       )?.textContent,
-    ).toBe('スキャン')
+    ).toBe('選び方')
   })
 })
 

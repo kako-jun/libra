@@ -24,13 +24,13 @@ const stored = () => JSON.parse(window.localStorage.getItem('libra') ?? '{}')
 
 /** [タブ, 設定名, 保存キー, 下限, 上限, 1 段階, 保存値 → つまみの値] */
 const SLIDERS = [
-  ['スキャン', 'スキャン間隔', 'intervalMs', 500, 5000, 100, 1],
-  ['スキャン', '先頭待機倍率', 'headHoldMultiplier', 3, 15, 1, 3],
-  ['スキャン', '連打無視', 'debounceMs', 100, 3000, 100, 1],
-  ['スキャン', '押下時間の下限', 'minHoldMs', 0, 2000, 100, 1],
+  ['選び方', '枠が移る間隔', 'intervalMs', 500, 5000, 100, 1],
+  ['選び方', '最初のタイルの長さ', 'headHoldMultiplier', 3, 15, 1, 3],
+  ['選び方', '連打を数えない時間', 'debounceMs', 100, 3000, 100, 1],
+  ['選び方', '押したと数える長さ', 'minHoldMs', 0, 2000, 100, 1],
   ['モールス', '長押しの境目', 'morseDashMs', 150, 1500, 50, 1],
-  ['モールス', '文字の確定までの無入力', 'morseLetterGapMs', 500, 3000, 100, 1],
-  ['モールス', '語の区切りまでの無入力', 'morseWordGapMs', 1500, 8000, 100, 1],
+  ['モールス', '文字が決まるまでの間隔', 'morseLetterGapMs', 500, 3000, 100, 1],
+  ['モールス', '語の区切りまでの間隔', 'morseWordGapMs', 1500, 8000, 100, 1],
 ] as const
 
 function open(tab: string) {
@@ -64,7 +64,7 @@ describe('Issue #141: スライダーの矢印', () => {
       }
     }
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(SLIDERS.length)
-    expect(counts['スキャン']).toBe(4)
+    expect(counts['選び方']).toBe(4)
     expect(counts['モールス']).toBe(3)
   })
 
@@ -97,19 +97,19 @@ describe('Issue #141: スライダーの矢印', () => {
   )
 
   it('見出しは label[for] でスライダーに結び、見出しを押しても矢印は押されない', () => {
-    const c = open('スキャン')
-    const field = sliderOf(c, 'スキャン間隔').closest('.caregiver-range') as HTMLElement
+    const c = open('選び方')
+    const field = sliderOf(c, '枠が移る間隔').closest('.caregiver-range') as HTMLElement
     const label = field.querySelector('label') as HTMLLabelElement
-    expect(label.control).toBe(sliderOf(c, 'スキャン間隔'))
+    expect(label.control).toBe(sliderOf(c, '枠が移る間隔'))
     expect(label.querySelector('button')).toBeNull()
     fireEvent.click(label)
-    expect(sliderOf(c, 'スキャン間隔').value).toBe('1500')
+    expect(sliderOf(c, '枠が移る間隔').value).toBe('1500')
   })
 
-  it('「文字の確定」を矢印で延ばすと、語の区切りも一緒に延びる(つまみと同じ処理)', () => {
+  it('「文字が決まるまでの間隔」を矢印で延ばすと、語の区切りも一緒に延びる(つまみと同じ処理)', () => {
     setSettings({ morseEnabled: true, morseLetterGapMs: 2000, morseWordGapMs: 2500 })
     const c = open('モールス')
-    fireEvent.click(arrow(c, '文字の確定までの無入力', '増やす'))
+    fireEvent.click(arrow(c, '文字が決まるまでの間隔', '増やす'))
     expect(stored().morseLetterGapMs).toBe(2100)
     expect(stored().morseWordGapMs).toBe(2600)
   })
@@ -126,11 +126,11 @@ describe('Issue #141: スライダーの矢印', () => {
     '目盛りに無い値 %i で「%s」を押すと目盛りの %i になり、つまみと表示がそろう',
     (stored_, direction, expected) => {
       setSettings({ intervalMs: stored_ })
-      const c = open('スキャン')
-      fireEvent.click(arrow(c, 'スキャン間隔', direction))
+      const c = open('選び方')
+      fireEvent.click(arrow(c, '枠が移る間隔', direction))
       expect(stored().intervalMs).toBe(expected)
-      expect(Number(sliderOf(c, 'スキャン間隔').value)).toBe(expected)
-      expect(c.textContent).toContain(`スキャン間隔: ${(expected / 1000).toFixed(1)} 秒`)
+      expect(Number(sliderOf(c, '枠が移る間隔').value)).toBe(expected)
+      expect(c.textContent).toContain(`枠が移る間隔: ${(expected / 1000).toFixed(1)} 秒`)
     },
   )
 
@@ -144,7 +144,7 @@ describe('Issue #141: スライダーの矢印', () => {
     (letter, floor) => {
       setSettings({ morseEnabled: true, morseLetterGapMs: letter, morseWordGapMs: floor + 100 })
       const c = open('モールス')
-      const name = '語の区切りまでの無入力'
+      const name = '語の区切りまでの間隔'
       fireEvent.click(arrow(c, name, '減らす'))
       expect(stored().morseWordGapMs).toBe(floor)
       expect(arrow(c, name, '減らす').disabled).toBe(true)
@@ -161,9 +161,9 @@ describe('Issue #141: スライダーの矢印', () => {
   )
 
   it('矢印の押下(pointerdown)で、自動で閉じるまでの 60 秒を数え直す', () => {
-    const c = open('スキャン')
+    const c = open('選び方')
     vi.advanceTimersByTime(50000)
-    const button = arrow(c, 'スキャン間隔', '増やす')
+    const button = arrow(c, '枠が移る間隔', '増やす')
     fireEvent.pointerDown(button, { pointerId: 1 })
     fireEvent.pointerUp(button, { pointerId: 1 })
     fireEvent.click(button)
@@ -177,7 +177,7 @@ describe('Issue #141: スライダーの矢印', () => {
 describe('Issue #140 / #157: タブの並びと矢印キーの移動順', () => {
   const ORDER = [
     '使用準備',
-    'スキャン',
+    '選び方',
     '音と振動',
     '表示',
     'フレーズ',
@@ -238,12 +238,12 @@ describe('Issue #163: 介助者用メニューの文字(静的。計算後の値
     expect(panel?.body).toMatch(/(^|[;\s])font-size:\s*1rem/)
   })
 
-  // 例外は値の選択肢だけ: 折り返さず 1 段に並べる(Issue #147)ため、入らない幅でだけ 1rem より小さくする。
+  // 例外は値のタイルだけ: 折り返さず 1 段に並べる(Issue #147)ため、入らない幅でだけ 1rem より小さくする。
   // 通常は 1rem(min の第 1 引数)。実際の大きさは e2e の caregiver-choices が実ブラウザで測る
   const RADIO_SIZE =
     '.caregiver-radio min(1rem, calc((100cqi / var(--choices) - 2px) / var(--choice-chars)))'
 
-  it('メニュー内の文字の大きさは、値の選択肢を除き 16px(1rem)を下回らず、見出しは 1.25rem', () => {
+  it('メニュー内の文字の大きさは、値のタイルを除き 16px(1rem)を下回らず、見出しは 1.25rem', () => {
     const sizes: string[] = []
     for (const rule of menuRules()) {
       const size = rule.body.match(/(?:^|[;\s])font-size:\s*([^;]+);/)?.[1]
